@@ -6,6 +6,8 @@ const SEARCH_TIMEOUT_MS = 10_000;
 const MAX_FEED_BYTES = 2 * 1024 * 1024;
 const MAX_RESULTS = 50;
 const CATEGORIES = new Set(["1_0", "1_2", "1_3", "1_4"]);
+const SORTS = new Set(["id", "size", "seeders", "leechers", "downloads"]);
+const SORT_ORDERS = new Set(["asc", "desc"]);
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" ? decodeXml(value) : null;
@@ -149,6 +151,10 @@ export async function searchNyaaResponse(url: URL): Promise<Response> {
   const requestedCategory = url.searchParams.get("category") ?? "1_0";
   const category = CATEGORIES.has(requestedCategory) ? requestedCategory : "1_0";
   const trusted = url.searchParams.get("trusted") === "true";
+  const requestedSort = url.searchParams.get("sort") ?? "id";
+  const sort = SORTS.has(requestedSort) ? requestedSort : "id";
+  const requestedOrder = url.searchParams.get("order") ?? "desc";
+  const order = SORT_ORDERS.has(requestedOrder) ? requestedOrder : "desc";
   if (query.length < 2 || query.length > 200) {
     return new Response("Search must be between 2 and 200 characters", { status: 400 });
   }
@@ -159,6 +165,8 @@ export async function searchNyaaResponse(url: URL): Promise<Response> {
     q: query,
     c: category,
     f: trusted ? "2" : "0",
+    s: sort,
+    o: order,
   }).toString();
 
   try {

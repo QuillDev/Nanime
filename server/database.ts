@@ -132,6 +132,22 @@ database.run(`
   )
 `);
 database.run(`
+  CREATE TABLE IF NOT EXISTS media_library (
+    rel TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    folder TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    direct INTEGER NOT NULL
+  )
+`);
+database.run(`
+  CREATE TABLE IF NOT EXISTS media_library_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_scanned_at INTEGER NOT NULL,
+    entry_count INTEGER NOT NULL
+  )
+`);
+database.run(`
   CREATE TABLE IF NOT EXISTS transcode_jobs (
     id TEXT PRIMARY KEY,
     source_rel TEXT NOT NULL,

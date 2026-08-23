@@ -1,8 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useState, type ChangeEvent } from "react";
 import { Download, ExternalLink } from "lucide-react";
 import { useAddTorrent } from "../hooks/useAddTorrent.ts";
 import { useNyaaSearch } from "../hooks/useNyaaSearch.ts";
-import type { NyaaSearchResult } from "../types.ts";
+import type { NyaaSearchResult, NyaaSort, NyaaSortOrder } from "../types.ts";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog.tsx";
+
+const SORT_OPTIONS: readonly (readonly [NyaaSort, string])[] = [
+  ["id", "Upload date"],
+  ["seeders", "Seeders"],
+  ["leechers", "Leechers"],
+  ["downloads", "Downloads"],
+  ["size", "Size"],
+];
+
+function nyaaSort(value: string): NyaaSort {
+  if (
+    value === "size" || value === "seeders" || value === "leechers" ||
+    value === "downloads"
+  ) {
+    return value;
+  }
+  return "id";
+}
+
+function nyaaSortOrder(value: string): NyaaSortOrder {
+  return value === "asc" ? "asc" : "desc";
+}
 
 function ResultRow({
   result,
@@ -97,13 +119,46 @@ export function AdminNyaaSearchDialog({
   readonly trusted: boolean;
   readonly showFolder: string;
 }): React.JSX.Element {
-  const results = useNyaaSearch(search, category, trusted);
+  const [sort, setSort] = useState<NyaaSort>("id");
+  const [order, setOrder] = useState<NyaaSortOrder>("desc");
+  const handleSort = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    setSort(nyaaSort(event.target.value));
+  }, []);
+  const handleOrder = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    setOrder(nyaaSortOrder(event.target.value));
+  }, []);
+  const results = useNyaaSearch({ search, category, trusted, sort, order });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] grid-rows-[auto_minmax(0,1fr)]">
         <DialogHeader>
           <DialogTitle>Nyaa results for “{search}”</DialogTitle>
           <DialogDescription>Choose a torrent to send to qBittorrent.</DialogDescription>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <label className="text-xs font-medium text-muted-foreground">
+              Sort by
+              <select
+                value={sort}
+                onChange={handleSort}
+                className="mt-1 block h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+              >
+                {SORT_OPTIONS.map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Order
+              <select
+                value={order}
+                onChange={handleOrder}
+                className="mt-1 block h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+              >
+                <option value="desc">Descending</option>
+                <option value="asc">Ascending</option>
+              </select>
+            </label>
+          </div>
         </DialogHeader>
         <div className="min-h-0 overflow-auto">
           {results.status === "pending" && (

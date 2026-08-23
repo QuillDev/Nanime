@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { AniListMedia, ShowMetadata } from "../types.ts";
 import { showMetadataKey, type ShowGroup } from "../lib/library.ts";
 import { mediaTitle } from "../lib/anilist.ts";
@@ -9,6 +9,8 @@ interface ShowCardProps {
   readonly media: AniListMedia | undefined;
   readonly onSelect: (show: ShowGroup) => void;
 }
+
+const SHOW_BATCH_SIZE = 120;
 
 function ShowCard({ show, media, onSelect }: ShowCardProps): React.JSX.Element {
   const handleClick = useCallback(() => {
@@ -75,11 +77,27 @@ function ShowGridItem({ show, metadata, onSelect }: {
 }
 
 export function ShowGrid({ shows, metadata, onSelect }: ShowGridProps): React.JSX.Element {
+  const [limit, setLimit] = useState(SHOW_BATCH_SIZE);
+  const visible = shows.slice(0, limit);
+  const handleMore = useCallback(() => {
+    setLimit((current) => current + SHOW_BATCH_SIZE);
+  }, []);
   return (
-    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-      {shows.map((show) => (
-        <ShowGridItem key={show.name} show={show} metadata={metadata} onSelect={onSelect} />
-      ))}
-    </ul>
+    <>
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        {visible.map((show) => (
+          <ShowGridItem key={show.name} show={show} metadata={metadata} onSelect={onSelect} />
+        ))}
+      </ul>
+      {visible.length < shows.length && (
+        <button
+          type="button"
+          onClick={handleMore}
+          className="mx-auto mt-8 block rounded-md bg-secondary px-5 py-2.5 text-sm font-semibold text-secondary-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Show more ({String(shows.length - visible.length)} remaining)
+        </button>
+      )}
+    </>
   );
 }

@@ -1,10 +1,8 @@
 import type {
   AniListMedia,
-  AniListPlaybackTarget,
   MediaEntry,
   ShowMetadata,
 } from "../types.ts";
-import { episodeNumber } from "./anilist.ts";
 
 export interface SeasonGroup {
   readonly name: string;
@@ -183,31 +181,6 @@ export function groupShows(
   return mergeShows(localShowGroups(entries), metadata);
 }
 
-export function aniListPlaybackTarget(
-  entries: readonly MediaEntry[] | undefined,
-  selected: MediaEntry | null,
-  metadata: ShowMetadata,
-): AniListPlaybackTarget | null {
-  if (entries === undefined || selected === null) {
-    return null;
-  }
-  const show = groupShows(entries, metadata).find((candidate) => (
-    candidate.entries.some((entry) => entry.rel === selected.rel)
-  ));
-  const season = show?.seasons.find((candidate) => (
-    candidate.entries.some((entry) => entry.rel === selected.rel)
-  ));
-  const number = episodeNumber(selected);
-  if (season === undefined || number === null) {
-    return null;
-  }
-  const media = seasonMetadata(metadata, season.sourceShow, season.name) ??
-    metadata[showMetadataKey(season.sourceShow)];
-  return media === undefined
-    ? null
-    : { mediaId: media.id, episode: number, totalEpisodes: media.episodes };
-}
-
 function localShowGroups(entries: readonly MediaEntry[]): readonly ShowGroup[] {
   const groups = new Map<string, MediaEntry[]>();
   for (const entry of entries) {
@@ -245,36 +218,4 @@ function mergeShows(
   }
   return [...merged.values()]
     .toSorted((a, b) => nameCollator.compare(a.name, b.name));
-}
-
-export function nextEpisode(
-  entries: readonly MediaEntry[],
-  currentRel: string,
-  metadata: ShowMetadata = {},
-): MediaEntry | null {
-  const show = groupShows(entries, metadata).find((candidate) => (
-    candidate.entries.some((entry) => entry.rel === currentRel)
-  ));
-  if (show === undefined) {
-    return null;
-  }
-  const ordered = show.seasons.flatMap((season) => season.entries);
-  const currentIndex = ordered.findIndex((entry) => entry.rel === currentRel);
-  return ordered[currentIndex + 1] ?? null;
-}
-
-export function previousEpisode(
-  entries: readonly MediaEntry[],
-  currentRel: string,
-  metadata: ShowMetadata = {},
-): MediaEntry | null {
-  const show = groupShows(entries, metadata).find((candidate) => (
-    candidate.entries.some((entry) => entry.rel === currentRel)
-  ));
-  if (show === undefined) {
-    return null;
-  }
-  const ordered = show.seasons.flatMap((season) => season.entries);
-  const currentIndex = ordered.findIndex((entry) => entry.rel === currentRel);
-  return currentIndex > 0 ? ordered[currentIndex - 1] ?? null : null;
 }

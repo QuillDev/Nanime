@@ -5,7 +5,9 @@ import {
   aniListErrorResponse,
   linkAniListResponse,
   metadataResponse,
+  metadataRefreshStatusResponse,
   searchAniListResponse,
+  startMetadataRefreshResponse,
 } from "./anilist.ts";
 import { dismissPlaybackProgress, playbackProgressResponse, updatePlaybackProgress } from "./playback.ts";
 import {
@@ -17,7 +19,11 @@ import {
 } from "./subtitles.ts";
 import { torrentsResponse } from "./torrents.ts";
 import { mediaAdminResponse } from "./mediaAdmin.ts";
-import { listMedia } from "./mediaLibrary.ts";
+import {
+  libraryStatusResponse,
+  listMedia,
+  refreshLibraryResponse,
+} from "./mediaLibrary.ts";
 import {
   authenticatedUser,
   aniListPublicAuthResponse,
@@ -279,7 +285,11 @@ interface RouteContext {
 async function libraryRoute(context: RouteContext): Promise<Response | null> {
   const { pathname, req, user } = context;
   if (pathname === "/api/list" && req.method === "GET") {
-    return Response.json(await listMedia(MEDIA_DIR, VIDEO_EXTS, DIRECT_PLAY));
+    return Response.json(await listMedia({
+      mediaDir: MEDIA_DIR,
+      videoExtensions: VIDEO_EXTS,
+      directPlayExtensions: DIRECT_PLAY,
+    }));
   }
   if (pathname === "/api/metadata" && req.method === "GET") {
     return metadataResponse();
@@ -308,6 +318,20 @@ async function libraryRoute(context: RouteContext): Promise<Response | null> {
 
 async function administrationRoute(context: RouteContext): Promise<Response | null> {
   const { pathname, url, req, user } = context;
+  if (pathname === "/api/library/status" && req.method === "GET") {
+    return user.isAdmin
+      ? libraryStatusResponse()
+      : new Response("Forbidden", { status: 403 });
+  }
+  if (pathname === "/api/library/refresh" && req.method === "POST") {
+    return user.isAdmin
+      ? refreshLibraryResponse({
+          mediaDir: MEDIA_DIR,
+          videoExtensions: VIDEO_EXTS,
+          directPlayExtensions: DIRECT_PLAY,
+        })
+      : new Response("Forbidden", { status: 403 });
+  }
   const aniListUser = await aniListUserResponse(pathname, req, user);
   if (aniListUser !== null) {
     return aniListUser;
@@ -320,6 +344,16 @@ async function administrationRoute(context: RouteContext): Promise<Response | nu
   if (pathname === "/api/anilist/link" && req.method === "POST") {
     return user.isAdmin
       ? linkAniListResponse(req)
+      : new Response("Forbidden", { status: 403 });
+  }
+  if (pathname === "/api/metadata/refresh" && req.method === "GET") {
+    return user.isAdmin
+      ? metadataRefreshStatusResponse()
+      : new Response("Forbidden", { status: 403 });
+  }
+  if (pathname === "/api/metadata/refresh" && req.method === "POST") {
+    return user.isAdmin
+      ? startMetadataRefreshResponse()
       : new Response("Forbidden", { status: 403 });
   }
   if (pathname === "/api/users" || pathname.startsWith("/api/users/")) {

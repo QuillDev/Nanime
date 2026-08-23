@@ -5,6 +5,7 @@ import { useVideoSource } from "../hooks/useVideoSource.ts";
 import { hasMeaningfulPlaybackProgress } from "../lib/playback.ts";
 import { PlayerDescription } from "./EpisodeNavigation.tsx";
 import { CopyableErrorBoundary } from "./CopyableErrorBoundary.tsx";
+import { CopyablePlaybackError } from "./CopyablePlaybackError.tsx";
 import { PlayerSurface } from "./PlayerSurface.tsx";
 import {
   Dialog,
@@ -46,7 +47,7 @@ export function Player({
     handleVideoError,
     handlePlaying,
     handleAudioTrack,
-  } = useVideoSource(entry);
+  } = useVideoSource(entry, resumeAt);
   const progress = usePlayerProgress(entry, resumeAt, anilistTarget);
 
   const handleOpenChange = useCallback(
@@ -86,9 +87,7 @@ export function Player({
           />
         </CopyableErrorBoundary>
         {playbackError !== null && (
-          <p className="absolute left-4 top-4 z-30 rounded-md bg-black px-3 py-2 text-sm text-destructive">
-            {playbackError}
-          </p>
+          <CopyablePlaybackError detail={playbackError} />
         )}
       </DialogContent>
     </Dialog>

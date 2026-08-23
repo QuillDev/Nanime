@@ -1,6 +1,6 @@
 import type { ChangeEvent } from "react";
 import { Library, Settings } from "lucide-react";
-import type { AuthUser, MediaEntry, ShowMetadata } from "../types.ts";
+import type { AuthUser, ShowMetadata } from "../types.ts";
 import type { ShowGroup } from "../lib/library.ts";
 import { navigateToAdmin, navigateToShows } from "../hooks/useMediaRoute.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
@@ -15,7 +15,7 @@ type MediaHeaderProps = {
   readonly user: AuthUser;
   readonly view: "library";
   readonly query: string;
-  readonly entries: readonly MediaEntry[];
+  readonly shows: readonly ShowGroup[];
   readonly metadata: ShowMetadata;
   readonly onQueryChange: (event: ChangeEvent<HTMLInputElement>) => void;
   readonly onShowSelect: (show: ShowGroup) => void;
@@ -32,7 +32,7 @@ export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
       {props.view === "library" && (
         <LibrarySearch
           query={props.query}
-          entries={props.entries}
+          shows={props.shows}
           metadata={props.metadata}
           onQueryChange={props.onQueryChange}
           onShowSelect={props.onShowSelect}

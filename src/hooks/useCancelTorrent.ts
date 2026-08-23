@@ -2,6 +2,7 @@ import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/r
 import { cancelTorrent } from "../torrentActions.ts";
 import { storageStatusKey } from "./useStorageStatus.ts";
 import { torrentsKey } from "./useTorrents.ts";
+import { refreshLibraryCache } from "./refreshLibraryCache.ts";
 
 interface CancelTorrentVariables {
   readonly hash: string;
@@ -12,9 +13,11 @@ export function useCancelTorrent(): UseMutationResult<void, Error, CancelTorrent
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ hash, deleteFiles }) => cancelTorrent(hash, deleteFiles),
-    onSuccess: () => Promise.all([
+    onSuccess: (_data, variables) => Promise.all([
       queryClient.invalidateQueries({ queryKey: torrentsKey }),
-      queryClient.invalidateQueries({ queryKey: ["library"] }),
+      variables.deleteFiles
+        ? refreshLibraryCache(queryClient)
+        : Promise.resolve(),
       queryClient.invalidateQueries({ queryKey: storageStatusKey }),
     ]),
   });

@@ -1,14 +1,8 @@
 import { lazy, Suspense, useCallback, type ChangeEvent } from "react";
-import type { AuthUser, MediaEntry, ShowMetadata } from "../types.ts";
-import {
-  aniListPlaybackTarget,
-  nextEpisode,
-  previousEpisode,
-  type ShowGroup,
-} from "../lib/library.ts";
+import type { AuthUser, MediaEntry } from "../types.ts";
+import type { ShowGroup } from "../lib/library.ts";
 import { useLibrary } from "../hooks/useLibrary.ts";
 import { usePlaybackProgress } from "../hooks/usePlaybackProgress.ts";
-import { useShowMetadata } from "../hooks/useShowMetadata.ts";
 import {
   closeEpisode,
   navigateToEpisode,
@@ -20,6 +14,7 @@ import {
 import { Library, LibrarySkeleton } from "./Library.tsx";
 import { MediaHeader } from "./MediaHeader.tsx";
 import { loadPlayer } from "../routeModules.ts";
+import { useLibraryIndex, type LibraryIndex } from "../hooks/useLibraryIndex.ts";
 
 const Player = lazy(async () => {
   const module = await loadPlayer();
@@ -37,23 +32,15 @@ const PLAYER_LOADING = (
 
 const EMPTY_PROGRESS = {};
 const EMPTY_ENTRIES: readonly MediaEntry[] = [];
-const EMPTY_METADATA: ShowMetadata = {};
 
 interface MediaAppProps {
   readonly user: AuthUser;
 }
 
-function useAdjacentEpisodeNavigation(
-  entries: readonly MediaEntry[] | undefined,
-  selected: MediaEntry | null,
-  metadata: ShowMetadata,
-) {
-  const previous = entries === undefined || selected === null
-    ? null
-    : previousEpisode(entries, selected.rel, metadata);
-  const next = entries === undefined || selected === null
-    ? null
-    : nextEpisode(entries, selected.rel, metadata);
+function useEpisodeNavigation(index: LibraryIndex, rel: string | null) {
+  const selected = rel === null ? null : index.entriesByRel.get(rel) ?? null;
+  const previous = rel === null ? null : index.previousByRel.get(rel) ?? null;
+  const next = rel === null ? null : index.nextByRel.get(rel) ?? null;
   const handlePrevious = useCallback(() => {
     if (previous !== null) {
       navigateToEpisode(previous.rel);
@@ -64,16 +51,22 @@ function useAdjacentEpisodeNavigation(
       navigateToEpisode(next.rel);
     }
   }, [next]);
-  return { previous, next, handlePrevious, handleNext };
+  return {
+    selected,
+    previous,
+    next,
+    target: rel === null ? null : index.playbackTargetByRel.get(rel) ?? null,
+    handlePrevious,
+    handleNext,
+  };
 }
 
 export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
   const library = useLibrary();
   const playbackProgress = usePlaybackProgress();
-  const metadata = useShowMetadata();
   const route = useMediaRoute();
-  const selected = library.data?.find((entry) => entry.rel === route.episodeRel) ?? null;
-  const navigation = useAdjacentEpisodeNavigation(library.data, selected, metadata.data ?? {});
+  const index = useLibraryIndex(library.data ?? EMPTY_ENTRIES);
+  const navigation = useEpisodeNavigation(index, route.episodeRel);
   const handleQueryChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     updateSearch(event.target.value);
   }, []);
@@ -90,8 +83,8 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
         user={user}
         view="library"
         query={route.query}
-        entries={library.data ?? EMPTY_ENTRIES}
-        metadata={metadata.data ?? EMPTY_METADATA}
+        shows={index.shows}
+        metadata={index.metadata}
         onQueryChange={handleQueryChange}
         onShowSelect={handleShowSelect}
       />
@@ -107,6 +100,8 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
         {library.status === "success" && (
           <Library
             entries={library.data}
+            shows={index.shows}
+            metadata={index.metadata}
             query={route.query}
             progress={playbackProgress.data ?? EMPTY_PROGRESS}
             selectedShowName={route.showName}
@@ -117,15 +112,15 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
           />
         )}
       </main>
-      {selected !== null && (
+      {navigation.selected !== null && playbackProgress.status !== "pending" && (
         <Suspense fallback={PLAYER_LOADING}>
           <Player
-            key={selected.rel}
-            entry={selected}
-            anilistTarget={aniListPlaybackTarget(library.data, selected, metadata.data ?? {})}
+            key={navigation.selected.rel}
+            entry={navigation.selected}
+            anilistTarget={navigation.target}
             nextAvailable={navigation.next !== null}
             previousAvailable={navigation.previous !== null}
-            initialProgress={playbackProgress.data?.[selected.rel]}
+            initialProgress={playbackProgress.data?.[navigation.selected.rel]}
             onClose={closeEpisode}
             onNext={navigation.handleNext}
             onPrevious={navigation.handlePrevious}

@@ -150,7 +150,7 @@ interface PlayerSurfaceProps {
   readonly entry: MediaEntry;
   readonly videoRef: React.RefObject<HTMLVideoElement | null>;
   readonly setVideo: (video: HTMLVideoElement | null) => (() => void) | undefined;
-  readonly handleVideoError: () => void;
+  readonly handleVideoError: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handlePlaying: () => void;
   readonly progress: PlaybackHandlers;
   readonly previousAvailable: boolean; readonly nextAvailable: boolean;
@@ -221,10 +221,7 @@ export function PlayerSurface({
           />
           {display.cueText !== "" && (
             <div
-              className={cn(
-                "pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3",
-                controlsVisible ? "bottom-24" : "player-subtitle-bottom",
-              )}
+              className="player-subtitle-position pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3"
               aria-live="off"
             >
               <span className={subtitleClass(display.appearance)}>{display.cueText}</span>
