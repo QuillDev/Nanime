@@ -9,11 +9,16 @@ import type { AuthUser, ProvisionedUser } from "../types.ts";
 import {
   fetchCurrentUser,
   fetchUsers,
+  cancelUserProvision,
   login,
   logout,
   provisionUser,
   setupPassword,
 } from "../api.ts";
+import {
+  navigateAfterAuthentication,
+  navigateToLogin,
+} from "./useMediaRoute.ts";
 
 const authKey = ["current-user"] as const;
 const usersKey = ["users"] as const;
@@ -39,6 +44,7 @@ function useAuthentication(
     mutationFn: ({ username, password }) => mutationFn(username, password),
     onSuccess: (user) => {
       queryClient.setQueryData(authKey, user);
+      navigateAfterAuthentication();
     },
   });
 }
@@ -55,6 +61,7 @@ export function useSetupPassword(): UseMutationResult<AuthUser, Error, SetupCred
     ),
     onSuccess: (user) => {
       queryClient.setQueryData(authKey, user);
+      navigateAfterAuthentication();
     },
   });
 }
@@ -65,8 +72,11 @@ export function useLogout(): UseMutationResult<void, Error, void> {
     mutationFn: logout,
     onSuccess: async () => {
       await queryClient.cancelQueries();
-      queryClient.clear();
       queryClient.setQueryData(authKey, null);
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== authKey[0],
+      });
+      navigateToLogin();
     },
   });
 }
@@ -88,6 +98,14 @@ export function useProvisionUser(): UseMutationResult<string, Error, ProvisionUs
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ username, isAdmin }) => provisionUser(username, isAdmin),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: usersKey }),
+  });
+}
+
+export function useCancelUserProvision(): UseMutationResult<void, Error, number> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: cancelUserProvision,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: usersKey }),
   });
 }

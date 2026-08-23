@@ -146,6 +146,7 @@ export const app = new Elysia({ name: "nanime" })
     body: schema.object({ username: schema.string(), isAdmin: schema.boolean() }),
     response: schema.object({ setupToken: schema.string() }),
   })
+  .delete("/api/users/:id", ({ request, server }) => handle(request, server))
   .get("/api/torrents", ({ request, server }) => handle(request, server), {
     response: schema.array(torrentStatusSchema),
   })

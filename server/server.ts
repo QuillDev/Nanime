@@ -403,8 +403,9 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
       ? linkAniListResponse(req)
       : new Response("Forbidden", { status: 403 });
   }
-  if (pathname === "/api/users") {
-    return usersResponse(req, user);
+  if (pathname === "/api/users" || pathname.startsWith("/api/users/")) {
+    const requestedUserId = pathname === "/api/users" ? null : Number(pathname.slice(11));
+    return usersResponse(req, user, requestedUserId);
   }
   if (pathname === "/api/torrents") {
     return user.isAdmin

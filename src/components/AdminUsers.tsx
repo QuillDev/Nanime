@@ -3,11 +3,16 @@ import { Users } from "lucide-react";
 import { useProvisionUser, useUsers } from "../hooks/useAuth.ts";
 import { AdminPanel } from "./AdminPanel.tsx";
 import { Input } from "./ui/input.tsx";
+import {
+  CancelProvisionDialog,
+  ProvisionResultPanel,
+  type ProvisionResult,
+} from "./UserProvisionDialogs.tsx";
 
 export function AdminUsers(): React.JSX.Element {
   const [username, setUsername] = useState<string>("");
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [setupToken, setSetupToken] = useState<string>("");
+  const [provisionResult, setProvisionResult] = useState<ProvisionResult | null>(null);
   const users = useUsers(true);
   const provision = useProvisionUser();
   const handleUsernameChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
@@ -21,10 +26,11 @@ export function AdminUsers(): React.JSX.Element {
     provision.mutate({ username, isAdmin }, {
       onSuccess: (token) => {
         setUsername("");
-        setSetupToken(token);
+        setProvisionResult({ username, setupToken: token });
       },
     });
   }, [isAdmin, provision, username]);
+  const handleResultClose = useCallback(() => setProvisionResult(null), []);
 
   return (
     <AdminPanel
@@ -66,15 +72,11 @@ export function AdminUsers(): React.JSX.Element {
       {provision.error !== null && (
         <p className="mt-4 text-sm text-destructive">{provision.error.message}</p>
       )}
-      {setupToken !== "" && (
-        <div className="mt-4 rounded-md border border-primary bg-background p-4" aria-live="polite">
-          <p className="text-sm font-medium">One-time setup code</p>
-          <code className="mt-2 block break-all text-sm text-foreground">{setupToken}</code>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Send this securely. It cannot be displayed again.
-          </p>
-        </div>
-      )}
+      <ProvisionResultPanel
+        key={provisionResult?.setupToken}
+        result={provisionResult}
+        onClose={handleResultClose}
+      />
       {users.status === "error" && (
         <p className="mt-4 text-sm text-destructive">{users.error.message}</p>
       )}
@@ -87,9 +89,12 @@ export function AdminUsers(): React.JSX.Element {
                 {listedUser.isAdmin ? "Administrator" : "Viewer"}
               </p>
             </div>
-            <span className={listedUser.passwordSet ? "text-primary" : "text-muted-foreground"}>
-              {listedUser.passwordSet ? "Active" : "Awaiting setup"}
-            </span>
+            <div className="flex flex-col items-end gap-2">
+              <span className={listedUser.passwordSet ? "text-primary" : "text-muted-foreground"}>
+                {listedUser.passwordSet ? "Active" : "Awaiting setup"}
+              </span>
+              {!listedUser.passwordSet && <CancelProvisionDialog user={listedUser} />}
+            </div>
           </li>
         ))}
       </ul>

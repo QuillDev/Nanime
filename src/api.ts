@@ -209,6 +209,13 @@ export async function provisionUser(username: string, isAdmin: boolean): Promise
   return unwrap(await api.api.users.post({ username, isAdmin }), "Provisioning").setupToken;
 }
 
+export async function cancelUserProvision(userId: number): Promise<void> {
+  unwrap(
+    await api.api.users({ id: String(userId) }).delete(),
+    "Cancelling user provision",
+  );
+}
+
 export async function addTorrent(
   file: File | null,
   magnet: string,
