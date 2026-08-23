@@ -89,6 +89,7 @@ const migratePlayback = database.transaction(() => {
       duration REAL NOT NULL,
       completed INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
+      dismissed_at INTEGER,
       PRIMARY KEY (user_id, rel)
     )
   `);
@@ -113,9 +114,16 @@ database.run(`
     duration REAL NOT NULL,
     completed INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
+    dismissed_at INTEGER,
     PRIMARY KEY (user_id, rel)
   )
 `);
+const currentPlaybackColumns = database
+  .query<TableColumn, []>("PRAGMA table_info(playback_progress)")
+  .all();
+if (!currentPlaybackColumns.some((column) => column.name === "dismissed_at")) {
+  database.run("ALTER TABLE playback_progress ADD COLUMN dismissed_at INTEGER");
+}
 database.run(`
   CREATE TABLE IF NOT EXISTS media_metadata (
     key TEXT PRIMARY KEY,
@@ -123,6 +131,63 @@ database.run(`
     updated_at INTEGER NOT NULL
   )
 `);
+database.run(`
+  CREATE TABLE IF NOT EXISTS transcode_jobs (
+    id TEXT PRIMARY KEY,
+    source_rel TEXT NOT NULL,
+    preset TEXT NOT NULL,
+    output_rel TEXT NOT NULL,
+    status TEXT NOT NULL,
+    input_size INTEGER NOT NULL,
+    output_size INTEGER,
+    progress REAL NOT NULL DEFAULT 0,
+    speed REAL NOT NULL DEFAULT 0,
+    started_at INTEGER,
+    error TEXT,
+    original_deleted INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )
+`);
+database.run(`
+  CREATE TABLE IF NOT EXISTS media_scans (
+    source_rel TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    modified_at INTEGER NOT NULL,
+    duration REAL,
+    format_name TEXT,
+    video_codec TEXT,
+    width INTEGER,
+    height INTEGER,
+    audio_bytes INTEGER NOT NULL DEFAULT 0,
+    subtitle_bytes INTEGER NOT NULL DEFAULT 0,
+    scanned_at INTEGER,
+    error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )
+`);
+database.run(`
+  CREATE TABLE IF NOT EXISTS media_scan_tracks (
+    source_rel TEXT NOT NULL REFERENCES media_scans(source_rel) ON DELETE CASCADE,
+    stream_index INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    PRIMARY KEY (source_rel, stream_index, kind)
+  )
+`);
+database.run("CREATE INDEX IF NOT EXISTS media_scans_status_created ON media_scans(status, created_at)");
+const transcodeColumns = database.query<TableColumn, []>("PRAGMA table_info(transcode_jobs)").all();
+if (!transcodeColumns.some((column) => column.name === "progress")) {
+  database.run("ALTER TABLE transcode_jobs ADD COLUMN progress REAL NOT NULL DEFAULT 0");
+}
+if (!transcodeColumns.some((column) => column.name === "speed")) {
+  database.run("ALTER TABLE transcode_jobs ADD COLUMN speed REAL NOT NULL DEFAULT 0");
+}
+if (!transcodeColumns.some((column) => column.name === "started_at")) {
+  database.run("ALTER TABLE transcode_jobs ADD COLUMN started_at INTEGER");
+}
 database.run(`
   CREATE TABLE IF NOT EXISTS anilist_accounts (
     user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

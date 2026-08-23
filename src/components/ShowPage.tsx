@@ -1,5 +1,4 @@
-import { useCallback } from "react";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import type {
   AniListMedia,
   MediaEntry,
@@ -19,9 +18,6 @@ interface ShowPageProps {
   readonly onShowLink?: (() => void) | undefined;
   readonly onSeasonLink?: ((season: SeasonGroup) => void) | undefined;
   readonly onEpisodeSelect: (entry: MediaEntry) => void;
-  readonly onShowDelete?: ((show: ShowGroup) => void) | undefined;
-  readonly onSeasonDelete?: ((season: SeasonGroup) => void) | undefined;
-  readonly onEpisodeDelete?: ((entry: MediaEntry) => void) | undefined;
 }
 
 export function ShowPage({
@@ -33,14 +29,8 @@ export function ShowPage({
   onShowLink,
   onSeasonLink,
   onEpisodeSelect,
-  onShowDelete,
-  onSeasonDelete,
-  onEpisodeDelete,
 }: ShowPageProps): React.JSX.Element {
   const [preview] = show.entries;
-  const handleShowDelete = useCallback(() => {
-    onShowDelete?.(show);
-  }, [onShowDelete, show]);
   return (
     <section>
       <button
@@ -68,16 +58,6 @@ export function ShowPage({
                 {show.seasons.length} {show.seasons.length === 1 ? "season" : "seasons"}
               </p>
             </div>
-            {onShowDelete !== undefined && (
-              <button
-                type="button"
-                onClick={handleShowDelete}
-                className="inline-flex items-center gap-2 rounded-md border border-destructive bg-background px-3 py-2 text-sm font-semibold text-destructive hover:bg-destructive hover:text-destructive-foreground"
-              >
-                <Trash2 className="size-4" />
-                Delete show
-              </button>
-            )}
           </div>
           <SeasonList
             seasons={show.seasons}
@@ -85,8 +65,6 @@ export function ShowPage({
             progress={progress}
             onEpisodeSelect={onEpisodeSelect}
             onLink={onSeasonLink}
-            onSeasonDelete={onSeasonDelete}
-            onEpisodeDelete={onEpisodeDelete}
             showMedia={media}
           />
         </div>

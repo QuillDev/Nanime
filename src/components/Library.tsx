@@ -20,7 +20,6 @@ import {
   useContinueWatchingItems,
 } from "./ContinueWatching.tsx";
 import { ShowGrid } from "./ShowGrid.tsx";
-import { DeleteMediaDialog, type DeleteMediaTarget } from "./DeleteMediaDialog.tsx";
 import { ShowPage } from "./ShowPage.tsx";
 
 const EMPTY_METADATA: ShowMetadata = {};
@@ -33,7 +32,6 @@ interface LibraryProps {
   readonly onSelect: (entry: MediaEntry) => void;
   readonly onShowSelect: (show: ShowGroup) => void;
   readonly onShowsBack: () => void;
-  readonly canDelete: boolean;
   readonly canManageMappings: boolean;
 }
 
@@ -123,50 +121,6 @@ function useLibraryNavigation(): {
   };
 }
 
-function useDeleteNavigation(onShowsBack: () => void): {
-  readonly target: DeleteMediaTarget | null;
-  readonly handleShowDelete: (show: ShowGroup) => void;
-  readonly handleSeasonDelete: (season: SeasonGroup) => void;
-  readonly handleEpisodeDelete: (entry: MediaEntry) => void;
-  readonly handleClose: () => void;
-  readonly handleDeleted: (returnToShows: boolean) => void;
-} {
-  const [target, setTarget] = useState<DeleteMediaTarget | null>(null);
-  const handleShowDelete = useCallback((show: ShowGroup) => {
-    setTarget({ label: `show “${show.name}”`, entries: show.entries, returnToShows: true });
-  }, []);
-  const handleSeasonDelete = useCallback((season: SeasonGroup) => {
-    setTarget({ label: `season “${season.name}”`, entries: season.entries, returnToShows: false });
-  }, []);
-  const handleEpisodeDelete = useCallback((entry: MediaEntry) => {
-    setTarget({ label: `episode “${entry.name}”`, entries: [entry], returnToShows: false });
-  }, []);
-  const handleClose = useCallback(() => setTarget(null), []);
-  const handleDeleted = useCallback((returnToShows: boolean) => {
-    setTarget(null);
-    if (returnToShows) {
-      onShowsBack();
-    }
-  }, [onShowsBack]);
-  return {
-    target,
-    handleShowDelete,
-    handleSeasonDelete,
-    handleEpisodeDelete,
-    handleClose,
-    handleDeleted,
-  };
-}
-
-function useLibraryControls(onShowsBack: () => void): {
-  readonly navigation: ReturnType<typeof useLibraryNavigation>;
-  readonly deletion: ReturnType<typeof useDeleteNavigation>;
-} {
-  const navigation = useLibraryNavigation();
-  const deletion = useDeleteNavigation(onShowsBack);
-  return { navigation, deletion };
-}
-
 function linkMetadataKey(show: ShowGroup | null, target: LinkTarget | null): string | null {
   if (show === null || target === null) {
     return null;
@@ -210,10 +164,9 @@ export function Library({
   onSelect,
   onShowSelect,
   onShowsBack,
-  canDelete,
   canManageMappings,
 }: LibraryProps): React.JSX.Element {
-  const { navigation, deletion } = useLibraryControls(onShowsBack);
+  const navigation = useLibraryNavigation();
   const metadataQuery = useShowMetadata();
   const metadata = metadataQuery.data ?? EMPTY_METADATA;
   const { shows, selectedShow } = useGroupedShows({
@@ -257,9 +210,6 @@ export function Library({
           onShowLink={canManageMappings ? navigation.handleShowLink : undefined}
           onSeasonLink={canManageMappings ? navigation.handleSeasonLink : undefined}
           onEpisodeSelect={onSelect}
-          onShowDelete={canDelete ? deletion.handleShowDelete : undefined}
-          onSeasonDelete={canDelete ? deletion.handleSeasonDelete : undefined}
-          onEpisodeDelete={canDelete ? deletion.handleEpisodeDelete : undefined}
         />
       )}
       {canManageMappings && navigation.linkTarget !== null && dialogKey !== null && (
@@ -268,13 +218,6 @@ export function Library({
           suggestedSearch={suggestedSearch}
           subject={navigation.linkTarget.type}
           onClose={navigation.handleLinkClose}
-        />
-      )}
-      {deletion.target !== null && (
-        <DeleteMediaDialog
-          target={deletion.target}
-          onClose={deletion.handleClose}
-          onDeleted={deletion.handleDeleted}
         />
       )}
     </>

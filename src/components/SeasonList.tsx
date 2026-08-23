@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { ExternalLink, Link, Trash2 } from "lucide-react";
+import { ExternalLink, Link } from "lucide-react";
 import type {
   AniListMedia,
   MediaEntry,
@@ -25,8 +25,6 @@ interface SeasonSectionProps {
   readonly progress: PlaybackProgressMap;
   readonly onEpisodeSelect: (entry: MediaEntry) => void;
   readonly onLink?: ((season: SeasonGroup) => void) | undefined;
-  readonly onSeasonDelete?: ((season: SeasonGroup) => void) | undefined;
-  readonly onEpisodeDelete?: ((entry: MediaEntry) => void) | undefined;
   readonly showMedia: AniListMedia | undefined;
   readonly listMedia: AniListMedia | undefined;
 }
@@ -38,17 +36,12 @@ function SeasonSection({
   progress,
   onEpisodeSelect,
   onLink,
-  onSeasonDelete,
-  onEpisodeDelete,
   showMedia,
   listMedia,
 }: SeasonSectionProps): React.JSX.Element {
   const handleLink = useCallback(() => {
     onLink?.(season);
   }, [onLink, season]);
-  const handleDelete = useCallback(() => {
-    onSeasonDelete?.(season);
-  }, [onSeasonDelete, season]);
   const title = media === undefined ? season.name : mediaTitle(media);
   const number = seasonNumber(season, media);
 
@@ -100,17 +93,6 @@ function SeasonSection({
             <CollapsibleChevron />
           </button>
         </CollapsibleTrigger>
-        {onSeasonDelete !== undefined && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            aria-label={`Delete ${title}`}
-            title="Delete season"
-            className="shrink-0 rounded p-2 text-muted-foreground hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Trash2 className="size-4" />
-          </button>
-        )}
       </div>
       <CollapsibleContent>
         <div className="pb-2 pl-8">
@@ -120,7 +102,6 @@ function SeasonSection({
             media={media}
             progress={progress}
             onSelect={onEpisodeSelect}
-            onDelete={onEpisodeDelete}
             showMedia={showMedia}
             seasonNumber={number}
           />
@@ -137,8 +118,6 @@ interface SeasonListProps {
   readonly progress: PlaybackProgressMap;
   readonly onEpisodeSelect: (entry: MediaEntry) => void;
   readonly onLink?: ((season: SeasonGroup) => void) | undefined;
-  readonly onSeasonDelete?: ((season: SeasonGroup) => void) | undefined;
-  readonly onEpisodeDelete?: ((entry: MediaEntry) => void) | undefined;
   readonly showMedia: AniListMedia | undefined;
 }
 
@@ -148,8 +127,6 @@ export function SeasonList({
   progress,
   onEpisodeSelect,
   onLink,
-  onSeasonDelete,
-  onEpisodeDelete,
   showMedia,
 }: SeasonListProps): React.JSX.Element {
   return (
@@ -165,8 +142,6 @@ export function SeasonList({
             progress={progress}
             onEpisodeSelect={onEpisodeSelect}
             onLink={onLink}
-            onSeasonDelete={onSeasonDelete}
-            onEpisodeDelete={onEpisodeDelete}
             showMedia={showMedia}
             listMedia={media ?? (seasons.length === 1 ? showMedia : undefined)}
           />

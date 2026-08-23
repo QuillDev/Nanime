@@ -258,11 +258,47 @@ async function addTorrentResponse(req: Request, mediaDir: string): Promise<Respo
   return Response.json({ added: true });
 }
 
+interface CancelTorrentBody {
+  readonly deleteFiles?: unknown;
+}
+
+async function cancelTorrentResponse(req: Request, hash: string): Promise<Response> {
+  if (req.method !== "POST" || !/^[a-f0-9]{40,64}$/iu.test(hash)) {
+    return new Response("Invalid torrent cancellation request", { status: 400 });
+  }
+  const requestBody = (await req.json().catch(() => null)) as CancelTorrentBody | null;
+  if (typeof requestBody?.deleteFiles !== "boolean") {
+    return new Response("Choose whether downloaded files should be removed", { status: 400 });
+  }
+  const body = new URLSearchParams({
+    hashes: hash,
+    deleteFiles: String(requestBody.deleteFiles),
+  });
+  const response = await qBittorrentRequest("/api/v2/torrents/delete", {
+    method: "POST",
+    body,
+  });
+  if (response === null) {
+    return new Response("Could not reach qBittorrent", { status: 502 });
+  }
+  if (!response.ok) {
+    return new Response((await response.text()) || "qBittorrent rejected the request", {
+      status: 502,
+    });
+  }
+  return Response.json({ cancelled: true });
+}
+
 export function torrentsResponse(req: Request, mediaDir: string, url: URL): Promise<Response> {
   if (url.pathname === "/api/torrents/search") {
     return req.method === "GET"
       ? searchNyaaResponse(url)
       : Promise.resolve(new Response("Method not allowed", { status: 405 }));
+  }
+  const cancelHash = /^\/api\/torrents\/(?<hash>[a-f0-9]+)\/cancel$/iu.exec(url.pathname)
+    ?.groups?.["hash"];
+  if (cancelHash !== undefined) {
+    return cancelTorrentResponse(req, cancelHash);
   }
   return req.method === "GET" ? torrentListResponse() : addTorrentResponse(req, mediaDir);
 }

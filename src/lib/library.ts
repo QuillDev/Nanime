@@ -44,12 +44,34 @@ export function seasonNumber(
   season: SeasonGroup,
   media: AniListMedia | undefined,
 ): number {
-  const linkedTitle = media?.title.english ?? media?.title.romaji ?? "";
-  const match = /(?:Season|S)\s*0*(?<number>\d+)/iu.exec(season.name)
-    ?? /(?:Season|S)\s*0*(?<number>\d+)/iu.exec(season.sourceShow)
-    ?? /(?:Season|S)\s*0*(?<number>\d+)/iu.exec(linkedTitle);
-  const number = match?.groups?.["number"];
-  return number === undefined ? 1 : Number(number);
+  return linkedSeasonNumber(media)
+    ?? seasonNumberFromTitles(season.name, season.sourceShow)
+    ?? 1;
+}
+
+function seasonNumberFromTitles(
+  ...titles: readonly (string | null | undefined)[]
+): number | undefined {
+  for (const title of titles) {
+    if (title !== undefined && title !== null) {
+      const match = /(?:Season|S)\s*0*(?<number>\d+)/iu.exec(title)
+        ?? /(?<number>\d+)(?:st|nd|rd|th)\s+Season/iu.exec(title)
+        ?? /第\s*0*(?<number>\d+)\s*期/u.exec(title);
+      const number = match?.groups?.["number"];
+      if (number !== undefined) {
+        return Number(number);
+      }
+    }
+  }
+  return undefined;
+}
+
+function linkedSeasonNumber(media: AniListMedia | undefined): number | undefined {
+  return seasonNumberFromTitles(
+    media?.title.english,
+    media?.title.romaji,
+    media?.title.native,
+  );
 }
 
 function pathParts(folder: string): readonly string[] {
@@ -149,12 +171,9 @@ function mergeSeasons(
 
 function seasonOrder(season: SeasonGroup, metadata: ShowMetadata): number {
   const linked = seasonMetadata(metadata, season.sourceShow, season.name);
-  const title = linked?.title.english ?? linked?.title.romaji ?? "";
-  const match = /(?:Season|S)\s*0*(?<number>\d+)/iu.exec(
-    `${season.name} ${season.sourceShow} ${title}`,
-  );
-  const number = match?.groups?.["number"];
-  return number === undefined ? Number.POSITIVE_INFINITY : Number(number);
+  return linkedSeasonNumber(linked)
+    ?? seasonNumberFromTitles(season.name, season.sourceShow)
+    ?? Number.POSITIVE_INFINITY;
 }
 
 export function groupShows(

@@ -1,9 +1,10 @@
-import { useCallback, useState, type ChangeEvent, type FormEvent } from "react";
+import { useCallback, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { Search, Upload } from "lucide-react";
 import { useAddTorrent } from "../hooks/useAddTorrent.ts";
 import { AdminNyaaSearchDialog } from "./AdminNyaaSearch.tsx";
 import { AdminPanel } from "./AdminPanel.tsx";
 import { Input } from "./ui/input.tsx";
+import { SearchableSelect } from "./ui/SearchableSelect.tsx";
 
 type TorrentSource = "file" | "magnet" | "nyaa";
 
@@ -201,9 +202,14 @@ export function AdminAddMedia({
   const [resultsOpen, setResultsOpen] = useState(false);
   const [submittedSearch, setSubmittedSearch] = useState({ query: "", category: "1_0", trusted: false });
   const addTorrent = useAddTorrent();
-  const handleFolder = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    setShowFolder(event.target.value);
-  }, []);
+  const destinationOptions = useMemo(() => [
+    { value: "", label: "New show", description: "Library root" },
+    ...showFolders.map((folder) => ({
+      value: folder,
+      label: folder,
+      description: "Add as another season",
+    })),
+  ], [showFolders]);
   const handleSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!source.ready) {
@@ -228,26 +234,17 @@ export function AdminAddMedia({
   return (
     <AdminPanel
       title="Add media"
-      description="Upload a torrent, paste a magnet link, or search Nyaa."
+      description="Start a download from a file, magnet link, or Nyaa."
       icon={Upload}
+      className="xl:col-span-2"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <SourceTabs source={source} />
         <SourceFields source={source} />
-        <label htmlFor="admin-torrent-destination" className="block text-sm font-medium">
-          Destination
-          <select
-            id="admin-torrent-destination"
-            value={showFolder}
-            onChange={handleFolder}
-            className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">New show (library root)</option>
-            {showFolders.map((folder) => (
-              <option key={folder} value={folder}>Season of {folder}</option>
-            ))}
-          </select>
-        </label>
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Destination</p>
+          <SearchableSelect value={showFolder} options={destinationOptions} onValueChange={setShowFolder} placeholder="Choose a destination…" searchPlaceholder="Search library folders…" ariaLabel="Torrent destination" />
+        </div>
         {source.source !== "nyaa" && addTorrent.error !== null && (
           <p className="text-sm text-destructive">{addTorrent.error.message}</p>
         )}

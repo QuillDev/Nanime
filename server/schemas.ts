@@ -45,7 +45,16 @@ export const mediaEntrySchema = object({
   rel: string(), name: string(), folder: string(), size: number(), direct: boolean(),
 });
 export const subtitleTrackSchema = object({
-  index: number(), codec: string(), language: string(), label: string(),
+  index: number(), codec: string(), language: string(), label: string(), sizeBytes: nullableNumber,
+});
+export const audioTrackSchema = object({
+  index: number(),
+  codec: string(),
+  language: string(),
+  label: string(),
+  channels: number(),
+  isDefault: boolean(),
+  sizeBytes: nullableNumber,
 });
 export const playbackProgressSchema = object({
   rel: string(),
@@ -53,6 +62,7 @@ export const playbackProgressSchema = object({
   duration: number(),
   completed: boolean(),
   updatedAt: number(),
+  dismissedAt: nullableNumber,
 });
 
 const tvmazeEpisodeSchema = object({
@@ -118,6 +128,23 @@ export const torrentStatusSchema = object({
   size: number(),
   state: string(),
   addedOn: number(),
+});
+export const storageStatusSchema = object({
+  totalBytes: number(),
+  availableBytes: number(),
+});
+export const transcodeJobSchema = object({
+  id: string(), sourcePath: string(), preset: string(), status: string(),
+  inputSize: number(), outputSize: nullableNumber, error: nullableString,
+  progress: number(), speed: number(), startedAt: nullableNumber,
+  originalDeleted: boolean(), createdAt: number(), updatedAt: number(),
+});
+export const mediaScanSchema = object({
+  sourcePath: string(), status: string(), fileSize: number(), duration: nullableNumber,
+  formatName: nullableString, videoCodec: nullableString,
+  width: nullableNumber, height: nullableNumber,
+  audioBytes: number(), subtitleBytes: number(), scannedAt: nullableNumber,
+  error: nullableString, updatedAt: number(),
 });
 export const nyaaSearchResultSchema = object({
   id: string(),

@@ -17,17 +17,15 @@ export function AdminPanel({
   className = "",
 }: AdminPanelProps): React.JSX.Element {
   return (
-    <section className={`rounded-xl border border-border bg-card p-6 ${className}`}>
-      <div className="mb-5 flex items-start gap-3">
-        <span className="rounded-md bg-primary p-2 text-primary-foreground">
-          <Icon className="size-4" />
-        </span>
+    <section className={`rounded-lg border border-border bg-card ${className}`}>
+      <header className="flex items-start gap-3 border-b border-border px-5 py-4">
+        <Icon aria-hidden="true" className="mt-0.5 size-4 text-muted-foreground" />
         <div>
-          <h2 className="font-semibold">{title}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+          <h2 className="text-sm font-semibold">{title}</h2>
+          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p>
         </div>
-      </div>
-      {children}
+      </header>
+      <div className="p-5">{children}</div>
     </section>
   );
 }

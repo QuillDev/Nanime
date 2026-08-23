@@ -7,12 +7,12 @@ import {
 } from "node:crypto";
 import { database } from "./database.ts";
 import { createSessionRedirect, type AuthUser } from "./auth.ts";
+import { aniListGraphQl } from "./anilistClient.ts";
 import type {
   AniListAccountRow,
   AniListListEntry,
   AniListPlaybackTarget,
   DeleteMediaListData,
-  GraphQlResponse,
   ListUpdate,
   MediaListData,
   OAuthConfig,
@@ -25,7 +25,6 @@ import type {
 
 export type { AniListListEntry, AniListPlaybackTarget } from "./anilistAccountTypes.ts";
 
-const ANILIST_GRAPHQL_URL = "https://graphql.anilist.co";
 const ANILIST_AUTHORIZE_URL = "https://anilist.co/api/v2/oauth/authorize";
 const ANILIST_TOKEN_URL = "https://anilist.co/api/v2/oauth/token";
 const OAUTH_STATE_LIFETIME_MS = 10 * 60 * 1000;
@@ -181,22 +180,8 @@ function decryptToken(value: string, config: OAuthConfig): string {
   ]).toString("utf8");
 }
 
-async function graphQl<T>(token: string, query: string, variables: object): Promise<T> {
-  const response = await fetch(ANILIST_GRAPHQL_URL, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(ANILIST_REQUEST_TIMEOUT_MS),
-  });
-  const payload = (await response.json()) as GraphQlResponse<T>;
-  if (!response.ok || payload.data === undefined) {
-    throw new Error(payload.errors?.[0]?.message ?? `AniList returned HTTP ${String(response.status)}`);
-  }
-  return payload.data;
+function graphQl<T>(token: string, query: string, variables: object): Promise<T> {
+  return aniListGraphQl<T>({ query, variables, token });
 }
 
 async function exchangeCode(code: string, config: OAuthConfig): Promise<{ readonly token: string; readonly expiresAt: number }> {
@@ -413,7 +398,12 @@ async function saveListEntry(
       id mediaId status progress score(format: POINT_10)
     }
   }`;
-  const data = await graphQl<SaveMediaListData>(token, query, variables);
+  const data = await aniListGraphQl<SaveMediaListData>({
+    query,
+    variables,
+    token,
+    mutation: true,
+  });
   return data.SaveMediaListEntry;
 }
 
@@ -421,7 +411,12 @@ async function deleteListEntry(token: string, entryId: number): Promise<void> {
   const query = `mutation ($id: Int!) {
     DeleteMediaListEntry(id: $id) { deleted }
   }`;
-  const data = await graphQl<DeleteMediaListData>(token, query, { id: entryId });
+  const data = await aniListGraphQl<DeleteMediaListData>({
+    query,
+    variables: { id: entryId },
+    token,
+    mutation: true,
+  });
   if (!data.DeleteMediaListEntry.deleted) {
     throw new Error("AniList list entry was not deleted");
   }

@@ -1,5 +1,6 @@
 import { treaty } from "@elysiajs/eden";
 import type { App } from "../server/app.ts";
+import { apiError } from "./apiError.ts";
 import type {
   AniListMedia,
   AniListAccountStatus,
@@ -8,24 +9,29 @@ import type {
   AniListWatchStatus,
   AuthUser,
   MediaEntry,
+  MediaScan,
   NyaaSearchResult,
   PlaybackProgress,
   ShowMetadata,
   SubtitleTrack,
   ProvisionedUser,
+  StorageStatus,
+  TranscodeJob,
+  TranscodePreset,
   TorrentStatus,
 } from "./types.ts";
 
 // TVmaze air dates are contractually strings. Eden otherwise revives date-like
 // JSON strings into Date objects even when the Elysia response schema says string.
-const api = treaty<App>(globalThis.location.origin, { parseDate: false });
+export const api = treaty<App>(globalThis.location.origin, { parseDate: false });
 
 export function streamUrl(rel: string): string {
   return `/stream?path=${encodeURIComponent(rel)}`;
 }
 
-export function hlsUrl(rel: string): string {
-  return `/hls/index?path=${encodeURIComponent(rel)}`;
+export function hlsUrl(rel: string, audioTrack: number | null = null): string {
+  const audio = audioTrack === null ? "" : `&audio=${String(audioTrack)}`;
+  return `/hls/index?path=${encodeURIComponent(rel)}${audio}`;
 }
 
 export function thumbnailUrl(rel: string): string {
@@ -36,37 +42,15 @@ export function subtitleUrl(rel: string, index: number): string {
   return `/subtitle?path=${encodeURIComponent(rel)}&index=${String(index)}`;
 }
 
-interface EdenError {
-  readonly status: unknown;
-  readonly value: unknown;
-}
-
-function errorDetail(error: EdenError): string {
-  if (typeof error.value === "string" && error.value !== "") {
-    const detail = error.value.trim();
-    if (/^(?:<!doctype\s+html|<html\b)/iu.test(detail)) {
-      return `HTTP ${String(error.status)} (gateway returned an error page)`;
-    }
-    return detail.length <= 500 ? detail : `${detail.slice(0, 500)}…`;
-  }
-  if (typeof error.value === "object" && error.value !== null) {
-    const message = Reflect.get(error.value, "message");
-    if (typeof message === "string" && message !== "") {
-      return message;
-    }
-  }
-  return `HTTP ${String(error.status)}`;
-}
-
-function unwrap<T>(
+export function unwrap<T>(
   result: { readonly data: T; readonly error: null } | {
     readonly data: null;
-    readonly error: EdenError;
+    readonly error: Parameters<typeof apiError>[0];
   },
   label: string,
 ): T {
   if (result.error !== null) {
-    throw new Error(`${label} failed: ${errorDetail(result.error)}`);
+    throw apiError(result.error, label);
   }
   return result.data;
 }
@@ -126,6 +110,13 @@ export async function savePlaybackProgress(
   update: PlaybackProgressUpdate,
 ): Promise<PlaybackProgress> {
   return unwrap(await api.api.progress.put(update), "Saving playback progress");
+}
+
+export async function dismissPlaybackProgress(rel: string): Promise<PlaybackProgress> {
+  return unwrap(
+    await api.api.progress.dismiss.post({ rel }),
+    "Dismissing Continue Watching item",
+  );
 }
 
 export async function fetchCurrentUser(signal: AbortSignal): Promise<AuthUser | null> {
@@ -241,6 +232,41 @@ export async function fetchTorrents(signal: AbortSignal): Promise<readonly Torre
   );
 }
 
+export async function fetchStorageStatus(signal: AbortSignal): Promise<StorageStatus> {
+  return unwrap(
+    await api.api.storage.get({ fetch: { signal } }),
+    "Storage status request",
+  );
+}
+export async function fetchMediaScans(signal: AbortSignal): Promise<readonly MediaScan[]> {
+  return unwrap(await api.api.media.scans.get({ fetch: { signal } }), "Media scans request") as readonly MediaScan[];
+}
+
+export async function startMediaScans(paths: readonly string[]): Promise<readonly MediaScan[]> {
+  return unwrap(
+    await api.api.media.scans.post({ paths: [...paths] }),
+    "Starting media scans",
+  ) as readonly MediaScan[];
+}
+export async function fetchTranscodes(signal: AbortSignal): Promise<readonly TranscodeJob[]> {
+  return unwrap(await api.api.transcodes.get({ fetch: { signal } }), "Transcode jobs request") as readonly TranscodeJob[];
+}
+export async function startTranscodes(
+  paths: readonly string[],
+  preset: TranscodePreset,
+): Promise<readonly TranscodeJob[]> {
+  return unwrap(
+    await api.api.transcodes.bulk.post({ paths: [...paths], preset }),
+    "Starting transcodes",
+  ) as readonly TranscodeJob[];
+}
+
+export async function deleteTranscode(id: string): Promise<void> { unwrap(await api.api.transcodes({ id }).delete(), "Deleting optimized copy"); }
+
+export async function deleteTranscodeOriginal(id: string): Promise<TranscodeJob> {
+  return unwrap(await api.api.transcodes({ id }).original.delete(), "Deleting original") as TranscodeJob;
+}
+export async function cancelTranscode(id: string): Promise<TranscodeJob> { return unwrap(await api.api.transcodes({ id }).cancel.post(), "Cancelling transcode") as TranscodeJob; }
 export async function searchNyaa(
   options: { readonly search: string; readonly category: string; readonly trusted: boolean },
   signal: AbortSignal,
@@ -261,25 +287,4 @@ export async function deleteMedia(paths: readonly string[]): Promise<number> {
   ).deleted;
 }
 
-export function formatDuration(seconds: number): string {
-  const wholeMinutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  if (wholeMinutes < 60) {
-    return `${String(wholeMinutes)}:${String(remainingSeconds).padStart(2, "0")}`;
-  }
-  const hours = Math.floor(wholeMinutes / 60);
-  const minutes = wholeMinutes % 60;
-  return `${String(hours)}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-export function formatSize(bytes: number): string {
-  const units = ["B", "KB", "MB", "GB", "TB"] as const;
-  let value = bytes;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  const unit = units[unitIndex] ?? "B";
-  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${unit}`;
-}
+export { formatDuration, formatSize } from "./format.ts";

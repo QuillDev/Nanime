@@ -25,11 +25,6 @@ export interface SyncRow {
   readonly status: string;
 }
 
-export interface GraphQlResponse<T> {
-  readonly data?: T;
-  readonly errors?: readonly { readonly message: string }[];
-}
-
 export interface ViewerData {
   readonly Viewer: {
     readonly id: number;
