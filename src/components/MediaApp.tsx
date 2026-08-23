@@ -22,6 +22,8 @@ import { Player } from "./Player.tsx";
 import { MediaHeader } from "./MediaHeader.tsx";
 
 const EMPTY_PROGRESS = {};
+const EMPTY_ENTRIES: readonly MediaEntry[] = [];
+const EMPTY_METADATA: ShowMetadata = {};
 
 interface MediaAppProps {
   readonly user: AuthUser;
@@ -79,7 +81,10 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
         user={user}
         view="library"
         query={route.query}
+        entries={library.data ?? EMPTY_ENTRIES}
+        metadata={metadata.data ?? EMPTY_METADATA}
         onQueryChange={handleQueryChange}
+        onShowSelect={handleShowSelect}
       />
       <main className="mx-auto max-w-7xl px-6 py-6">
         {library.status === "pending" && (

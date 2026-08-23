@@ -2,7 +2,12 @@ import { useCurrentUser } from "./hooks/useAuth.ts";
 import { LoginScreen } from "./components/LoginScreen.tsx";
 import { MediaApp } from "./components/MediaApp.tsx";
 import { AdminApp } from "./components/AdminApp.tsx";
-import { navigateToShows, useMediaRoute } from "./hooks/useMediaRoute.ts";
+import { ProfileApp } from "./components/ProfileApp.tsx";
+import {
+  navigateToShows,
+  useMediaRoute,
+  type MediaRoute,
+} from "./hooks/useMediaRoute.ts";
 import type { AuthUser } from "./types.ts";
 
 function AdminForbidden(): React.JSX.Element {
@@ -40,12 +45,12 @@ export function App(): React.JSX.Element {
   }
   return currentUser.data === null
     ? <LoginScreen />
-    : authenticatedView(currentUser.data, route.admin);
+    : authenticatedView(currentUser.data, route);
 }
 
-function authenticatedView(user: AuthUser, adminRoute: boolean): React.JSX.Element {
-  if (!adminRoute) {
-    return <MediaApp user={user} />;
+function authenticatedView(user: AuthUser, route: MediaRoute): React.JSX.Element {
+  if (route.admin) {
+    return user.isAdmin ? <AdminApp user={user} /> : <AdminForbidden />;
   }
-  return user.isAdmin ? <AdminApp user={user} /> : <AdminForbidden />;
+  return route.profile ? <ProfileApp user={user} /> : <MediaApp user={user} />;
 }

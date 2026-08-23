@@ -1,43 +1,194 @@
 import { useCallback, useState, type ChangeEvent, type FormEvent } from "react";
-import { Upload } from "lucide-react";
+import { Search, Upload } from "lucide-react";
 import { useAddTorrent } from "../hooks/useAddTorrent.ts";
+import { AdminNyaaSearchDialog } from "./AdminNyaaSearch.tsx";
 import { AdminPanel } from "./AdminPanel.tsx";
 import { Input } from "./ui/input.tsx";
 
-type TorrentSource = "file" | "magnet";
+type TorrentSource = "file" | "magnet" | "nyaa";
 
-function useTorrentSource(): {
+const CATEGORIES = [
+  ["1_0", "All anime"],
+  ["1_2", "English-translated"],
+  ["1_3", "Non-English-translated"],
+  ["1_4", "Raw"],
+] as const;
+
+function sourceReady(form: {
   readonly source: TorrentSource;
   readonly file: File | null;
   readonly magnet: string;
-  readonly ready: boolean;
-  readonly handleFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  readonly handleMagnetChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  readonly handleFileSource: () => void;
-  readonly handleMagnetSource: () => void;
-} {
-  const [source, setSource] = useState<TorrentSource>("file");
-  const [file, setFile] = useState<File | null>(null);
-  const [magnet, setMagnet] = useState<string>("");
-  const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setFile(event.target.files?.[0] ?? null);
+  readonly nyaaSearch: string;
+}): boolean {
+  if (form.source === "file") {
+    return form.file !== null;
+  }
+  return form.source === "magnet"
+    ? form.magnet.trim() !== ""
+    : form.nyaaSearch.trim().length >= 2;
+}
+
+function useTorrentSource() {
+  const [form, setForm] = useState({
+    source: "file" as TorrentSource,
+    file: null as File | null,
+    magnet: "",
+    nyaaSearch: "",
+    category: "1_0",
+    trusted: false,
+  });
+  const selectSource = useCallback((source: TorrentSource) => {
+    setForm((current) => ({ ...current, source }));
   }, []);
-  const handleMagnetChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setMagnet(event.target.value);
+  const handleFile = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setForm((current) => ({ ...current, file: event.target.files?.[0] ?? null }));
   }, []);
-  const handleFileSource = useCallback(() => setSource("file"), []);
-  const handleMagnetSource = useCallback(() => setSource("magnet"), []);
-  const ready = source === "file" ? file !== null : magnet.trim() !== "";
+  const handleMagnet = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setForm((current) => ({ ...current, magnet: event.target.value }));
+  }, []);
+  const handleSearch = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setForm((current) => ({ ...current, nyaaSearch: event.target.value }));
+  }, []);
+  const handleCategory = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    setForm((current) => ({ ...current, category: event.target.value }));
+  }, []);
+  const handleTrusted = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setForm((current) => ({ ...current, trusted: event.target.checked }));
+  }, []);
   return {
-    source,
-    file,
-    magnet,
-    ready,
-    handleFileChange,
-    handleMagnetChange,
-    handleFileSource,
-    handleMagnetSource,
+    ...form,
+    ready: sourceReady(form),
+    selectSource,
+    handleFile,
+    handleMagnet,
+    handleSearch,
+    handleCategory,
+    handleTrusted,
   };
+}
+
+type TorrentSourceState = ReturnType<typeof useTorrentSource>;
+
+function SourceFields({ source }: { readonly source: TorrentSourceState }): React.JSX.Element {
+  if (source.source === "file") {
+    return (
+      <label htmlFor="admin-torrent-file" className="block text-sm font-medium">
+        Torrent file
+        <input
+          id="admin-torrent-file"
+          type="file"
+          accept=".torrent,application/x-bittorrent"
+          required
+          onChange={source.handleFile}
+          className="mt-2 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1 file:font-semibold file:text-primary-foreground"
+        />
+      </label>
+    );
+  }
+  if (source.source === "magnet") {
+    return (
+      <label htmlFor="admin-torrent-magnet" className="block text-sm font-medium">
+        Magnet link
+        <Input
+          id="admin-torrent-magnet"
+          type="url"
+          value={source.magnet}
+          required
+          autoComplete="off"
+          placeholder="magnet:?xt=urn:btih:…"
+          onChange={source.handleMagnet}
+          className="mt-2"
+        />
+      </label>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <label htmlFor="admin-nyaa-search" className="block text-sm font-medium">
+        Search Nyaa
+        <Input
+          id="admin-nyaa-search"
+          type="search"
+          value={source.nyaaSearch}
+          minLength={2}
+          maxLength={200}
+          required
+          autoComplete="off"
+          placeholder="Anime title, release group, resolution…"
+          onChange={source.handleSearch}
+          className="mt-2"
+        />
+      </label>
+      <label htmlFor="admin-nyaa-category" className="block text-sm font-medium">
+        Category
+        <select
+          id="admin-nyaa-category"
+          value={source.category}
+          onChange={source.handleCategory}
+          className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+        >
+          {CATEGORIES.map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-2 text-sm text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={source.trusted}
+          onChange={source.handleTrusted}
+          className="size-4 accent-primary"
+        />
+        Trusted uploads only
+      </label>
+    </div>
+  );
+}
+
+function sourceLabel(source: TorrentSource): string {
+  if (source === "file") {
+    return "Torrent file";
+  }
+  return source === "magnet" ? "Magnet link" : "Search Nyaa";
+}
+
+function SourceTab({
+  source,
+  value,
+}: {
+  readonly source: TorrentSourceState;
+  readonly value: TorrentSource;
+}): React.JSX.Element {
+  const handleClick = useCallback(() => source.selectSource(value), [source, value]);
+  return (
+    <button
+      type="button"
+      aria-pressed={source.source === value}
+      onClick={handleClick}
+      className={source.source === value
+        ? "rounded-sm bg-primary px-2 py-2 text-sm font-semibold text-primary-foreground"
+        : "rounded-sm bg-background px-2 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"}
+    >
+      {sourceLabel(value)}
+    </button>
+  );
+}
+
+function SourceTabs({ source }: { readonly source: TorrentSourceState }): React.JSX.Element {
+  return (
+    <div className="grid grid-cols-3 gap-2 rounded-md border border-border bg-background p-1">
+      {(["file", "magnet", "nyaa"] as const).map((value) => (
+        <SourceTab key={value} source={source} value={value} />
+      ))}
+    </div>
+  );
+}
+
+function submitLabel(source: TorrentSource, pending: boolean): string {
+  if (source === "nyaa") {
+    return "Search Nyaa";
+  }
+  return pending ? "Adding…" : "Add torrent";
 }
 
 export function AdminAddMedia({
@@ -45,85 +196,50 @@ export function AdminAddMedia({
 }: {
   readonly showFolders: readonly string[];
 }): React.JSX.Element {
-  const torrentSource = useTorrentSource();
-  const [showFolder, setShowFolder] = useState<string>("");
+  const source = useTorrentSource();
+  const [showFolder, setShowFolder] = useState("");
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const [submittedSearch, setSubmittedSearch] = useState({ query: "", category: "1_0", trusted: false });
   const addTorrent = useAddTorrent();
-  const handleFolderChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+  const handleFolder = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
     setShowFolder(event.target.value);
   }, []);
   const handleSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (torrentSource.ready) {
-      addTorrent.mutate({
-        file: torrentSource.source === "file" ? torrentSource.file : null,
-        magnet: torrentSource.source === "magnet" ? torrentSource.magnet.trim() : "",
-        showFolder,
-      });
+    if (!source.ready) {
+      return;
     }
-  }, [addTorrent, showFolder, torrentSource]);
+    if (source.source === "nyaa") {
+      setSubmittedSearch({
+        query: source.nyaaSearch.trim(),
+        category: source.category,
+        trusted: source.trusted,
+      });
+      setResultsOpen(true);
+      return;
+    }
+    addTorrent.mutate({
+      file: source.source === "file" ? source.file : null,
+      magnet: source.source === "magnet" ? source.magnet.trim() : "",
+      showFolder,
+    });
+  }, [addTorrent, showFolder, source]);
 
   return (
     <AdminPanel
       title="Add media"
-      description="Send a torrent or magnet link to qBittorrent."
+      description="Upload a torrent, paste a magnet link, or search Nyaa."
       icon={Upload}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-background p-1">
-          <button
-            type="button"
-            aria-pressed={torrentSource.source === "file"}
-            onClick={torrentSource.handleFileSource}
-            className={torrentSource.source === "file"
-              ? "rounded-sm bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
-              : "rounded-sm bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"}
-          >
-            Torrent file
-          </button>
-          <button
-            type="button"
-            aria-pressed={torrentSource.source === "magnet"}
-            onClick={torrentSource.handleMagnetSource}
-            className={torrentSource.source === "magnet"
-              ? "rounded-sm bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
-              : "rounded-sm bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"}
-          >
-            Magnet link
-          </button>
-        </div>
-        {torrentSource.source === "file" ? (
-          <label htmlFor="admin-torrent-file" className="block text-sm font-medium">
-            Torrent file
-            <input
-              id="admin-torrent-file"
-              type="file"
-              accept=".torrent,application/x-bittorrent"
-              required
-              onChange={torrentSource.handleFileChange}
-              className="mt-2 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1 file:font-semibold file:text-primary-foreground"
-            />
-          </label>
-        ) : (
-          <label htmlFor="admin-torrent-magnet" className="block text-sm font-medium">
-            Magnet link
-            <Input
-              id="admin-torrent-magnet"
-              type="url"
-              value={torrentSource.magnet}
-              required
-              autoComplete="off"
-              placeholder="magnet:?xt=urn:btih:…"
-              onChange={torrentSource.handleMagnetChange}
-              className="mt-2"
-            />
-          </label>
-        )}
+        <SourceTabs source={source} />
+        <SourceFields source={source} />
         <label htmlFor="admin-torrent-destination" className="block text-sm font-medium">
           Destination
           <select
             id="admin-torrent-destination"
             value={showFolder}
-            onChange={handleFolderChange}
+            onChange={handleFolder}
             className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
           >
             <option value="">New show (library root)</option>
@@ -132,20 +248,29 @@ export function AdminAddMedia({
             ))}
           </select>
         </label>
-        {addTorrent.error !== null && (
+        {source.source !== "nyaa" && addTorrent.error !== null && (
           <p className="text-sm text-destructive">{addTorrent.error.message}</p>
         )}
-        {addTorrent.isSuccess && (
+        {source.source !== "nyaa" && addTorrent.isSuccess && (
           <p className="text-sm text-primary">Torrent added to qBittorrent.</p>
         )}
         <button
           type="submit"
-          disabled={!torrentSource.ready || addTorrent.isPending}
-          className="h-10 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:bg-muted disabled:text-muted-foreground"
+          disabled={!source.ready || addTorrent.isPending}
+          className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:bg-muted disabled:text-muted-foreground"
         >
-          {addTorrent.isPending ? "Adding…" : "Add torrent"}
+          {source.source === "nyaa" && <Search aria-hidden="true" className="size-4" />}
+          {submitLabel(source.source, addTorrent.isPending)}
         </button>
       </form>
+      <AdminNyaaSearchDialog
+        open={resultsOpen}
+        onOpenChange={setResultsOpen}
+        search={submittedSearch.query}
+        category={submittedSearch.category}
+        trusted={submittedSearch.trusted}
+        showFolder={showFolder}
+      />
     </AdminPanel>
   );
 }

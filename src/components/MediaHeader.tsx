@@ -1,52 +1,67 @@
 import type { ChangeEvent } from "react";
-import { Library, Search, Settings } from "lucide-react";
-import type { AuthUser } from "../types.ts";
+import { Library, Settings } from "lucide-react";
+import type { AuthUser, MediaEntry, ShowMetadata } from "../types.ts";
+import type { ShowGroup } from "../lib/library.ts";
 import { navigateToAdmin, navigateToShows } from "../hooks/useMediaRoute.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
-import { Input } from "./ui/input.tsx";
+import { LibrarySearch } from "./LibrarySearch.tsx";
 import { UserMenu } from "./UserMenu.tsx";
 
 type MediaHeaderProps = {
   readonly user: AuthUser;
   readonly view: "library";
   readonly query: string;
+  readonly entries: readonly MediaEntry[];
+  readonly metadata: ShowMetadata;
   readonly onQueryChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  readonly onShowSelect: (show: ShowGroup) => void;
 } | {
   readonly user: AuthUser;
-  readonly view: "admin";
+  readonly view: "admin" | "profile";
 };
 
 export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
   const { user, view } = props;
   return (
-    <header className="sticky top-0 z-10 flex items-center gap-4 border-b border-border bg-background px-6 py-4">
+    <header className="sticky top-[env(safe-area-inset-top)] z-10 flex items-center gap-4 border-b border-border bg-background px-6 py-4">
       <BrandLogo className="h-7 w-auto shrink-0" />
       {props.view === "library" && (
-        <div className="relative ml-auto w-full max-w-xs">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search…"
-            value={props.query}
-            onChange={props.onQueryChange}
-            aria-label="Search library"
-            className="pl-9"
-          />
-        </div>
+        <LibrarySearch
+          query={props.query}
+          entries={props.entries}
+          metadata={props.metadata}
+          onQueryChange={props.onQueryChange}
+          onShowSelect={props.onShowSelect}
+        />
       )}
-      {view === "admin" && <span className="ml-auto text-sm font-medium">Admin</span>}
-      {user.isAdmin && (
+      {view !== "library" && (
+        <span className="ml-auto text-sm font-medium capitalize">{view}</span>
+      )}
+      <nav className="mobile-account-controls" aria-label="Primary navigation">
         <button
           type="button"
-          onClick={view === "admin" ? navigateToShows : navigateToAdmin}
-          className="inline-flex items-center gap-2 rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
-          aria-label={view === "admin" ? "Return to library" : "Open admin dashboard"}
-          title={view === "admin" ? "Library" : "Admin dashboard"}
+          data-active={view === "library"}
+          onClick={navigateToShows}
+          className="mobile-nav-item"
+          aria-label="Library"
         >
-          {view === "admin" ? <Library className="size-4" /> : <Settings className="size-4" />}
+          <Library className="size-4" />
+          <span className="mobile-nav-label">Library</span>
         </button>
-      )}
-      <UserMenu user={user} />
+        {user.isAdmin && (
+          <button
+            type="button"
+            data-active={view === "admin"}
+            onClick={navigateToAdmin}
+            className="mobile-nav-item"
+            aria-label="Admin dashboard"
+          >
+            <Settings className="size-4" />
+            <span className="mobile-nav-label">Admin</span>
+          </button>
+        )}
+        <UserMenu active={view === "profile"} />
+      </nav>
     </header>
   );
 }

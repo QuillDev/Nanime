@@ -5,12 +5,14 @@ import {
   useAniListListEntry,
   useUpdateAniListListEntry,
 } from "../hooks/useAniListAccount.ts";
+import aniListLogoUrl from "../assets/anilist-logo.svg";
 import { Input } from "./ui/input.tsx";
 
 const STATUS_OPTIONS: readonly {
   readonly value: AniListWatchStatus;
   readonly label: string;
 }[] = [
+  { value: "NONE", label: "None" },
   { value: "CURRENT", label: "Watching" },
   { value: "PLANNING", label: "Planning" },
   { value: "COMPLETED", label: "Completed" },
@@ -21,7 +23,7 @@ const STATUS_OPTIONS: readonly {
 
 function watchStatus(value: FormDataEntryValue | null): AniListWatchStatus {
   const match = STATUS_OPTIONS.find((option) => option.value === value);
-  return match?.value ?? "CURRENT";
+  return match?.value ?? "NONE";
 }
 
 function useListControls(media: AniListMedia): {
@@ -65,25 +67,28 @@ export function AniListListControls({ media }: { readonly media: AniListMedia })
     <form
       key={`${String(media.id)}:${current?.status ?? "none"}:${String(current?.progress ?? 0)}:${String(current?.score ?? 0)}`}
       onSubmit={handleSubmit}
-      className="mt-5 border-t border-border pt-4"
+      className="mb-4 border-b border-border pb-4"
     >
-      <p className="mb-3 text-sm font-semibold">Your AniList</p>
-      <label htmlFor={`anilist-status-${String(media.id)}`} className="mb-3 block text-xs font-medium text-muted-foreground">
-        Status
-        <select
-          id={`anilist-status-${String(media.id)}`}
-          name="status"
-          defaultValue={current?.status ?? "PLANNING"}
-          className="mt-1.5 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
-        >
-          {STATUS_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-      </label>
-      <div className="grid grid-cols-2 gap-3">
-        <label htmlFor={`anilist-progress-${String(media.id)}`} className="text-xs font-medium text-muted-foreground">
-          Episodes
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs font-medium text-muted-foreground">
+        <span className="inline-flex shrink-0 items-center gap-1.5 font-semibold text-foreground">
+          <img src={aniListLogoUrl} alt="" className="size-5" />
+          AniList
+        </span>
+        <label htmlFor={`anilist-status-${String(media.id)}`} className="inline-flex shrink-0 items-center gap-1.5">
+          Status
+          <select
+            id={`anilist-status-${String(media.id)}`}
+            name="status"
+            defaultValue={current?.status ?? "NONE"}
+            className="h-9 w-32 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+          >
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <label htmlFor={`anilist-progress-${String(media.id)}`} className="inline-flex shrink-0 items-center gap-1.5">
+          Episode
           <Input
             id={`anilist-progress-${String(media.id)}`}
             name="progress"
@@ -91,11 +96,11 @@ export function AniListListControls({ media }: { readonly media: AniListMedia })
             min={0}
             max={media.episodes ?? undefined}
             defaultValue={current?.progress ?? 0}
-            className="mt-1.5 h-9"
+            className="h-9 w-16"
           />
         </label>
-        <label htmlFor={`anilist-score-${String(media.id)}`} className="text-xs font-medium text-muted-foreground">
-          Score / 10
+        <label htmlFor={`anilist-score-${String(media.id)}`} className="inline-flex shrink-0 items-center gap-1.5">
+          Score
           <Input
             id={`anilist-score-${String(media.id)}`}
             name="score"
@@ -104,17 +109,17 @@ export function AniListListControls({ media }: { readonly media: AniListMedia })
             max={10}
             step={0.5}
             defaultValue={current?.score ?? 0}
-            className="mt-1.5 h-9"
+            className="h-9 w-16"
           />
         </label>
+        <button
+          type="submit"
+          disabled={update.isPending}
+          className="h-9 shrink-0 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:bg-muted disabled:text-muted-foreground"
+        >
+          {update.isPending ? "Saving…" : "Save"}
+        </button>
       </div>
-      <button
-        type="submit"
-        disabled={update.isPending}
-        className="mt-3 w-full rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:bg-muted disabled:text-muted-foreground"
-      >
-        {update.isPending ? "Saving…" : "Save to AniList"}
-      </button>
       {update.status === "error" && (
         <p className="mt-2 text-xs text-destructive">{update.error.message}</p>
       )}

@@ -23,6 +23,7 @@ function updateUrl(url: URL, replace = false): void {
 
 export interface MediaRoute {
   readonly admin: boolean;
+  readonly profile: boolean;
   readonly showName: string | null;
   readonly episodeRel: string | null;
   readonly query: string;
@@ -44,6 +45,7 @@ export function useMediaRoute(): MediaRoute {
   const url = new URL(snapshot, globalThis.location.origin);
   return {
     admin: url.pathname === "/admin",
+    profile: url.pathname === "/profile",
     showName: showFromPath(url.pathname),
     episodeRel: url.searchParams.get("episode"),
     query: url.searchParams.get("q") ?? "",
@@ -53,6 +55,13 @@ export function useMediaRoute(): MediaRoute {
 export function navigateToAdmin(): void {
   const url = new URL(globalThis.location.href);
   url.pathname = "/admin";
+  url.search = "";
+  updateUrl(url);
+}
+
+export function navigateToProfile(): void {
+  const url = new URL(globalThis.location.href);
+  url.pathname = "/profile";
   url.search = "";
   updateUrl(url);
 }
@@ -97,7 +106,7 @@ export function closeEpisode(): void {
   updateUrl(url, true);
 }
 
-export function updateSearch(query: string): void {
+function commitSearch(query: string): void {
   const url = new URL(globalThis.location.href);
   if (query === "") {
     url.searchParams.delete("q");
@@ -105,4 +114,14 @@ export function updateSearch(query: string): void {
     url.searchParams.set("q", query);
   }
   updateUrl(url, true);
+}
+
+export function updateSearch(query: string): void {
+  const startTransition: unknown = Reflect.get(document, "startViewTransition");
+  const reduceMotion = globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (typeof startTransition !== "function" || reduceMotion) {
+    commitSearch(query);
+    return;
+  }
+  Reflect.apply(startTransition, document, [() => commitSearch(query)]);
 }

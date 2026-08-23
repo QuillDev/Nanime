@@ -37,6 +37,7 @@ function ContinueCard({ item, onSelect }: ContinueCardProps): React.JSX.Element 
   const percent = item.progress.duration > 0
     ? Math.min(100, item.progress.position / item.progress.duration * 100)
     : 0;
+  const remaining = Math.max(item.progress.duration - item.progress.position, 0);
 
   return (
     <li>
@@ -67,7 +68,7 @@ function ContinueCard({ item, onSelect }: ContinueCardProps): React.JSX.Element 
           <span className="block truncate text-sm font-semibold">{item.episodeTitle}</span>
           <span className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span className="truncate">{item.showTitle}</span>
-            <span className="shrink-0">{formatDuration(item.progress.position)} left off</span>
+            <span className="shrink-0">{formatDuration(remaining)} left</span>
           </span>
         </span>
       </button>

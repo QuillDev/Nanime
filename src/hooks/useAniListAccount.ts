@@ -64,15 +64,15 @@ interface UpdateVariables {
 }
 
 export function useUpdateAniListListEntry(): UseMutationResult<
-  AniListListEntry,
+  AniListListEntry | null,
   Error,
   UpdateVariables
 > {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ mediaId, update }) => updateAniListListEntry(mediaId, update),
-    onSuccess: (entry) => {
-      queryClient.setQueryData(["anilist-list", entry.mediaId], entry);
+    onSuccess: (entry, variables) => {
+      queryClient.setQueryData(["anilist-list", variables.mediaId], entry);
     },
   });
 }

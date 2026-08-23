@@ -9,6 +9,7 @@ import {
   authUserSchema,
   credentialsSchema,
   mediaEntrySchema,
+  nyaaSearchResultSchema,
   playbackProgressSchema,
   provisionedUserSchema,
   schema,
@@ -72,6 +73,11 @@ const aniListUpdateSchema = schema.object({
   score: schema.optional(schema.number({ minimum: 0, maximum: 10 })),
 });
 const searchQuerySchema = schema.object({ q: schema.string({ minLength: 2 }) });
+const nyaaSearchQuerySchema = schema.object({
+  q: schema.string({ minLength: 2, maxLength: 200 }),
+  category: schema.optional(schema.string()),
+  trusted: schema.optional(schema.boolean()),
+});
 const pathQuerySchema = schema.object({ path: schema.string({ minLength: 1 }) });
 const indexedPathQuerySchema = schema.object({
   path: schema.string({ minLength: 1 }),
@@ -136,7 +142,10 @@ export const app = new Elysia({ name: "nanime" })
   })
   .put("/api/anilist/list/:id", ({ request, server, body }) => (
     handle(jsonRequest(request, body), server)
-  ), { body: aniListUpdateSchema, response: aniListListEntrySchema })
+  ), {
+    body: aniListUpdateSchema,
+    response: schema.union([aniListListEntrySchema, schema.nullValue()]),
+  })
   .get("/api/users", ({ request, server }) => handle(request, server), {
     response: schema.array(provisionedUserSchema),
   })
@@ -149,6 +158,10 @@ export const app = new Elysia({ name: "nanime" })
   .delete("/api/users/:id", ({ request, server }) => handle(request, server))
   .get("/api/torrents", ({ request, server }) => handle(request, server), {
     response: schema.array(torrentStatusSchema),
+  })
+  .get("/api/torrents/search", ({ request, server }) => handle(request, server), {
+    query: nyaaSearchQuerySchema,
+    response: schema.array(nyaaSearchResultSchema),
   })
   .post("/api/torrents", ({ request, server, body }) => (
     handle(formRequest(request, body), server)

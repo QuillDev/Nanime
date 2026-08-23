@@ -4,7 +4,12 @@ import type { AniListMedia } from "../types.ts";
 import { mediaTitle } from "../lib/anilist.ts";
 import { Badge } from "./ui/badge.tsx";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
-import { AniListListControls } from "./AniListListControls.tsx";
+import {
+  Collapsible,
+  CollapsibleChevron,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "./ui/collapsible.tsx";
 
 interface AnimeDetailsProps {
   readonly fallbackTitle: string;
@@ -13,13 +18,7 @@ interface AnimeDetailsProps {
   readonly onLink?: (() => void) | undefined;
 }
 
-function MediaFacts({
-  media,
-  expanded,
-}: {
-  readonly media: AniListMedia;
-  readonly expanded: boolean;
-}): React.JSX.Element {
+function MediaFacts({ media }: { readonly media: AniListMedia }): React.JSX.Element {
   const facts = [
     media.season && media.seasonYear
       ? `${media.season.toLowerCase()} ${String(media.seasonYear)}`
@@ -28,11 +27,12 @@ function MediaFacts({
     media.duration === null ? null : `${String(media.duration)} min`,
     media.averageScore === null ? null : `${String(media.averageScore)}% score`,
   ].filter((fact) => fact !== null);
-  const genres = expanded ? media.genres : media.genres.slice(0, 3);
   return (
     <div className="mt-3 flex flex-wrap gap-2">
       {facts.map((fact) => <Badge key={fact} variant="secondary">{fact}</Badge>)}
-      {genres.map((genre) => <Badge key={genre} variant="outline">{genre}</Badge>)}
+      {media.genres.slice(0, 3).map((genre) => (
+        <Badge key={genre} variant="outline">{genre}</Badge>
+      ))}
     </div>
   );
 }
@@ -47,9 +47,6 @@ export function AnimeDetails({
   const handleLink = useCallback(() => {
     onLink?.();
   }, [onLink]);
-  const handleExpand = useCallback(() => {
-    setExpanded((current) => !current);
-  }, []);
   const cover = media?.coverImage.extraLarge ?? media?.coverImage.large;
   const canExpand = media !== undefined && (
     media.genres.length > 3 || (media.description?.length ?? 0) > 240
@@ -58,6 +55,7 @@ export function AnimeDetails({
   return (
     <aside className="overflow-hidden rounded-xl border border-border bg-card">
       <MediaThumbnail rel={previewRel} source={cover} className="aspect-[2/3] w-full" />
+      <Collapsible open={expanded} onOpenChange={setExpanded} asChild>
       <div className="p-5">
         <div className="flex items-start gap-2">
           {onLink !== undefined && (
@@ -78,20 +76,29 @@ export function AnimeDetails({
         {media !== undefined && media.title.english !== media.title.romaji && (
           <p className="mt-1 text-sm text-muted-foreground">{media.title.romaji}</p>
         )}
-        {media !== undefined && <MediaFacts media={media} expanded={expanded} />}
+        {media !== undefined && <MediaFacts media={media} />}
+        <CollapsibleContent>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {media?.genres.slice(3).map((genre) => (
+              <Badge key={genre} variant="outline">{genre}</Badge>
+            ))}
+          </div>
+        </CollapsibleContent>
         {media?.description !== null && media?.description !== undefined && (
-          <p className={`mt-4 whitespace-pre-line text-sm leading-6 text-muted-foreground ${expanded ? "" : "line-clamp-5"}`}>
+          <p className="anime-description mt-4 whitespace-pre-line text-sm leading-6 text-muted-foreground">
             {media.description}
           </p>
         )}
         {canExpand && (
-          <button
-            type="button"
-            onClick={handleExpand}
-            className="mt-3 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {expanded ? "Show less" : "Show more"}
-          </button>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {expanded ? "Show less" : "Show more"}
+              <CollapsibleChevron className="size-4" />
+            </button>
+          </CollapsibleTrigger>
         )}
         {media !== undefined && (
           <a
@@ -104,8 +111,8 @@ export function AnimeDetails({
             <ExternalLink className="size-3.5" />
           </a>
         )}
-        {media !== undefined && <AniListListControls media={media} />}
       </div>
+      </Collapsible>
     </aside>
   );
 }

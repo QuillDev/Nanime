@@ -8,6 +8,7 @@ import type {
   AniListWatchStatus,
   AuthUser,
   MediaEntry,
+  NyaaSearchResult,
   PlaybackProgress,
   ShowMetadata,
   SubtitleTrack,
@@ -42,7 +43,11 @@ interface EdenError {
 
 function errorDetail(error: EdenError): string {
   if (typeof error.value === "string" && error.value !== "") {
-    return error.value;
+    const detail = error.value.trim();
+    if (/^(?:<!doctype\s+html|<html\b)/iu.test(detail)) {
+      return `HTTP ${String(error.status)} (gateway returned an error page)`;
+    }
+    return detail.length <= 500 ? detail : `${detail.slice(0, 500)}…`;
   }
   if (typeof error.value === "object" && error.value !== null) {
     const message = Reflect.get(error.value, "message");
@@ -164,7 +169,7 @@ export interface AniListListUpdate {
 export async function updateAniListListEntry(
   mediaId: number,
   update: AniListListUpdate,
-): Promise<AniListListEntry> {
+): Promise<AniListListEntry | null> {
   return unwrap(
     await api.api.anilist.list({ id: String(mediaId) }).put(update),
     "Updating AniList list entry",
@@ -233,6 +238,19 @@ export async function fetchTorrents(signal: AbortSignal): Promise<readonly Torre
   return unwrap(
     await api.api.torrents.get({ fetch: { signal } }),
     "Torrent status request",
+  );
+}
+
+export async function searchNyaa(
+  options: { readonly search: string; readonly category: string; readonly trusted: boolean },
+  signal: AbortSignal,
+): Promise<readonly NyaaSearchResult[]> {
+  return unwrap(
+    await api.api.torrents.search.get({
+      query: { q: options.search, category: options.category, trusted: options.trusted },
+      fetch: { signal },
+    }),
+    "Nyaa search",
   );
 }
 

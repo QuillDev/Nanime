@@ -1,5 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
+import { searchNyaaResponse } from "./nyaa.ts";
 
 const QBITTORRENT_USERNAME = process.env["QBITTORRENT_USERNAME"] ?? "";
 const QBITTORRENT_PASSWORD = process.env["QBITTORRENT_PASSWORD"] ?? "";
@@ -205,8 +206,7 @@ async function torrentListResponse(): Promise<Response> {
     (item): item is TorrentStatus => item !== null,
   );
   const incomplete = torrents.filter((item) => item.progress < 1);
-  const recentComplete = torrents.filter((item) => item.progress >= 1).slice(0, 5);
-  return Response.json([...incomplete, ...recentComplete]);
+  return Response.json(incomplete);
 }
 
 async function addTorrentResponse(req: Request, mediaDir: string): Promise<Response> {
@@ -258,6 +258,11 @@ async function addTorrentResponse(req: Request, mediaDir: string): Promise<Respo
   return Response.json({ added: true });
 }
 
-export function torrentsResponse(req: Request, mediaDir: string): Promise<Response> {
+export function torrentsResponse(req: Request, mediaDir: string, url: URL): Promise<Response> {
+  if (url.pathname === "/api/torrents/search") {
+    return req.method === "GET"
+      ? searchNyaaResponse(url)
+      : Promise.resolve(new Response("Method not allowed", { status: 405 }));
+  }
   return req.method === "GET" ? torrentListResponse() : addTorrentResponse(req, mediaDir);
 }

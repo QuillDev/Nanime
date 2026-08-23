@@ -56,6 +56,10 @@ export interface SaveMediaListData {
   readonly SaveMediaListEntry: AniListListEntry;
 }
 
+export interface DeleteMediaListData {
+  readonly DeleteMediaListEntry: { readonly deleted: boolean };
+}
+
 export interface TokenResponse {
   readonly access_token?: unknown;
   readonly expires_in?: unknown;

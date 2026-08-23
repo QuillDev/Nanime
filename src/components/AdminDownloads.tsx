@@ -65,7 +65,7 @@ export function AdminDownloads(): React.JSX.Element {
   return (
     <AdminPanel
       title="Downloads"
-      description="Active and recently completed torrents. Refreshes every two seconds."
+      description="Torrents that have not finished downloading. Refreshes every two seconds."
       icon={Download}
       className="xl:col-span-2"
     >
@@ -76,7 +76,7 @@ export function AdminDownloads(): React.JSX.Element {
         <p className="py-4 text-sm text-destructive">{torrents.error.message}</p>
       )}
       {torrents.status === "success" && torrents.data.length === 0 && (
-        <p className="py-10 text-center text-sm text-muted-foreground">No torrents found.</p>
+        <p className="py-10 text-center text-sm text-muted-foreground">No downloads in progress.</p>
       )}
       {torrents.status === "success" && torrents.data.length > 0 && (
         <ul>{torrents.data.map((torrent) => <TorrentRow key={torrent.hash} torrent={torrent} />)}</ul>

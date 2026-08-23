@@ -111,6 +111,7 @@ export interface AniListAccountStatus {
 }
 
 export type AniListWatchStatus =
+  | "NONE"
   | "CURRENT"
   | "PLANNING"
   | "COMPLETED"
@@ -140,4 +141,19 @@ export interface TorrentStatus {
   readonly size: number;
   readonly state: string;
   readonly addedOn: number;
+}
+
+export interface NyaaSearchResult {
+  readonly id: string;
+  readonly name: string;
+  readonly category: string;
+  readonly size: string;
+  readonly seeders: number;
+  readonly leechers: number;
+  readonly downloads: number;
+  readonly publishedAt: string;
+  readonly trusted: boolean;
+  readonly remake: boolean;
+  readonly detailsUrl: string;
+  readonly magnet: string;
 }
