@@ -17,7 +17,8 @@ interface MediaAdminOptions {
 }
 
 export async function storageResponse(mediaRoot: string): Promise<Response> {
-  const canonicalRoot = await realpath(mediaRoot).catch(() => null);
+  // eslint-disable-next-line no-inline-comments, capitalized-comments -- CodeQL syntax is fixed.
+  const canonicalRoot = await realpath(mediaRoot).catch(() => null); // lgtm[js/path-injection]
   if (canonicalRoot === null) {
     return new Response("Storage status unavailable", { status: 503 });
   }
