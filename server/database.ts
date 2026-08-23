@@ -123,3 +123,34 @@ database.run(`
     updated_at INTEGER NOT NULL
   )
 `);
+database.run(`
+  CREATE TABLE IF NOT EXISTS anilist_accounts (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    anilist_id INTEGER NOT NULL UNIQUE,
+    anilist_name TEXT NOT NULL,
+    avatar_url TEXT,
+    encrypted_token TEXT NOT NULL,
+    token_expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )
+`);
+database.run(`
+  CREATE TABLE IF NOT EXISTS anilist_oauth_states (
+    state_hash TEXT PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  )
+`);
+database.run("CREATE INDEX IF NOT EXISTS anilist_oauth_states_expires_at ON anilist_oauth_states(expires_at)");
+database.run(`
+  CREATE TABLE IF NOT EXISTS anilist_sync_progress (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    media_id INTEGER NOT NULL,
+    progress INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, media_id)
+  )
+`);

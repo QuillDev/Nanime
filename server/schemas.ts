@@ -19,6 +19,25 @@ const nullableNumber = union([number(), nullValue()]);
 export const authUserSchema = object({
   id: number(), username: string(), isAdmin: boolean(),
 });
+export const aniListAuthConfigSchema = object({ enabled: boolean() });
+const aniListAccountDetailsSchema = object({
+  id: number(),
+  name: string(),
+  avatarUrl: nullableString,
+  expiresAt: number(),
+});
+export const aniListAccountSchema = object({
+  configured: boolean(),
+  connected: boolean(),
+  account: union([aniListAccountDetailsSchema, nullValue()]),
+});
+export const aniListListEntrySchema = object({
+  id: number(),
+  mediaId: number(),
+  status: string(),
+  progress: number(),
+  score: number(),
+});
 export const provisionedUserSchema = object({
   id: number(), username: string(), isAdmin: boolean(), passwordSet: boolean(),
 });

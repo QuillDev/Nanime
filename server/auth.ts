@@ -54,6 +54,9 @@ const setPassword = database.query<void, [string, number]>(`
   UPDATE users SET password_hash = ?, setup_token_hash = NULL
   WHERE id = ? AND password_hash IS NULL
 `);
+const findUserById = database.query<UserRow, [number]>(`
+  SELECT id, username, password_hash, setup_token_hash, is_admin FROM users WHERE id = ?
+`);
 database.query("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
 
 function publicUser(row: UserRow): AuthUser {
@@ -82,6 +85,23 @@ function createSession(user: UserRow): Response {
   insertSession.run(tokenHash(token), user.id, now + SESSION_LIFETIME_MS, now);
   return Response.json(publicUser(user), {
     headers: { "set-cookie": sessionCookie(token, SESSION_LIFETIME_MS / 1000) },
+  });
+}
+
+export function createSessionRedirect(userId: number, location: string): Response {
+  const user = findUserById.get(userId);
+  if (user === null) {
+    return Response.redirect(`${location}?anilist=account-missing`, 303);
+  }
+  const token = randomBytes(32).toString("base64url");
+  const now = Date.now();
+  insertSession.run(tokenHash(token), user.id, now + SESSION_LIFETIME_MS, now);
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location,
+      "set-cookie": sessionCookie(token, SESSION_LIFETIME_MS / 1000),
+    },
   });
 }
 

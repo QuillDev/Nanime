@@ -53,7 +53,8 @@ and enable `NANIME_TRUST_PROXY` only when requests can reach Nanime exclusively
 through that trusted proxy. Keep secure cookies enabled.
 
 Protect the SQLite database as sensitive data: it contains password hashes,
-hashed session tokens, user activity, and library metadata. Back it up, restrict
+hashed session tokens, encrypted AniList tokens, user activity, and library
+metadata. Back it up, restrict
 filesystem access to the service account, and never place it in the web root.
 
 Keep qBittorrent private and authenticated. Nanime only needs its Web API; do not
@@ -71,6 +72,33 @@ Show and season mappings are selected through AniList. TVmaze is accepted only
 when its normalized title and release year exactly match the AniList record.
 Mapped metadata is stored in SQLite; TVmaze enrichment is refreshed after seven
 days rather than on each page load.
+
+## AniList accounts
+
+AniList account linking is optional. Create an OAuth application in AniList's
+developer settings and set its redirect URL to the exact public callback URL:
+
+```text
+https://anime.example.com/api/auth/anilist/callback
+```
+
+Set `NANIME_ANILIST_CLIENT_ID`, `NANIME_ANILIST_CLIENT_SECRET`,
+`NANIME_ANILIST_REDIRECT_URI`, and a persistent 32-byte
+`NANIME_TOKEN_ENCRYPTION_KEY` generated with `openssl rand -base64 32`. Restart
+Nanime after adding the variables.
+
+Users first connect AniList from their account menu while signed into a
+provisioned Nanime account. After that, **Sign in with AniList** signs into that
+same account; it never creates a Nanime user. Starting an episode updates the
+linked title to Watching after the normal 30-second progress threshold, and
+finishing episodes advances AniList progress. Status, episode progress, and a
+score out of ten can also be edited from a mapped show's details.
+
+AniList access tokens are encrypted in SQLite with AES-256-GCM. Back up the
+encryption key separately and never commit it: losing it requires every user to
+reconnect, while disclosure of both the database and key exposes the linked
+AniList accounts. AniList does not issue refresh tokens, so expired connections
+must be authorized again.
 
 ## Security
 

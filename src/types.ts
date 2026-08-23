@@ -81,12 +81,49 @@ export interface PlaybackProgress {
   readonly updatedAt: number;
 }
 
+export interface AniListPlaybackTarget {
+  readonly mediaId: number;
+  readonly episode: number;
+  readonly totalEpisodes: number | null;
+}
+
 export type PlaybackProgressMap = Readonly<Record<string, PlaybackProgress>>;
 
 export interface AuthUser {
   readonly id: number;
   readonly username: string;
   readonly isAdmin: boolean;
+}
+
+export interface AniListAuthConfig {
+  readonly enabled: boolean;
+}
+
+export interface AniListAccountStatus {
+  readonly configured: boolean;
+  readonly connected: boolean;
+  readonly account: {
+    readonly id: number;
+    readonly name: string;
+    readonly avatarUrl: string | null;
+    readonly expiresAt: number;
+  } | null;
+}
+
+export type AniListWatchStatus =
+  | "CURRENT"
+  | "PLANNING"
+  | "COMPLETED"
+  | "DROPPED"
+  | "PAUSED"
+  | "REPEATING";
+
+export interface AniListListEntry {
+  readonly id: number;
+  readonly mediaId: number;
+  readonly status: string;
+  readonly progress: number;
+  readonly score: number;
 }
 
 export interface ProvisionedUser extends AuthUser {

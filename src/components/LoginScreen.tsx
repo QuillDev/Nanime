@@ -7,6 +7,16 @@ import {
 import { Input } from "./ui/input.tsx";
 import { useLogin, useSetupPassword } from "../hooks/useAuth.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
+import { Link2 } from "lucide-react";
+import { useAniListAuthConfig } from "../hooks/useAniListAccount.ts";
+
+const OAUTH_ERRORS: Readonly<Record<string, string>> = {
+  "invalid-state": "The AniList sign-in response could not be verified. Please try again.",
+  "expired-state": "The AniList sign-in request expired. Please try again.",
+  "not-linked": "That AniList account is not linked to a provisioned Nanime user.",
+  "already-linked": "That AniList account is already linked to another user.",
+  failed: "AniList sign-in failed. Please try again.",
+};
 
 function useTextField(): readonly [string, (event: ChangeEvent<HTMLInputElement>) => void] {
   const [value, setValue] = useState<string>("");
@@ -43,25 +53,62 @@ function authenticationLabel(setupMode: boolean, pending: boolean): string {
   return setupMode ? "Activate account" : "Sign in";
 }
 
-export function LoginScreen(): React.JSX.Element {
-  const [username, handleUsernameChange] = useTextField();
-  const [password, handlePasswordChange] = useTextField();
-  const [confirmation, handleConfirmationChange] = useTextField();
-  const [setupToken, handleSetupTokenChange] = useTextField();
+function useCredentialFields(): {
+  readonly username: ReturnType<typeof useTextField>;
+  readonly password: ReturnType<typeof useTextField>;
+  readonly confirmation: ReturnType<typeof useTextField>;
+  readonly setupToken: ReturnType<typeof useTextField>;
+} {
+  const username = useTextField();
+  const password = useTextField();
+  const confirmation = useTextField();
+  const setupToken = useTextField();
+  return { username, password, confirmation, setupToken };
+}
+
+function useLoginForm(): {
+  readonly fields: ReturnType<typeof useCredentialFields>;
+  readonly setupMode: boolean;
+  readonly error: Error | null;
+  readonly pending: boolean;
+  readonly handleSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  readonly handleModeChange: () => void;
+} {
+  const fields = useCredentialFields();
   const [setupMode, setSetupMode] = useState<boolean>(false);
   const { login, setup } = useAuthenticationMutations();
   const handleSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (setupMode) {
-      if (password === confirmation) {
-        setup.mutate({ username, password, setupToken });
+      if (fields.password[0] === fields.confirmation[0]) {
+        setup.mutate({
+          username: fields.username[0],
+          password: fields.password[0],
+          setupToken: fields.setupToken[0],
+        });
       }
     } else {
-      login.mutate({ username, password });
+      login.mutate({ username: fields.username[0], password: fields.password[0] });
     }
-  }, [confirmation, login, password, setup, setupMode, setupToken, username]);
+  }, [fields, login, setup, setupMode]);
   const handleModeChange = useCallback(() => setSetupMode((current) => !current), []);
-  const { error, pending } = authenticationStatus(login, setup);
+  const status = authenticationStatus(login, setup);
+  return { fields, setupMode, ...status, handleSubmit, handleModeChange };
+}
+
+function currentOAuthError(): string | undefined {
+  const result = new URLSearchParams(globalThis.location.search).get("anilist");
+  return result === null ? undefined : OAUTH_ERRORS[result];
+}
+
+export function LoginScreen(): React.JSX.Element {
+  const { fields, setupMode, error, pending, handleSubmit, handleModeChange } = useLoginForm();
+  const [username, handleUsernameChange] = fields.username;
+  const [password, handlePasswordChange] = fields.password;
+  const [confirmation, handleConfirmationChange] = fields.confirmation;
+  const [setupToken, handleSetupTokenChange] = fields.setupToken;
+  const aniListConfig = useAniListAuthConfig();
+  const oauthError = currentOAuthError();
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-6 text-foreground">
@@ -132,6 +179,9 @@ export function LoginScreen(): React.JSX.Element {
         {error !== null && (
           <p className="mb-4 text-sm text-destructive">{error.message}</p>
         )}
+        {oauthError !== undefined && (
+          <p className="mb-4 text-sm text-destructive">{oauthError}</p>
+        )}
         <button
           type="submit"
           disabled={pending || username === ""}
@@ -146,6 +196,22 @@ export function LoginScreen(): React.JSX.Element {
         >
           {setupMode ? "Back to sign in" : "Activate a provisioned account"}
         </button>
+        {!setupMode && aniListConfig.data?.enabled === true && (
+          <>
+            <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="h-px flex-1 bg-border" />
+              or
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <a
+              href="/api/auth/anilist/start"
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-background px-4 py-2.5 text-sm font-semibold hover:bg-accent"
+            >
+              <Link2 className="size-4 text-primary" />
+              Sign in with AniList
+            </a>
+          </>
+        )}
       </form>
     </main>
   );

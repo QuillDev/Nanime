@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { LogOut } from "lucide-react";
 import type { AuthUser } from "../types.ts";
 import { useLogout } from "../hooks/useAuth.ts";
+import { AniListAccountDialog } from "./AniListAccountDialog.tsx";
 
 export function UserMenu({ user }: { readonly user: AuthUser }): React.JSX.Element {
   const logout = useLogout();
@@ -9,6 +10,7 @@ export function UserMenu({ user }: { readonly user: AuthUser }): React.JSX.Eleme
   return (
     <div className="flex items-center gap-2">
       <span className="hidden text-sm text-muted-foreground sm:inline">{user.username}</span>
+      <AniListAccountDialog />
       <button
         type="button"
         onClick={handleLogout}

@@ -15,6 +15,21 @@ interface PlaybackUpdate {
   readonly position?: unknown;
   readonly duration?: unknown;
   readonly completed?: unknown;
+  readonly anilistMediaId?: unknown;
+  readonly episode?: unknown;
+  readonly totalEpisodes?: unknown;
+}
+
+interface PlaybackSyncTarget {
+  readonly mediaId: number;
+  readonly episode: number;
+  readonly totalEpisodes: number | null;
+  readonly completed: boolean;
+}
+
+interface PlaybackUpdateOptions {
+  readonly mediaExists: (rel: string) => Promise<boolean>;
+  readonly sync?: (target: PlaybackSyncTarget) => Promise<void>;
 }
 
 export interface PlaybackProgress {
@@ -81,7 +96,7 @@ function validNumber(value: unknown): value is number {
 export async function updatePlaybackProgress(
   req: Request,
   userId: number,
-  mediaExists: (rel: string) => Promise<boolean>,
+  options: PlaybackUpdateOptions,
 ): Promise<Response> {
   const body = (await req.json().catch(() => null)) as PlaybackUpdate | null;
   if (
@@ -94,7 +109,7 @@ export async function updatePlaybackProgress(
   ) {
     return new Response("Invalid playback progress", { status: 400 });
   }
-  if (!(await mediaExists(body.rel))) {
+  if (!(await options.mediaExists(body.rel))) {
     return new Response("Media not found", { status: 404 });
   }
 
@@ -119,5 +134,19 @@ export async function updatePlaybackProgress(
     progress.completed ? 1 : 0,
     progress.updatedAt,
   );
+  if (
+    options.sync !== undefined &&
+    Number.isInteger(body.anilistMediaId) && (body.anilistMediaId as number) > 0 &&
+    Number.isInteger(body.episode) && (body.episode as number) > 0 &&
+    (body.totalEpisodes === null ||
+      Number.isInteger(body.totalEpisodes) && (body.totalEpisodes as number) > 0)
+  ) {
+    await options.sync({
+      mediaId: body.anilistMediaId as number,
+      episode: body.episode as number,
+      totalEpisodes: body.totalEpisodes as number | null,
+      completed: progress.completed,
+    }).catch(() => undefined);
+  }
   return Response.json(progress);
 }

@@ -1,6 +1,11 @@
 import { useCallback, type ChangeEvent } from "react";
 import type { AuthUser, MediaEntry, ShowMetadata } from "../types.ts";
-import { nextEpisode, previousEpisode, type ShowGroup } from "../lib/library.ts";
+import {
+  aniListPlaybackTarget,
+  nextEpisode,
+  previousEpisode,
+  type ShowGroup,
+} from "../lib/library.ts";
 import { useLibrary } from "../hooks/useLibrary.ts";
 import { usePlaybackProgress } from "../hooks/usePlaybackProgress.ts";
 import { useShowMetadata } from "../hooks/useShowMetadata.ts";
@@ -103,6 +108,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
         <Player
           key={selected.rel}
           entry={selected}
+          anilistTarget={aniListPlaybackTarget(library.data, selected, metadata.data ?? {})}
           nextAvailable={navigation.next !== null}
           previousAvailable={navigation.previous !== null}
           initialProgress={playbackProgress.data?.[selected.rel]}

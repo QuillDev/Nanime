@@ -1,35 +1,21 @@
-/*
- * Nanime backend (Bun).
- *
- * Serves the built React app from ../dist and exposes the streaming API:
- *   GET /api/list           -> JSON list of video files under MEDIA_DIR
- *   GET /stream?path=...     -> byte-range streaming for browser-native formats
- *   GET /thumbnail?path=...  -> cached JPEG preview frame
- *   GET /hls/index?path=...  -> VOD HLS playlist (full duration => free seeking)
- *   GET /hls/seg?path=&i=N   -> one HLS segment, transcoded on demand from the
- *                               sought timestamp (VAAPI when HWACCEL=vaapi)
- *
- * Elysia routes are declared in app.ts; media processing uses ffmpeg/ffprobe.
- */
 import type { Dirent } from "node:fs";
 import { readdir, realpath, stat } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import type { Server } from "bun";
-import {
-  linkAniListResponse,
-  metadataResponse,
-  searchAniListResponse,
-} from "./anilist.ts";
+import { linkAniListResponse, metadataResponse, searchAniListResponse } from "./anilist.ts";
 import { playbackProgressResponse, updatePlaybackProgress } from "./playback.ts";
 import { subtitleResponse, subtitleTracksResponse } from "./subtitles.ts";
 import { torrentsResponse } from "./torrents.ts";
 import { deleteMediaResponse } from "./mediaDelete.ts";
 import {
   authenticatedUser,
+  aniListPublicAuthResponse,
+  aniListUserResponse,
   authResponse,
   clientAddress,
   requestOriginAllowed,
   securityHeaders,
+  syncAniListPlayback,
   usersResponse,
   type AuthUser,
 } from "./security.ts";
@@ -52,15 +38,12 @@ async function canonicalMediaRoot(): Promise<string> {
     return MEDIA_DIR;
   }
 }
-
 const MEDIA_ROOT = await canonicalMediaRoot();
-
 const VIDEO_EXTS = new Set<string>([
   ".mp4", ".m4v", ".webm", ".mov", ".mkv", ".avi", ".ts", ".m2ts",
   ".wmv", ".flv", ".mpg", ".mpeg", ".ogv", ".3gp",
 ]);
 const DIRECT_PLAY = new Set<string>([".mp4", ".m4v", ".webm", ".mov", ".ogv"]);
-
 const MIME: Readonly<Record<string, string>> = {
   ".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm",
   ".mov": "video/quicktime", ".mkv": "video/x-matroska", ".avi": "video/x-msvideo",
@@ -394,10 +377,21 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
     return playbackProgressResponse(user.id);
   }
   if (pathname === "/api/progress" && req.method === "PUT") {
-    return updatePlaybackProgress(req, user.id, async (rel): Promise<boolean> => {
-      const abs = await safePath(rel);
-      return abs !== null && await Bun.file(abs).exists();
-    });
+    return updatePlaybackProgress(
+      req,
+      user.id,
+      {
+        mediaExists: async (rel): Promise<boolean> => {
+          const abs = await safePath(rel);
+          return abs !== null && await Bun.file(abs).exists();
+        },
+        sync: (target) => syncAniListPlayback(user.id, target),
+      },
+    );
+  }
+  const aniListUser = await aniListUserResponse(pathname, req, user);
+  if (aniListUser !== null) {
+    return aniListUser;
   }
   if (pathname === "/api/anilist/search" && req.method === "GET") {
     return user.isAdmin
@@ -463,6 +457,10 @@ async function route(context: RequestContext): Promise<Response> {
   try {
     if (!requestOriginAllowed(req)) {
       return new Response("Forbidden", { status: 403 });
+    }
+    const aniListAuth = await aniListPublicAuthResponse(pathname, req, authenticatedUser(req));
+    if (aniListAuth !== null) {
+      return aniListAuth;
     }
     const auth = await authResponse(pathname, req, address);
     if (auth !== null) {
