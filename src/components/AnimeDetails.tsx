@@ -51,6 +51,7 @@ export function AnimeDetails({
   const canExpand = media !== undefined && (
     media.genres.length > 3 || (media.description?.length ?? 0) > 240
   );
+  const providerName = media?.provider === "jikan" ? "MyAnimeList" : "AniList";
 
   return (
     <aside className="overflow-hidden rounded-xl border border-border bg-card">
@@ -62,8 +63,8 @@ export function AnimeDetails({
             <button
               type="button"
               onClick={handleLink}
-              aria-label={media === undefined ? "Link show with AniList" : "Change AniList match"}
-              title={media === undefined ? "Link show with AniList" : "Change AniList match"}
+              aria-label={media === undefined ? "Match show metadata" : "Change metadata match"}
+              title={media === undefined ? "Match metadata" : "Change metadata match"}
               className="mt-0.5 shrink-0 rounded p-1 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Link className="size-4" />
@@ -107,7 +108,7 @@ export function AnimeDetails({
             rel="noreferrer"
             className="mt-4 flex items-center gap-1.5 text-sm text-primary hover:underline"
           >
-            View on AniList
+            View on {providerName}
             <ExternalLink className="size-3.5" />
           </a>
         )}

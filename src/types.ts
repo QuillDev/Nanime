@@ -62,8 +62,12 @@ interface AniListEpisode {
   readonly site: string;
 }
 
+export type MetadataProvider = "anilist" | "jikan";
+
 export interface AniListMedia {
+  readonly provider: MetadataProvider;
   readonly id: number;
+  readonly anilistId: number | null;
   readonly idMal: number | null;
   readonly title: AniListTitle;
   readonly description: string | null;

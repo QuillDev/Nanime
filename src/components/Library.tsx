@@ -207,6 +207,8 @@ export function Library({
       )}
       {canManageMappings && navigation.linkTarget !== null && dialogKey !== null && (
         <AniListLinkDialog
+          currentMedia={metadata[dialogKey]}
+          initialProvider={metadata[dialogKey]?.provider ?? "anilist"}
           metadataKey={dialogKey}
           suggestedSearch={suggestedSearch}
           subject={navigation.linkTarget.type}

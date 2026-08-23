@@ -26,28 +26,34 @@ function watchStatus(value: FormDataEntryValue | null): AniListWatchStatus {
   return match?.value ?? "NONE";
 }
 
-function useListControls(media: AniListMedia) {
+function useListControls(mediaId: number) {
   const account = useAniListAccount();
   const connected = account.data?.connected === true;
-  const entry = useAniListListEntry(media.id, connected);
+  const entry = useAniListListEntry(mediaId, connected);
   const update = useUpdateAniListListEntry();
   const handleSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     update.mutate({
-      mediaId: media.id,
+      mediaId,
       update: {
         status: watchStatus(form.get("status")),
         progress: Number(form.get("progress")),
         score: Number(form.get("score")),
       },
     });
-  }, [media.id, update]);
-  return { connected, entry, update, handleSubmit };
+  }, [mediaId, update]);
+  return { connected, entry, update, handleSubmit, mediaId };
 }
 
-export function AniListListControls({ media }: { readonly media: AniListMedia }): React.JSX.Element | null {
-  const { connected, entry, update, handleSubmit } = useListControls(media);
+export function AniListListControls({
+  media,
+  mediaId,
+}: {
+  readonly media: AniListMedia;
+  readonly mediaId: number;
+}): React.JSX.Element | null {
+  const { connected, entry, update, handleSubmit } = useListControls(mediaId);
   if (!connected) {
     return null;
   }
@@ -60,7 +66,7 @@ export function AniListListControls({ media }: { readonly media: AniListMedia })
   const current = entry.data;
   return (
     <form
-      key={`${String(media.id)}:${current?.status ?? "none"}:${String(current?.progress ?? 0)}:${String(current?.score ?? 0)}`}
+      key={`${String(mediaId)}:${current?.status ?? "none"}:${String(current?.progress ?? 0)}:${String(current?.score ?? 0)}`}
       onSubmit={handleSubmit}
       className="mb-4 border-b border-border pb-4"
     >
@@ -69,10 +75,10 @@ export function AniListListControls({ media }: { readonly media: AniListMedia })
           <img src={aniListLogoUrl} alt="" className="size-5" />
           AniList
         </span>
-        <label htmlFor={`anilist-status-${String(media.id)}`} className="inline-flex shrink-0 items-center gap-1.5">
+        <label htmlFor={`anilist-status-${String(mediaId)}`} className="inline-flex shrink-0 items-center gap-1.5">
           Status
           <select
-            id={`anilist-status-${String(media.id)}`}
+            id={`anilist-status-${String(mediaId)}`}
             name="status"
             defaultValue={current?.status ?? "NONE"}
             className="h-9 w-32 rounded-md border border-input bg-background px-2 text-sm text-foreground"
@@ -82,10 +88,10 @@ export function AniListListControls({ media }: { readonly media: AniListMedia })
             ))}
           </select>
         </label>
-        <label htmlFor={`anilist-progress-${String(media.id)}`} className="inline-flex shrink-0 items-center gap-1.5">
+        <label htmlFor={`anilist-progress-${String(mediaId)}`} className="inline-flex shrink-0 items-center gap-1.5">
           Episode
           <Input
-            id={`anilist-progress-${String(media.id)}`}
+            id={`anilist-progress-${String(mediaId)}`}
             name="progress"
             type="number"
             min={0}
@@ -94,10 +100,10 @@ export function AniListListControls({ media }: { readonly media: AniListMedia })
             className="h-9 w-16"
           />
         </label>
-        <label htmlFor={`anilist-score-${String(media.id)}`} className="inline-flex shrink-0 items-center gap-1.5">
+        <label htmlFor={`anilist-score-${String(mediaId)}`} className="inline-flex shrink-0 items-center gap-1.5">
           Score
           <Input
-            id={`anilist-score-${String(media.id)}`}
+            id={`anilist-score-${String(mediaId)}`}
             name="score"
             type="number"
             min={0}

@@ -153,7 +153,7 @@ function mergeSeasons(
     const media = seasonMetadata(metadata, season.sourceShow, season.name);
     const key = media === undefined
       ? `local:${season.sourceShow}/${season.name}`
-      : `anilist:${String(media.id)}`;
+      : `${media.provider}:${String(media.id)}`;
     const existing = merged.get(key);
     merged.set(key, existing === undefined ? season : {
       ...existing,
@@ -207,7 +207,9 @@ function mergeShows(
   const merged = new Map<string, ShowGroup>();
   for (const show of localShows) {
     const media = metadata[showMetadataKey(show.name)];
-    const key = media === undefined ? `local:${show.name}` : `anilist:${String(media.id)}`;
+    const key = media === undefined
+      ? `local:${show.name}`
+      : `${media.provider}:${String(media.id)}`;
     const existing = merged.get(key);
     merged.set(key, existing === undefined ? show : {
       ...existing,

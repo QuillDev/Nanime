@@ -28,7 +28,17 @@ export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
   const { user, view } = props;
   return (
     <header className="sticky top-[env(safe-area-inset-top)] z-10 flex items-center gap-4 border-b border-border bg-background px-6 py-4">
-      <BrandLogo className="h-7 w-auto shrink-0" />
+      <button
+        type="button"
+        onClick={navigateToShows}
+        onFocus={preloadMediaApp}
+        onPointerDown={preloadMediaApp}
+        onPointerEnter={preloadMediaApp}
+        className="shrink-0 cursor-pointer"
+        aria-label="Go to library"
+      >
+        <BrandLogo className="h-7 w-auto" />
+      </button>
       {props.view === "library" && (
         <LibrarySearch
           query={props.query}

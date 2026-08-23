@@ -4,10 +4,14 @@ import type { Server } from "bun";
 import {
   aniListErrorResponse,
   linkAniListResponse,
+  linkJikanResponse,
+  jikanErrorResponse,
   metadataResponse,
   metadataRefreshStatusResponse,
   searchAniListResponse,
+  searchJikanResponse,
   startMetadataRefreshResponse,
+  updateMetadataAniListIdResponse,
 } from "./anilist.ts";
 import { dismissPlaybackProgress, playbackProgressResponse, updatePlaybackProgress } from "./playback.ts";
 import {
@@ -346,9 +350,24 @@ async function administrationRoute(context: RouteContext): Promise<Response | nu
       ? linkAniListResponse(req)
       : new Response("Forbidden", { status: 403 });
   }
+  if (pathname === "/api/jikan/search" && req.method === "GET") {
+    return user.isAdmin
+      ? searchJikanResponse(url)
+      : new Response("Forbidden", { status: 403 });
+  }
+  if (pathname === "/api/jikan/link" && req.method === "POST") {
+    return user.isAdmin
+      ? linkJikanResponse(req)
+      : new Response("Forbidden", { status: 403 });
+  }
   if (pathname === "/api/metadata/refresh" && req.method === "GET") {
     return user.isAdmin
       ? metadataRefreshStatusResponse()
+      : new Response("Forbidden", { status: 403 });
+  }
+  if (pathname === "/api/metadata/anilist-id" && req.method === "PUT") {
+    return user.isAdmin
+      ? updateMetadataAniListIdResponse(req)
       : new Response("Forbidden", { status: 403 });
   }
   if (pathname === "/api/metadata/refresh" && req.method === "POST") {
@@ -453,7 +472,8 @@ async function route(context: RequestContext): Promise<Response> {
     }
     return await authenticatedRoute({ pathname, url, req, user });
   } catch (error) {
-    return aniListErrorResponse(error) ?? new Response("Server error", { status: 500 });
+    return aniListErrorResponse(error) ?? jikanErrorResponse(error) ??
+      new Response("Server error", { status: 500 });
   }
 }
 
