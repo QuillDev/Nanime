@@ -1,6 +1,7 @@
 import { useCallback, useState, type ChangeEvent } from "react";
 import { useCancelTorrent } from "../hooks/useCancelTorrent.ts";
 import type { TorrentStatus } from "../types.ts";
+import { DialogActions } from "./DialogActions.tsx";
 import {
   Dialog,
   DialogContent,
@@ -66,24 +67,14 @@ export function CancelTorrentDialog({
         {cancellation.error !== null && (
           <p className="text-sm text-destructive">{cancellation.error.message}</p>
         )}
-        <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={cancellation.isPending}
-            className="h-10 rounded-md border border-border bg-background px-4 text-sm font-semibold hover:bg-accent disabled:text-muted-foreground"
-          >
-            Keep downloading
-          </button>
-          <button
-            type="button"
-            onClick={handleCancelTorrent}
-            disabled={cancellation.isPending}
-            className="h-10 rounded-md bg-destructive px-4 text-sm font-semibold text-destructive-foreground disabled:bg-muted disabled:text-muted-foreground"
-          >
-            {cancellation.isPending ? "Cancelling…" : "Cancel torrent"}
-          </button>
-        </div>
+        <DialogActions
+          actionLabel="Cancel torrent"
+          cancelLabel="Keep downloading"
+          onAction={handleCancelTorrent}
+          onCancel={onClose}
+          pending={cancellation.isPending}
+          pendingLabel="Cancelling…"
+        />
       </DialogContent>
     </Dialog>
   );

@@ -1,5 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { database } from "./database.ts";
+import type { AuthUser } from "../shared/types.ts";
+
+export type { AuthUser } from "../shared/types.ts";
 
 const SESSION_COOKIE = "nanime_session";
 const SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
@@ -17,12 +20,6 @@ interface UserRow {
   readonly password_hash: string | null;
   readonly setup_token_hash: string | null;
   readonly is_admin: number;
-}
-
-export interface AuthUser {
-  readonly id: number;
-  readonly username: string;
-  readonly isAdmin: boolean;
 }
 
 interface Credentials {

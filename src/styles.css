@@ -177,6 +177,12 @@
     overflow: hidden;
   }
 
+  .skeleton {
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+    background-image: linear-gradient(90deg, var(--muted) 0%, var(--accent) 50%, var(--muted) 100%);
+    background-size: 200% 100%;
+  }
+
   .collapsible-content[data-state="open"] {
     animation: collapsible-drawer-down 250ms ease-out;
   }
@@ -223,6 +229,16 @@
     }
   }
 
+  @keyframes skeleton-shimmer {
+    from {
+      background-position: 200% 0;
+    }
+
+    to {
+      background-position: -200% 0;
+    }
+  }
+
   ::view-transition-old(root),
   ::view-transition-new(root) {
     animation: none;
@@ -236,7 +252,8 @@
   @media (prefers-reduced-motion: reduce) {
     .collapsible-content,
     .collapsible-chevron,
-    .anime-description {
+    .anime-description,
+    .skeleton {
       animation: none;
       transition: none;
     }

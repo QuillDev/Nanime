@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import type {
   AniListMedia,
   MediaEntry,
@@ -21,6 +21,8 @@ import {
 } from "./ContinueWatching.tsx";
 import { ShowGrid } from "./ShowGrid.tsx";
 import { ShowPage } from "./ShowPage.tsx";
+
+export { LibrarySkeleton } from "./Skeleton.tsx";
 
 const EMPTY_METADATA: ShowMetadata = {};
 
@@ -101,12 +103,7 @@ type LinkTarget =
   | { readonly type: "show" }
   | { readonly type: "season"; readonly season: SeasonGroup };
 
-function useLibraryNavigation(): {
-  readonly linkTarget: LinkTarget | null;
-  readonly handleShowLink: () => void;
-  readonly handleSeasonLink: (season: SeasonGroup) => void;
-  readonly handleLinkClose: () => void;
-} {
+function useLibraryNavigation() {
   const [linkTarget, setLinkTarget] = useState<LinkTarget | null>(null);
   const handleShowLink = useCallback(() => setLinkTarget({ type: "show" }), []);
   const handleSeasonLink = useCallback((season: SeasonGroup) => {
@@ -144,16 +141,17 @@ interface GroupedShowsOptions {
 
 function useGroupedShows(options: GroupedShowsOptions): GroupedShows {
   const { entries, query, selectedShowName, metadata } = options;
+  const deferredQuery = useDeferredValue(query);
+  const grouped = useMemo(() => groupShows(entries, metadata), [entries, metadata]);
   return useMemo(() => {
-    const grouped = groupShows(entries, metadata);
-    const needle = query.trim().toLowerCase();
+    const needle = deferredQuery.trim().toLowerCase();
     return {
       shows: needle === "" ? grouped : grouped.filter((show) => matchesQuery(show, needle)),
       selectedShow: grouped.find((show) => (
         selectedShowName !== null && show.sourceNames.includes(selectedShowName)
       )) ?? null,
     };
-  }, [entries, query, selectedShowName, metadata]);
+  }, [deferredQuery, grouped, selectedShowName]);
 }
 
 export function Library({

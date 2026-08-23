@@ -1,5 +1,5 @@
 import type { MediaEntry } from "../types.ts";
-import { formatDuration } from "../api.ts";
+import { formatDuration } from "../format.ts";
 
 interface PlayerDescriptionProps {
   readonly entry: MediaEntry;

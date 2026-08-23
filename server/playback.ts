@@ -1,4 +1,6 @@
 import { database } from "./database.ts";
+import type { PlaybackProgress } from "../shared/types.ts";
+import type { AniListPlaybackTarget } from "./anilistAccountTypes.ts";
 
 const MINIMUM_PROGRESS_SECONDS = 30;
 
@@ -21,25 +23,9 @@ interface PlaybackUpdate {
   readonly totalEpisodes?: unknown;
 }
 
-interface PlaybackSyncTarget {
-  readonly mediaId: number;
-  readonly episode: number;
-  readonly totalEpisodes: number | null;
-  readonly completed: boolean;
-}
-
 interface PlaybackUpdateOptions {
   readonly mediaExists: (rel: string) => Promise<boolean>;
-  readonly sync?: (target: PlaybackSyncTarget) => Promise<void>;
-}
-
-export interface PlaybackProgress {
-  readonly rel: string;
-  readonly position: number;
-  readonly duration: number;
-  readonly completed: boolean;
-  readonly updatedAt: number;
-  readonly dismissedAt: number | null;
+  readonly sync?: (target: AniListPlaybackTarget) => Promise<void>;
 }
 
 const listProgress = database.query<PlaybackRow, [number]>(`

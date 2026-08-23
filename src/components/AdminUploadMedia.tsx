@@ -1,6 +1,6 @@
 import { useCallback, useState, type ChangeEvent, type FormEvent } from "react";
 import { FileUp } from "lucide-react";
-import { formatSize } from "../api.ts";
+import { formatSize } from "../format.ts";
 import { useUploadMedia } from "../hooks/useUploadMedia.ts";
 import type { MediaUploadProgress } from "../mediaUpload.ts";
 import { AdminPanel } from "./AdminPanel.tsx";

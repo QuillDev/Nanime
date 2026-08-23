@@ -6,9 +6,9 @@ import type {
   PlaybackProgressMap,
   ShowMetadata,
 } from "../types.ts";
-import { formatDuration } from "../api.ts";
+import { formatDuration } from "../format.ts";
 import { episodeMetadata } from "../lib/anilist.ts";
-import { hasMeaningfulPlaybackProgress } from "../lib/playback.ts";
+import { hasMeaningfulPlaybackProgress, preloadPlayer } from "../lib/playback.ts";
 import { useDismissPlaybackProgress } from "../hooks/usePlaybackProgress.ts";
 import {
   groupShows,
@@ -58,6 +58,9 @@ function ContinueCard({ item, onSelect, onDismiss }: ContinueCardProps): React.J
             <button
               type="button"
               onClick={handleClick}
+              onFocus={preloadPlayer}
+              onPointerDown={preloadPlayer}
+              onPointerEnter={preloadPlayer}
               className="w-full overflow-hidden rounded-lg border border-border bg-card text-left transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className="relative block">

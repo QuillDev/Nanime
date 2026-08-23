@@ -1,14 +1,32 @@
+import { lazy, Suspense } from "react";
 import { useCurrentUser } from "./hooks/useAuth.ts";
 import { LoginScreen } from "./components/LoginScreen.tsx";
-import { MediaApp } from "./components/MediaApp.tsx";
-import { AdminApp } from "./components/AdminApp.tsx";
-import { ProfileApp } from "./components/ProfileApp.tsx";
 import {
   navigateToShows,
   useMediaRoute,
   type MediaRoute,
 } from "./hooks/useMediaRoute.ts";
 import type { AuthUser } from "./types.ts";
+import {
+  loadAdminApp,
+  loadMediaApp,
+  loadProfileApp,
+} from "./routeModules.ts";
+import { AppShellSkeleton, SessionSkeleton } from "./components/Skeleton.tsx";
+
+const AdminApp = lazy(async () => {
+  const module = await loadAdminApp();
+  return { default: module.AdminApp };
+});
+const MediaApp = lazy(async () => {
+  const module = await loadMediaApp();
+  return { default: module.MediaApp };
+});
+const ProfileApp = lazy(async () => {
+  const module = await loadProfileApp();
+  return { default: module.ProfileApp };
+});
+const ROUTE_LOADING = <AppShellSkeleton />;
 
 function AdminForbidden(): React.JSX.Element {
   return (
@@ -30,11 +48,7 @@ export function App(): React.JSX.Element {
   const currentUser = useCurrentUser();
   const route = useMediaRoute();
   if (currentUser.status === "pending") {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
-        Loading…
-      </main>
-    );
+    return <SessionSkeleton />;
   }
   if (currentUser.status === "error") {
     return (
@@ -43,9 +57,14 @@ export function App(): React.JSX.Element {
       </main>
     );
   }
-  return currentUser.data === null
-    ? <LoginScreen />
-    : authenticatedView(currentUser.data, route);
+  if (currentUser.data === null) {
+    return <LoginScreen />;
+  }
+  return (
+    <Suspense fallback={ROUTE_LOADING}>
+      {authenticatedView(currentUser.data, route)}
+    </Suspense>
+  );
 }
 
 function authenticatedView(user: AuthUser, route: MediaRoute): React.JSX.Element {

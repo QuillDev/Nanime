@@ -15,7 +15,7 @@ function ShowCard({ show, media, onSelect }: ShowCardProps): React.JSX.Element {
     onSelect(show);
   }, [onSelect, show]);
   const [preview] = show.entries;
-  const cover = media?.coverImage.extraLarge ?? media?.coverImage.large;
+  const cover = media?.coverImage.large ?? media?.coverImage.extraLarge;
 
   return (
     <div>

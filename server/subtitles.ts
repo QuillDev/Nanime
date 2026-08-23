@@ -2,21 +2,11 @@ import { randomUUID } from "node:crypto";
 import { chmod, link, open, readdir, realpath, unlink } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { invalidateMediaScan, scannedTrackSizes } from "./scanCache.ts";
+import { probeStreams } from "./ffprobe.ts";
+import { jsonObject, type JsonObject } from "./json.ts";
+import { fileSystemErrorCode } from "./fileSystemError.ts";
 
 export { audioTracksResponse, hlsPlaylist, hlsSegment } from "./hls.ts";
-
-interface ProbeSubtitleStream {
-  readonly index?: unknown;
-  readonly codec_name?: unknown;
-  readonly tags?: {
-    readonly language?: unknown;
-    readonly title?: unknown;
-  };
-}
-
-interface ProbeResult {
-  readonly streams?: readonly ProbeSubtitleStream[];
-}
 
 export interface SubtitleTrack {
   readonly index: number;
@@ -35,10 +25,10 @@ const TEXT_SUBTITLE_CODECS = new Set([
 ]);
 const trackCache = new Map<string, Promise<readonly SubtitleTrack[]>>();
 const subtitleCache = new Map<string, Promise<string | null>>();
-const SIDECAR_EXTENSIONS: Readonly<Record<string, string>> = {
+const SIDECAR_EXTENSIONS = new Map(Object.entries({
   ".ass": "ass",
   ".srt": "subrip",
-};
+} as const));
 const MAX_SUBTITLE_BYTES = 5 * 1024 * 1024;
 const MAX_OFFSET_SECONDS = 3600;
 
@@ -54,45 +44,32 @@ export async function sidecarSubtitlePaths(
   return tracks.flatMap((track) => indexes.has(track.index) ? [track.path] : []);
 }
 
-function parseProbeResult(text: string): ProbeResult {
-  try {
-    const value: unknown = JSON.parse(text);
-    return typeof value === "object" && value !== null ? value as ProbeResult : {};
-  } catch {
-    return {};
-  }
-}
-
-function subtitleTrack(stream: ProbeSubtitleStream): SubtitleTrack | null {
-  if (typeof stream.index !== "number" || typeof stream.codec_name !== "string") {
+function subtitleTrack(stream: JsonObject): SubtitleTrack | null {
+  const { index, codec_name: codec } = stream;
+  if (typeof index !== "number" || typeof codec !== "string") {
     return null;
   }
-  if (!TEXT_SUBTITLE_CODECS.has(stream.codec_name)) {
+  if (!TEXT_SUBTITLE_CODECS.has(codec)) {
     return null;
   }
-  const language = typeof stream.tags?.language === "string" ? stream.tags.language : "und";
-  const label = typeof stream.tags?.title === "string"
-    ? stream.tags.title
+  const tags = jsonObject(stream["tags"]);
+  const language = typeof tags?.["language"] === "string" ? tags["language"] : "und";
+  const label = typeof tags?.["title"] === "string"
+    ? tags["title"]
     : `${language.toUpperCase()} subtitles`;
-  return { index: stream.index, codec: stream.codec_name, language, label };
+  return { index, codec, language, label };
 }
 
 async function probeSubtitleTracks(abs: string): Promise<readonly SubtitleTrack[]> {
-  const proc = Bun.spawn([
-    "ffprobe", "-v", "error", "-select_streams", "s",
-    "-show_entries", "stream=index,codec_name:stream_tags=language,title",
-    "-of", "json", abs,
-  ], { stdout: "pipe", stderr: "ignore" });
-  const [text, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    proc.exited,
-  ]);
-  return exitCode === 0
-    ? (parseProbeResult(text).streams ?? []).flatMap((stream) => {
-        const track = subtitleTrack(stream);
-        return track === null ? [] : [track];
-      })
-    : [];
+  const streams = await probeStreams({
+    input: abs,
+    selectStreams: "s",
+    showEntries: "stream=index,codec_name:stream_tags=language,title",
+  });
+  return streams.flatMap((stream) => {
+    const track = subtitleTrack(stream);
+    return track === null ? [] : [track];
+  });
 }
 
 function sidecarLanguage(suffix: string): string {
@@ -119,7 +96,7 @@ async function sidecarSubtitleTracks(abs: string): Promise<readonly SidecarSubti
   for (const entry of entries) {
     const sidecarExtension = extname(entry.name).toLowerCase();
     if (
-      entry.isFile() && SIDECAR_EXTENSIONS[sidecarExtension] !== undefined &&
+      entry.isFile() && SIDECAR_EXTENSIONS.has(sidecarExtension) &&
       (entry.name === `${stem}${sidecarExtension}` || entry.name.startsWith(`${stem}.`))
     ) {
       candidates.push({ name: entry.name, extension: sidecarExtension });
@@ -134,7 +111,7 @@ async function sidecarSubtitleTracks(abs: string): Promise<readonly SidecarSubti
       const language = sidecarLanguage(suffix);
       tracks.push({
         index: -(index + 1),
-        codec: SIDECAR_EXTENSIONS[candidate.extension] ?? "text",
+        codec: SIDECAR_EXTENSIONS.get(candidate.extension) ?? "text",
         language,
         label: sidecarLabel(suffix, language),
         path: join(directory, candidate.name),
@@ -301,7 +278,7 @@ export async function subtitleUploadResponse(
     !(subtitle instanceof File) || !safeSubtitleName(subtitle.name) ||
     subtitle.size <= 0 || subtitle.size > MAX_SUBTITLE_BYTES ||
     !Number.isFinite(offsetSeconds) || Math.abs(offsetSeconds) > MAX_OFFSET_SECONDS ||
-    SIDECAR_EXTENSIONS[extension] === undefined
+    !SIDECAR_EXTENSIONS.has(extension)
   ) {
     return new Response("Choose a valid SRT or ASS subtitle file", { status: 400 });
   }
@@ -338,7 +315,7 @@ export async function subtitleUploadResponse(
     }
     await link(offsetSeconds === 0 ? temporary : synchronized, destination);
   } catch (error) {
-    const code = typeof error === "object" && error !== null ? Reflect.get(error, "code") : null;
+    const code = fileSystemErrorCode(error);
     return new Response(
       code === "EEXIST" ? "That subtitle already exists" : "Could not save subtitle",
       { status: code === "EEXIST" ? 409 : 500 },

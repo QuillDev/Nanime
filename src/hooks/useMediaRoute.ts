@@ -137,11 +137,11 @@ function commitSearch(query: string): void {
 }
 
 export function updateSearch(query: string): void {
-  const startTransition: unknown = Reflect.get(document, "startViewTransition");
   const reduceMotion = globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (typeof startTransition !== "function" || reduceMotion) {
+  if (!("startViewTransition" in document) ||
+    typeof document.startViewTransition !== "function" || reduceMotion) {
     commitSearch(query);
     return;
   }
-  Reflect.apply(startTransition, document, [() => commitSearch(query)]);
+  document.startViewTransition(() => commitSearch(query));
 }

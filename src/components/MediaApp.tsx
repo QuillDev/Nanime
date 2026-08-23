@@ -1,4 +1,4 @@
-import { useCallback, type ChangeEvent } from "react";
+import { lazy, Suspense, useCallback, type ChangeEvent } from "react";
 import type { AuthUser, MediaEntry, ShowMetadata } from "../types.ts";
 import {
   aniListPlaybackTarget,
@@ -17,9 +17,23 @@ import {
   updateSearch,
   useMediaRoute,
 } from "../hooks/useMediaRoute.ts";
-import { Library } from "./Library.tsx";
-import { Player } from "./Player.tsx";
+import { Library, LibrarySkeleton } from "./Library.tsx";
 import { MediaHeader } from "./MediaHeader.tsx";
+import { loadPlayer } from "../routeModules.ts";
+
+const Player = lazy(async () => {
+  const module = await loadPlayer();
+  return { default: module.Player };
+});
+
+const PLAYER_LOADING = (
+  <output
+    className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black text-sm text-muted-foreground"
+  >
+    <span className="skeleton h-1 w-48 rounded-full" aria-hidden="true" />
+    Preparing player…
+  </output>
+);
 
 const EMPTY_PROGRESS = {};
 const EMPTY_ENTRIES: readonly MediaEntry[] = [];
@@ -33,12 +47,7 @@ function useAdjacentEpisodeNavigation(
   entries: readonly MediaEntry[] | undefined,
   selected: MediaEntry | null,
   metadata: ShowMetadata,
-): {
-  readonly previous: MediaEntry | null;
-  readonly next: MediaEntry | null;
-  readonly handlePrevious: () => void;
-  readonly handleNext: () => void;
-} {
+) {
   const previous = entries === undefined || selected === null
     ? null
     : previousEpisode(entries, selected.rel, metadata);
@@ -88,7 +97,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
       />
       <main className="mx-auto max-w-7xl px-6 py-6">
         {library.status === "pending" && (
-          <p className="py-16 text-center text-muted-foreground">Loading library…</p>
+          <LibrarySkeleton />
         )}
         {library.status === "error" && (
           <p className="py-16 text-center text-destructive">
@@ -109,17 +118,19 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
         )}
       </main>
       {selected !== null && (
-        <Player
-          key={selected.rel}
-          entry={selected}
-          anilistTarget={aniListPlaybackTarget(library.data, selected, metadata.data ?? {})}
-          nextAvailable={navigation.next !== null}
-          previousAvailable={navigation.previous !== null}
-          initialProgress={playbackProgress.data?.[selected.rel]}
-          onClose={closeEpisode}
-          onNext={navigation.handleNext}
-          onPrevious={navigation.handlePrevious}
-        />
+        <Suspense fallback={PLAYER_LOADING}>
+          <Player
+            key={selected.rel}
+            entry={selected}
+            anilistTarget={aniListPlaybackTarget(library.data, selected, metadata.data ?? {})}
+            nextAvailable={navigation.next !== null}
+            previousAvailable={navigation.previous !== null}
+            initialProgress={playbackProgress.data?.[selected.rel]}
+            onClose={closeEpisode}
+            onNext={navigation.handleNext}
+            onPrevious={navigation.handlePrevious}
+          />
+        </Suspense>
       )}
     </div>
   );

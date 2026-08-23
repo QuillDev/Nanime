@@ -6,6 +6,10 @@ import { navigateToAdmin, navigateToShows } from "../hooks/useMediaRoute.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
 import { LibrarySearch } from "./LibrarySearch.tsx";
 import { UserMenu } from "./UserMenu.tsx";
+import {
+  preloadAdminApp,
+  preloadMediaApp,
+} from "../routeModules.ts";
 
 type MediaHeaderProps = {
   readonly user: AuthUser;
@@ -42,6 +46,9 @@ export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
           type="button"
           data-active={view === "library"}
           onClick={navigateToShows}
+          onFocus={preloadMediaApp}
+          onPointerDown={preloadMediaApp}
+          onPointerEnter={preloadMediaApp}
           className="mobile-nav-item"
           aria-label="Library"
         >
@@ -53,6 +60,9 @@ export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
             type="button"
             data-active={view === "admin"}
             onClick={navigateToAdmin}
+            onFocus={preloadAdminApp}
+            onPointerDown={preloadAdminApp}
+            onPointerEnter={preloadAdminApp}
             className="mobile-nav-item"
             aria-label="Admin dashboard"
           >

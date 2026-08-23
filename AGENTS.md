@@ -47,6 +47,14 @@ oxlint findings and React Doctor must report `Score: 100 / 100` with zero issues
 Do not suppress findings or weaken configuration to make the gate pass. Then run
 `bun run build` before a release.
 
+The lint gate includes the upstream `oxlint-plugin-anti-slop` rules that reject
+evidence-losing assertions, widened known values, unsafe dictionaries, dynamic
+reflection, and similar low-signal patterns. Three deliberately architectural
+rules stay disabled: runtime `typeof` checks and `unknown` parser parameters are
+required at untrusted I/O boundaries, while mandatory comments on every type
+assertion would reward comment volume instead of validated parsing. Do not enable
+those rules without first separating boundary-parser files from application code.
+
 ## Commands
 
 - `bun install` — install dependencies.

@@ -128,6 +128,10 @@ const trackPruneOperationSchema = schema.object({
   subtitleIndices: trackIndicesSchema,
 });
 const transcodePathsSchema = schema.array(schema.string(), { minItems: 1, maxItems: 500 });
+const transcodePresetSchema = schema.union([
+  schema.literal("space-saver"),
+  schema.literal("compatibility"),
+]);
 
 export const app = new Elysia({ name: "nanime" })
   .onError(({ code }) => securityHeaders(new Response(
@@ -209,7 +213,10 @@ export const app = new Elysia({ name: "nanime" })
   .post("/api/transcodes", ({ request, server, body }) => (
     handle(jsonRequest(request, body), server)
   ), {
-    body: schema.object({ path: schema.string(), preset: schema.string() }),
+    body: schema.object({
+      path: schema.string(),
+      preset: transcodePresetSchema,
+    }),
     response: transcodeJobSchema,
   })
   .post("/api/transcodes/bulk", ({ request, server, body }) => (
@@ -217,7 +224,7 @@ export const app = new Elysia({ name: "nanime" })
   ), {
     body: schema.object({
       paths: transcodePathsSchema,
-      preset: schema.string(),
+      preset: transcodePresetSchema,
     }),
     response: schema.array(transcodeJobSchema),
   })

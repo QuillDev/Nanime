@@ -34,8 +34,8 @@ function errorDetail(error: EdenError): string {
     }
     return detail.length <= 500 ? detail : `${detail.slice(0, 500)}…`;
   }
-  if (typeof error.value === "object" && error.value !== null) {
-    const message = Reflect.get(error.value, "message");
+  if (typeof error.value === "object" && error.value !== null && "message" in error.value) {
+    const { message } = error.value;
     if (typeof message === "string" && message !== "") {
       return message;
     }
@@ -47,7 +47,7 @@ function errorSource(error: EdenError): string | null {
   if (typeof error.value !== "object" || error.value === null) {
     return null;
   }
-  const source = Reflect.get(error.value, "source");
+  const source = "source" in error.value ? error.value.source : null;
   return typeof source === "string" && source !== "" ? source : null;
 }
 
@@ -55,7 +55,9 @@ function errorRetryAfter(error: EdenError): number | null {
   if (typeof error.value !== "object" || error.value === null) {
     return null;
   }
-  const seconds = Reflect.get(error.value, "retryAfterSeconds");
+  const seconds = "retryAfterSeconds" in error.value
+    ? error.value.retryAfterSeconds
+    : null;
   return typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 ? seconds : null;
 }
 

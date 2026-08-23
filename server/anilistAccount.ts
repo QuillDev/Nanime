@@ -7,7 +7,8 @@ import {
 } from "node:crypto";
 import { database } from "./database.ts";
 import { createSessionRedirect, type AuthUser } from "./auth.ts";
-import { aniListGraphQl } from "./anilistClient.ts";
+import { aniListGraphQl, type GraphQlVariables } from "./anilistClient.ts";
+import { jsonObject } from "./json.ts";
 import type {
   AniListAccountRow,
   AniListListEntry,
@@ -180,7 +181,7 @@ function decryptToken(value: string, config: OAuthConfig): string {
   ]).toString("utf8");
 }
 
-function graphQl<T>(token: string, query: string, variables: object): Promise<T> {
+function graphQl<T>(token: string, query: string, variables: GraphQlVariables): Promise<T> {
   return aniListGraphQl<T>({ query, variables, token });
 }
 
@@ -358,12 +359,11 @@ async function fetchListEntry(token: string, mediaId: number): Promise<AniListLi
 const LIST_STATUSES = new Set(["NONE", "CURRENT", "PLANNING", "COMPLETED", "DROPPED", "PAUSED", "REPEATING"]);
 
 function validListUpdate(value: unknown): value is ListUpdate {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  const update = jsonObject(value);
+  if (update === null) {
     return false;
   }
-  const status: unknown = Reflect.get(value, "status");
-  const progress: unknown = Reflect.get(value, "progress");
-  const score: unknown = Reflect.get(value, "score");
+  const { status, progress, score } = update;
   return (status === undefined || typeof status === "string" && LIST_STATUSES.has(status)) &&
     (progress === undefined || Number.isInteger(progress) && (progress as number) >= 0) &&
     (score === undefined || typeof score === "number" && Number.isFinite(score) && score >= 0 && score <= 10) &&
@@ -377,21 +377,21 @@ async function saveListEntry(
 ): Promise<AniListListEntry> {
   const argumentsList = ["mediaId: $mediaId"];
   const declarations = ["$mediaId: Int!"];
-  const variables: Record<string, number | string> = { mediaId };
+  const variables = new Map<string, number | string>([["mediaId", mediaId]]);
   if (update.status !== undefined) {
     argumentsList.push("status: $status");
     declarations.push("$status: MediaListStatus");
-    variables["status"] = update.status;
+    variables.set("status", update.status);
   }
   if (update.progress !== undefined) {
     argumentsList.push("progress: $progress");
     declarations.push("$progress: Int");
-    variables["progress"] = update.progress;
+    variables.set("progress", update.progress);
   }
   if (update.score !== undefined) {
     argumentsList.push("scoreRaw: $scoreRaw");
     declarations.push("$scoreRaw: Int");
-    variables["scoreRaw"] = Math.round(update.score * 10);
+    variables.set("scoreRaw", Math.round(update.score * 10));
   }
   const query = `mutation (${declarations.join(", ")}) {
     SaveMediaListEntry(${argumentsList.join(", ")}) {
@@ -400,7 +400,7 @@ async function saveListEntry(
   }`;
   const data = await aniListGraphQl<SaveMediaListData>({
     query,
-    variables,
+    variables: Object.fromEntries(variables),
     token,
     mutation: true,
   });

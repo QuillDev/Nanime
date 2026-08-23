@@ -217,12 +217,15 @@ export async function addTorrent(
   magnet: string,
   showFolder: string,
 ): Promise<void> {
-  const body = {
-    ...(file === null ? {} : { torrent: file }),
-    ...(magnet === "" ? {} : { magnet }),
-    showFolder,
-  };
+  const body = torrentBody(file, magnet, showFolder);
   unwrap(await api.api.torrents.post(body), "Adding torrent");
+}
+
+function torrentBody(file: File | null, magnet: string, showFolder: string) {
+  if (file === null) {
+    return magnet === "" ? { showFolder } : { magnet, showFolder };
+  }
+  return magnet === "" ? { torrent: file, showFolder } : { torrent: file, magnet, showFolder };
 }
 
 export async function fetchTorrents(signal: AbortSignal): Promise<readonly TorrentStatus[]> {
@@ -238,19 +241,22 @@ export async function fetchStorageStatus(signal: AbortSignal): Promise<StorageSt
     "Storage status request",
   );
 }
+
 export async function fetchMediaScans(signal: AbortSignal): Promise<readonly MediaScan[]> {
-  return unwrap(await api.api.media.scans.get({ fetch: { signal } }), "Media scans request") as readonly MediaScan[];
+  return unwrap(await api.api.media.scans.get({ fetch: { signal } }), "Media scans request");
 }
 
 export async function startMediaScans(paths: readonly string[]): Promise<readonly MediaScan[]> {
   return unwrap(
     await api.api.media.scans.post({ paths: [...paths] }),
     "Starting media scans",
-  ) as readonly MediaScan[];
+  );
 }
+
 export async function fetchTranscodes(signal: AbortSignal): Promise<readonly TranscodeJob[]> {
-  return unwrap(await api.api.transcodes.get({ fetch: { signal } }), "Transcode jobs request") as readonly TranscodeJob[];
+  return unwrap(await api.api.transcodes.get({ fetch: { signal } }), "Transcode jobs request");
 }
+
 export async function startTranscodes(
   paths: readonly string[],
   preset: TranscodePreset,
@@ -258,15 +264,21 @@ export async function startTranscodes(
   return unwrap(
     await api.api.transcodes.bulk.post({ paths: [...paths], preset }),
     "Starting transcodes",
-  ) as readonly TranscodeJob[];
+  );
 }
 
-export async function deleteTranscode(id: string): Promise<void> { unwrap(await api.api.transcodes({ id }).delete(), "Deleting optimized copy"); }
+export async function deleteTranscode(id: string): Promise<void> {
+  unwrap(await api.api.transcodes({ id }).delete(), "Deleting optimized copy");
+}
 
 export async function deleteTranscodeOriginal(id: string): Promise<TranscodeJob> {
-  return unwrap(await api.api.transcodes({ id }).original.delete(), "Deleting original") as TranscodeJob;
+  return unwrap(await api.api.transcodes({ id }).original.delete(), "Deleting original");
 }
-export async function cancelTranscode(id: string): Promise<TranscodeJob> { return unwrap(await api.api.transcodes({ id }).cancel.post(), "Cancelling transcode") as TranscodeJob; }
+
+export async function cancelTranscode(id: string): Promise<TranscodeJob> {
+  return unwrap(await api.api.transcodes({ id }).cancel.post(), "Cancelling transcode");
+}
+
 export async function searchNyaa(
   options: { readonly search: string; readonly category: string; readonly trusted: boolean },
   signal: AbortSignal,
@@ -286,5 +298,3 @@ export async function deleteMedia(paths: readonly string[]): Promise<number> {
     "Deleting media",
   ).deleted;
 }
-
-export { formatDuration, formatSize } from "./format.ts";

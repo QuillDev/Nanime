@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { lstat, link, mkdir, open, realpath, unlink } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
+import { fileSystemErrorCode } from "./fileSystemError.ts";
 
 const MAX_CHUNK_BYTES = 8 * 1024 * 1024;
 const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024 * 1024;
@@ -24,7 +25,7 @@ interface UploadStartBody {
   readonly size?: unknown;
 }
 
-export interface MediaUploadOptions {
+interface MediaUploadOptions {
   readonly mediaRoot: string;
   readonly videoExtensions: ReadonlySet<string>;
   readonly userId: number;
@@ -207,7 +208,7 @@ async function completeUpload(id: string, userId: number): Promise<Response> {
   try {
     await link(session.temporaryPath, session.destinationPath);
   } catch (error) {
-    const code = typeof error === "object" && error !== null ? Reflect.get(error, "code") : null;
+    const code = fileSystemErrorCode(error);
     return new Response(
       code === "EEXIST" ? "A file with that name already exists" : "Could not finish upload",
       { status: code === "EEXIST" ? 409 : 500 },

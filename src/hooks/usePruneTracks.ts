@@ -2,6 +2,8 @@ import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/r
 import { pruneTracks } from "../trackPruning.ts";
 import type { TrackPruneOperation } from "../types.ts";
 
+export type { ManagedTrack, PruneMode } from "../trackPruning.ts";
+
 export function usePruneTracks(): UseMutationResult<number, Error, readonly TrackPruneOperation[]> {
   const client = useQueryClient();
   return useMutation({

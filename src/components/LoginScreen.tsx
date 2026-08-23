@@ -10,13 +10,13 @@ import { BrandLogo } from "./BrandLogo.tsx";
 import { Link2 } from "lucide-react";
 import { useAniListAuthConfig } from "../hooks/useAniListAccount.ts";
 
-const OAUTH_ERRORS: Readonly<Record<string, string>> = {
+const OAUTH_ERRORS = new Map(Object.entries({
   "invalid-state": "The AniList sign-in response could not be verified. Please try again.",
   "expired-state": "The AniList sign-in request expired. Please try again.",
   "not-linked": "That AniList account is not linked to a provisioned Nanime user.",
   "already-linked": "That AniList account is already linked to another user.",
   failed: "AniList sign-in failed. Please try again.",
-};
+} as const));
 
 function useTextField(): readonly [string, (event: ChangeEvent<HTMLInputElement>) => void] {
   const [value, setValue] = useState<string>("");
@@ -26,10 +26,7 @@ function useTextField(): readonly [string, (event: ChangeEvent<HTMLInputElement>
   return [value, handleChange];
 }
 
-function useAuthenticationMutations(): {
-  readonly login: ReturnType<typeof useLogin>;
-  readonly setup: ReturnType<typeof useSetupPassword>;
-} {
+function useAuthenticationMutations() {
   return {
     login: useLogin(),
     setup: useSetupPassword(),
@@ -39,7 +36,7 @@ function useAuthenticationMutations(): {
 function authenticationStatus(
   login: ReturnType<typeof useLogin>,
   setup: ReturnType<typeof useSetupPassword>,
-): { readonly error: Error | null; readonly pending: boolean } {
+) {
   return {
     error: login.error ?? setup.error,
     pending: login.isPending || setup.isPending,
@@ -53,12 +50,7 @@ function authenticationLabel(setupMode: boolean, pending: boolean): string {
   return setupMode ? "Activate account" : "Sign in";
 }
 
-function useCredentialFields(): {
-  readonly username: ReturnType<typeof useTextField>;
-  readonly password: ReturnType<typeof useTextField>;
-  readonly confirmation: ReturnType<typeof useTextField>;
-  readonly setupToken: ReturnType<typeof useTextField>;
-} {
+function useCredentialFields() {
   const username = useTextField();
   const password = useTextField();
   const confirmation = useTextField();
@@ -66,14 +58,7 @@ function useCredentialFields(): {
   return { username, password, confirmation, setupToken };
 }
 
-function useLoginForm(): {
-  readonly fields: ReturnType<typeof useCredentialFields>;
-  readonly setupMode: boolean;
-  readonly error: Error | null;
-  readonly pending: boolean;
-  readonly handleSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  readonly handleModeChange: () => void;
-} {
+function useLoginForm() {
   const fields = useCredentialFields();
   const [setupMode, setSetupMode] = useState<boolean>(false);
   const { login, setup } = useAuthenticationMutations();
@@ -98,7 +83,7 @@ function useLoginForm(): {
 
 function currentOAuthError(): string | undefined {
   const result = new URLSearchParams(globalThis.location.search).get("anilist");
-  return result === null ? undefined : OAUTH_ERRORS[result];
+  return result === null ? undefined : OAUTH_ERRORS.get(result);
 }
 
 export function LoginScreen(): React.JSX.Element {

@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useDeleteMedia } from "../hooks/useDeleteMedia.ts";
 import type { MediaEntry } from "../types.ts";
+import { DialogActions } from "./DialogActions.tsx";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +10,7 @@ import {
   DialogTitle,
 } from "./ui/dialog.tsx";
 
-export interface DeleteMediaTarget {
+interface DeleteMediaTarget {
   readonly label: string;
   readonly entries: readonly MediaEntry[];
   readonly returnToShows: boolean;
@@ -51,24 +52,13 @@ export function DeleteMediaDialog({
         {deletion.error !== null && (
           <p className="text-sm text-destructive">{deletion.error.message}</p>
         )}
-        <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={deletion.isPending}
-            className="h-10 rounded-md border border-border bg-background px-4 text-sm font-semibold hover:bg-accent disabled:text-muted-foreground"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={deletion.isPending}
-            className="h-10 rounded-md bg-destructive px-4 text-sm font-semibold text-destructive-foreground disabled:bg-muted disabled:text-muted-foreground"
-          >
-            {deletion.isPending ? "Deleting…" : "Delete permanently"}
-          </button>
-        </div>
+        <DialogActions
+          actionLabel="Delete permanently"
+          onAction={handleDelete}
+          onCancel={onClose}
+          pending={deletion.isPending}
+          pendingLabel="Deleting…"
+        />
       </DialogContent>
     </Dialog>
   );

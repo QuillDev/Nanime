@@ -3,23 +3,8 @@ import { chmod, lstat, realpath, rename, unlink } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { detachTorrentsForFiles } from "./torrents.ts";
 import { scannedTrackSizes } from "./scanCache.ts";
-
-interface ProbeAudioStream {
-  readonly index?: unknown;
-  readonly codec_name?: unknown;
-  readonly channels?: unknown;
-  readonly disposition?: {
-    readonly default?: unknown;
-  };
-  readonly tags?: {
-    readonly language?: unknown;
-    readonly title?: unknown;
-  };
-}
-
-interface ProbeResult {
-  readonly streams?: readonly ProbeAudioStream[];
-}
+import { probeStreams } from "./ffprobe.ts";
+import { jsonObject, type JsonObject } from "./json.ts";
 
 export interface AudioTrack {
   readonly index: number;
@@ -44,15 +29,6 @@ interface DeleteAudioTrackOptions {
   readonly invalidateSubtitles: (abs: string) => void;
 }
 
-function parseProbeResult(text: string): ProbeResult {
-  try {
-    const value: unknown = JSON.parse(text);
-    return typeof value === "object" && value !== null ? value as ProbeResult : {};
-  } catch {
-    return {};
-  }
-}
-
 function channelLabel(channels: number): string {
   if (channels === 1) {
     return "Mono";
@@ -63,47 +39,45 @@ function channelLabel(channels: number): string {
   return channels > 0 ? `${String(channels)} channels` : "Audio";
 }
 
-function trackLabel(stream: ProbeAudioStream, language: string, channels: number): string {
-  const title = typeof stream.tags?.title === "string" ? stream.tags.title.trim() : "";
+function trackLabel(stream: JsonObject, language: string, channels: number): string {
+  const titleValue = jsonObject(stream["tags"])?.["title"];
+  const title = typeof titleValue === "string" ? titleValue.trim() : "";
   const languageLabel = language === "und" ? "Unknown language" : language.toUpperCase();
   const base = title === "" ? languageLabel : title;
   return `${base} · ${channelLabel(channels)}`;
 }
 
-function audioTrack(stream: ProbeAudioStream): AudioTrack | null {
-  if (typeof stream.index !== "number" || typeof stream.codec_name !== "string") {
+function audioTrack(stream: JsonObject): AudioTrack | null {
+  const { index, codec_name: codec } = stream;
+  if (typeof index !== "number" || typeof codec !== "string") {
     return null;
   }
-  const language = typeof stream.tags?.language === "string"
-    ? stream.tags.language.toLowerCase()
+  const languageValue = jsonObject(stream["tags"])?.["language"];
+  const language = typeof languageValue === "string"
+    ? languageValue.toLowerCase()
     : "und";
-  const channels = typeof stream.channels === "number" ? stream.channels : 0;
+  const channelsValue = stream["channels"];
+  const channels = typeof channelsValue === "number" ? channelsValue : 0;
   return {
-    index: stream.index,
-    codec: stream.codec_name,
+    index,
+    codec,
     language,
     label: trackLabel(stream, language, channels),
     channels,
-    isDefault: stream.disposition?.default === 1,
+    isDefault: jsonObject(stream["disposition"])?.["default"] === 1,
   };
 }
 
 async function probeAudioTracks(abs: string): Promise<readonly AudioTrack[]> {
-  const proc = Bun.spawn([
-    "ffprobe", "-v", "error", "-select_streams", "a",
-    "-show_entries", "stream=index,codec_name,channels:stream_disposition=default:stream_tags=language,title",
-    "-of", "json", abs,
-  ], { stdout: "pipe", stderr: "ignore" });
-  const [text, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    proc.exited,
-  ]);
-  return exitCode === 0
-    ? (parseProbeResult(text).streams ?? []).flatMap((stream) => {
-        const track = audioTrack(stream);
-        return track === null ? [] : [track];
-      })
-    : [];
+  const streams = await probeStreams({
+    input: abs,
+    selectStreams: "a",
+    showEntries: "stream=index,codec_name,channels:stream_disposition=default:stream_tags=language,title",
+  });
+  return streams.flatMap((stream) => {
+    const track = audioTrack(stream);
+    return track === null ? [] : [track];
+  });
 }
 
 export function audioTracks(abs: string): Promise<readonly AudioTrack[]> {

@@ -1,7 +1,7 @@
 import { lstat } from "node:fs/promises";
 import { database } from "./database.ts";
 
-type TrackKind = "audio" | "subtitle";
+export type TrackKind = "audio" | "subtitle";
 
 interface CachedScan {
   readonly status: string;

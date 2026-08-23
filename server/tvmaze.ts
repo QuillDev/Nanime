@@ -1,25 +1,8 @@
 import type { AniListMedia } from "./anilist.ts";
+import type { TvmazeEpisode, TvmazeMatch } from "../shared/types.ts";
+import { jsonObject } from "./json.ts";
 
 const TVMAZE_URL = "https://api.tvmaze.com";
-
-export interface TvmazeEpisode {
-  readonly id: number;
-  readonly season: number;
-  readonly number: number | null;
-  readonly type: string;
-  readonly title: string;
-  readonly summary: string | null;
-  readonly airDate: string | null;
-  readonly thumbnail: string | null;
-}
-
-export interface TvmazeMatch {
-  readonly id: number;
-  readonly name: string;
-  readonly siteUrl: string;
-  readonly premiered: string | null;
-  readonly episodes: readonly TvmazeEpisode[];
-}
 
 interface TvmazeShow {
   readonly id: number;
@@ -28,19 +11,13 @@ interface TvmazeShow {
   readonly premiered: string | null;
 }
 
-function record(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
 function normalizedTitle(value: string): string {
   return value.toLowerCase().replaceAll(/[^\p{Letter}\p{Number}]+/gu, "");
 }
 
 function showFromResult(value: unknown): TvmazeShow | null {
-  const result = record(value);
-  const show = record(result?.["show"]);
+  const result = jsonObject(value);
+  const show = jsonObject(result?.["show"]);
   if (
     typeof show?.["id"] !== "number" ||
     typeof show["name"] !== "string" ||
@@ -77,8 +54,8 @@ export function plainText(value: string | null): string | null {
 }
 
 function episodeFromResult(value: unknown): TvmazeEpisode | null {
-  const episode = record(value);
-  const image = record(episode?.["image"]);
+  const episode = jsonObject(value);
+  const image = jsonObject(episode?.["image"]);
   if (
     typeof episode?.["id"] !== "number" ||
     typeof episode["season"] !== "number" ||

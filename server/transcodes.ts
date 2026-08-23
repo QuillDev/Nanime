@@ -2,18 +2,20 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, realpath, rename, unlink } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { availableParallelism, totalmem } from "node:os";
+import type { TranscodePreset } from "../shared/types.ts";
 import { database } from "./database.ts";
 import { detachTorrentsForFiles } from "./torrents.ts";
 import { readTranscodeProgress } from "./transcodeProgress.ts";
+import type { MediaLibraryOptions } from "./mediaLibraryOptions.ts";
 
-type TranscodePreset = "space-saver" | "compatibility";
+type TranscodeStatus = "cancelled" | "complete" | "failed" | "processing" | "queued";
 
 interface TranscodeRow {
   readonly id: string;
   readonly source_rel: string;
-  readonly preset: string;
+  readonly preset: TranscodePreset;
   readonly output_rel: string;
-  readonly status: string;
+  readonly status: TranscodeStatus;
   readonly input_size: number;
   readonly output_size: number | null;
   readonly progress: number;
@@ -29,12 +31,6 @@ interface StartBody {
   readonly path?: unknown;
   readonly paths?: unknown;
   readonly preset?: unknown;
-}
-
-interface TranscodeOptions {
-  readonly mediaDir: string;
-  readonly mediaRoot: string;
-  readonly videoExtensions: ReadonlySet<string>;
 }
 
 const jobs = database.query<TranscodeRow, []>(`
@@ -77,7 +73,7 @@ const cancelledJobs = new Set<string>();
 const activeProcesses = new Map<string, { kill: () => void }>();
 const OUTPUT_NAME = /^(?<key>[a-f0-9]{24})-(?<id>[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.mkv$/u;
 
-function publicJob(row: TranscodeRow): object {
+function publicJob(row: TranscodeRow) {
   return {
     id: row.id,
     sourcePath: row.source_rel,
@@ -105,23 +101,25 @@ function transcodePreset(value: string): TranscodePreset | null {
   return value === "space-saver" || value === "compatibility" ? value : null;
 }
 
-async function outputDirectory(options: TranscodeOptions): Promise<string | null> {
+async function outputDirectory(options: MediaLibraryOptions): Promise<string | null> {
   const directory = resolve(options.mediaRoot, ".nanime-transcodes");
   await mkdir(directory, { recursive: true, mode: 0o700 }).catch(() => undefined);
   const canonical = await realpath(directory).catch(() => null);
   return canonical !== null && canonical.startsWith(options.mediaRoot + sep) ? canonical : null;
 }
 
-async function pendingOutputPath(row: TranscodeRow, options: TranscodeOptions): Promise<string | null> {
+async function pendingOutputPath(row: TranscodeRow, options: MediaLibraryOptions): Promise<string | null> {
   const name = row.output_rel.startsWith(".nanime-transcodes/")
     ? row.output_rel.slice(".nanime-transcodes/".length)
     : "";
-  if (!OUTPUT_NAME.test(name)) {return null;}
+  if (!OUTPUT_NAME.test(name)) {
+    return null;
+  }
   const directory = await outputDirectory(options);
   return directory === null ? null : join(directory, name);
 }
 
-async function existingOutputPath(row: TranscodeRow, options: TranscodeOptions): Promise<string | null> {
+async function existingOutputPath(row: TranscodeRow, options: MediaLibraryOptions): Promise<string | null> {
   const pending = await pendingOutputPath(row, options);
   const canonical = pending === null ? null : await realpath(pending).catch(() => null);
   return canonical !== null && canonical.startsWith(options.mediaRoot + sep) ? canonical : null;
@@ -134,7 +132,7 @@ async function duration(path: string): Promise<number> {
   return await proc.exited === 0 && Number.isFinite(value) ? value : 0;
 }
 
-async function processJob(row: TranscodeRow, options: TranscodeOptions): Promise<void> {
+async function processJob(row: TranscodeRow, options: MediaLibraryOptions): Promise<void> {
   const [source, output] = await Promise.all([
     safeSource(row.source_rel, options),
     pendingOutputPath(row, options),
@@ -187,13 +185,15 @@ async function processJob(row: TranscodeRow, options: TranscodeOptions): Promise
   }
 }
 
-async function executeJob(row: TranscodeRow, options: TranscodeOptions): Promise<void> {
+async function executeJob(row: TranscodeRow, options: MediaLibraryOptions): Promise<void> {
   try {
     await processJob(row, options);
   } catch (error) {
     if (cancelledJobs.delete(row.id)) {
       const output = await pendingOutputPath(row, options);
-      if (output !== null) {await unlink(output).catch(() => undefined);}
+      if (output !== null) {
+        await unlink(output).catch(() => undefined);
+      }
       updateJob.run("cancelled", null, null, Date.now(), row.id);
     } else {
       const message = error instanceof Error ? error.message : "Transcode process could not start";
@@ -206,7 +206,7 @@ async function executeJob(row: TranscodeRow, options: TranscodeOptions): Promise
   }
 }
 
-function runQueue(options: TranscodeOptions): void {
+function runQueue(options: MediaLibraryOptions): void {
   const queued = jobs.all().toReversed().filter((row) => (
     row.status === "queued" && !activeJobs.has(row.id)
   ));
@@ -216,14 +216,16 @@ function runQueue(options: TranscodeOptions): void {
   }
 }
 
-async function safeSource(path: string, options: TranscodeOptions): Promise<string | null> {
+async function safeSource(path: string, options: MediaLibraryOptions): Promise<string | null> {
   const absolute = resolve(options.mediaDir, path);
-  if (absolute === options.mediaDir || !absolute.startsWith(options.mediaDir + sep)) {return null;}
+  if (absolute === options.mediaDir || !absolute.startsWith(options.mediaDir + sep)) {
+    return null;
+  }
   const canonical = await realpath(absolute).catch(() => null);
   return canonical !== null && canonical.startsWith(options.mediaRoot + sep) ? canonical : null;
 }
 
-async function start(req: Request, options: TranscodeOptions): Promise<Response> {
+async function start(req: Request, options: MediaLibraryOptions): Promise<Response> {
   const body = (await req.json().catch(() => null)) as StartBody | null;
   const path = body?.path;
   const preset = body?.preset;
@@ -239,7 +241,9 @@ async function start(req: Request, options: TranscodeOptions): Promise<Response>
     return new Response("Video not found", { status: 404 });
   }
   const duplicate = jobs.all().some((row) => row.source_rel === path && row.status !== "failed");
-  if (duplicate) {return new Response("This video already has a transcode job", { status: 409 });}
+  if (duplicate) {
+    return new Response("This video already has a transcode job", { status: 409 });
+  }
   const id = randomUUID();
   const extension = ".mkv";
   const key = createHash("sha256").update(path).digest("hex").slice(0, 24);
@@ -250,7 +254,7 @@ async function start(req: Request, options: TranscodeOptions): Promise<Response>
   return Response.json(publicJob(jobById.get(id) as TranscodeRow), { status: 201 });
 }
 
-async function startBulk(req: Request, options: TranscodeOptions): Promise<Response> {
+async function startBulk(req: Request, options: MediaLibraryOptions): Promise<Response> {
   const body = (await req.json().catch(() => null)) as StartBody | null;
   const paths = body?.paths;
   const preset = body?.preset;
@@ -295,7 +299,7 @@ async function startBulk(req: Request, options: TranscodeOptions): Promise<Respo
   return Response.json(queued.map((row) => publicJob(row)), { status: 201 });
 }
 
-async function cancel(row: TranscodeRow, options: TranscodeOptions): Promise<Response> {
+async function cancel(row: TranscodeRow, options: MediaLibraryOptions): Promise<Response> {
   if (row.status !== "queued" && row.status !== "processing") {
     return new Response("Only queued or processing jobs can be cancelled", { status: 409 });
   }
@@ -304,25 +308,35 @@ async function cancel(row: TranscodeRow, options: TranscodeOptions): Promise<Res
   if (row.status === "queued") {
     cancelledJobs.delete(row.id);
     const output = await pendingOutputPath(row, options);
-    if (output !== null) {await unlink(output).catch(() => undefined);}
+    if (output !== null) {
+      await unlink(output).catch(() => undefined);
+    }
   }
   updateJob.run("cancelled", null, null, Date.now(), row.id);
   return Response.json(publicJob(jobById.get(row.id) as TranscodeRow));
 }
 
-async function removeOriginal(row: TranscodeRow, options: TranscodeOptions): Promise<Response> {
-  if (row.status !== "complete" || row.original_deleted === 1) {return new Response("Original cannot be deleted", { status: 409 });}
+async function removeOriginal(row: TranscodeRow, options: MediaLibraryOptions): Promise<Response> {
+  if (row.status !== "complete" || row.original_deleted === 1) {
+    return new Response("Original cannot be deleted", { status: 409 });
+  }
   const [source, output] = await Promise.all([
     safeSource(row.source_rel, options),
     existingOutputPath(row, options),
   ]);
   const preset = transcodePreset(row.preset);
-  if (source === null || output === null || preset === null) {return new Response("Media not found", { status: 404 });}
-  if (!(await detachTorrentsForFiles([source]))) {return new Response("Could not safely detach the torrent", { status: 502 });}
+  if (source === null || output === null || preset === null) {
+    return new Response("Media not found", { status: 404 });
+  }
+  if (!(await detachTorrentsForFiles([source]))) {
+    return new Response("Could not safely detach the torrent", { status: 502 });
+  }
   const extension = extname(output);
   const target = join(dirname(source), `${basename(source, extname(source))}.${preset}${extension}`);
   const targetRel = relative(options.mediaDir, target);
-  if (await lstat(target).catch(() => null) !== null) {return new Response("Optimized destination already exists", { status: 409 });}
+  if (await lstat(target).catch(() => null) !== null) {
+    return new Response("Optimized destination already exists", { status: 409 });
+  }
   await rename(output, target);
   try {
     await unlink(source);
@@ -334,24 +348,58 @@ async function removeOriginal(row: TranscodeRow, options: TranscodeOptions): Pro
   return Response.json(publicJob(jobById.get(row.id) as TranscodeRow));
 }
 
-export async function transcodeResponse(req: Request, pathname: string, options: TranscodeOptions): Promise<Response> {
-  void runQueue(options);
-  if (pathname === "/api/transcodes" && req.method === "GET") {return Response.json(jobs.all().map((row) => publicJob(row)));}
-  if (pathname === "/api/transcodes" && req.method === "POST") {return start(req, options);}
-  if (pathname === "/api/transcodes/bulk" && req.method === "POST") {return startBulk(req, options);}
+async function deleteTranscode(row: TranscodeRow, options: MediaLibraryOptions): Promise<Response> {
+  if (row.original_deleted === 1) {
+    return new Response("The optimized copy is now the library copy", { status: 409 });
+  }
+  if (row.status === "processing") {
+    return new Response("A processing job cannot be removed", { status: 409 });
+  }
+  const output = await existingOutputPath(row, options);
+  if (output !== null) {
+    await unlink(output).catch(() => undefined);
+  }
+  deleteJob.run(row.id);
+  return new Response(null, { status: 204 });
+}
+
+function transcodeJobResponse(
+  req: Request,
+  pathname: string,
+  options: MediaLibraryOptions,
+): Response | Promise<Response> {
   const match = /^\/api\/transcodes\/(?<id>[0-9a-f-]+)(?<action>\/(?:original|cancel))?$/u.exec(pathname);
   const id = match?.groups?.["id"];
   const row = id === undefined ? null : jobById.get(id);
-  if (row === null) {return new Response("Transcode job not found", { status: 404 });}
-  if (match?.groups?.["action"] === "/original" && req.method === "DELETE") {return removeOriginal(row, options);}
-  if (match?.groups?.["action"] === "/cancel" && req.method === "POST") {return cancel(row, options);}
-  if (match?.groups?.["action"] === undefined && req.method === "DELETE") {
-    if (row.original_deleted === 1) {return new Response("The optimized copy is now the library copy", { status: 409 });}
-    if (row.status === "processing") {return new Response("A processing job cannot be removed", { status: 409 });}
-    const output = await existingOutputPath(row, options);
-    if (output !== null) {await unlink(output).catch(() => undefined);}
-    deleteJob.run(row.id);
-    return new Response(null, { status: 204 });
+  if (row === null) {
+    return new Response("Transcode job not found", { status: 404 });
   }
-  return new Response("Method not allowed", { status: 405 });
+  const action = match?.groups?.["action"];
+  if (action === "/original" && req.method === "DELETE") {
+    return removeOriginal(row, options);
+  }
+  if (action === "/cancel" && req.method === "POST") {
+    return cancel(row, options);
+  }
+  return action === undefined && req.method === "DELETE"
+    ? deleteTranscode(row, options)
+    : new Response("Method not allowed", { status: 405 });
+}
+
+export function transcodeResponse(
+  req: Request,
+  pathname: string,
+  options: MediaLibraryOptions,
+): Response | Promise<Response> {
+  void runQueue(options);
+  if (pathname === "/api/transcodes" && req.method === "GET") {
+    return Response.json(jobs.all().map((row) => publicJob(row)));
+  }
+  if (pathname === "/api/transcodes" && req.method === "POST") {
+    return start(req, options);
+  }
+  if (pathname === "/api/transcodes/bulk" && req.method === "POST") {
+    return startBulk(req, options);
+  }
+  return transcodeJobResponse(req, pathname, options);
 }
