@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
     "lint": "bun run lint:plugins && oxlint --deny-warnings",
-    "lint:plugins": "bun -e 'import plugin from \"oxlint-plugin-anti-slop\"; if (plugin.rules === undefined) process.exit(1)'",
+    "lint:plugins": "bun build node_modules/oxlint-plugin-anti-slop/src/index.ts --target=node --format=esm --outfile=node_modules/.cache/nanime/anti-slop.mjs && bun -e 'import source from \"oxlint-plugin-anti-slop\"; import bundled from \"./node_modules/.cache/nanime/anti-slop.mjs\"; if (source.rules === undefined || bundled.rules === undefined) process.exit(1)'",
     "doctor": "react-doctor --yes --blocking warning",
     "check": "bun run typecheck && bun run lint && bun run doctor",
     "start": "bun run server/app.ts"

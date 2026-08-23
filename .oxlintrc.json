@@ -23,7 +23,7 @@
   },
   "jsPlugins": [
     { "name": "react-doctor", "specifier": "oxlint-plugin-react-doctor" },
-    { "name": "anti-slop", "specifier": "oxlint-plugin-anti-slop" }
+    { "name": "anti-slop", "specifier": "./node_modules/.cache/nanime/anti-slop.mjs" }
   ],
   "rules": {
     "anti-slop/no-chained-type-assertions": "error",
