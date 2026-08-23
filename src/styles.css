@@ -1,0 +1,105 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * Nanime theme.
+ * Solid black surfaces, pink ("nako") accent. No semi-transparent backgrounds
+ * anywhere — every surface color is fully opaque.
+ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  --background: #000000;
+  --foreground: #fafafa;
+
+  --card: #0a0a0a;
+  --card-foreground: #fafafa;
+
+  --popover: #0a0a0a;
+  --popover-foreground: #fafafa;
+
+  /* nako pink */
+  --primary: #ec4899;
+  --primary-foreground: #000000;
+
+  --secondary: #171717;
+  --secondary-foreground: #fafafa;
+
+  --muted: #171717;
+  --muted-foreground: #a1a1aa;
+
+  --accent: #1a1a1a;
+  --accent-foreground: #fafafa;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+
+  --border: #262626;
+  --input: #262626;
+  --ring: #ec4899;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family:
+      ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .playback-progress {
+    appearance: none;
+    background-color: var(--muted);
+    border: 0;
+  }
+
+  .playback-progress::-webkit-progress-bar {
+    background-color: var(--muted);
+  }
+
+  .playback-progress::-webkit-progress-value {
+    background-color: var(--primary);
+  }
+
+  .playback-progress::-moz-progress-bar {
+    background-color: var(--primary);
+  }
+}

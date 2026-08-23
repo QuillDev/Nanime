@@ -1,0 +1,10 @@
+node_modules
+dist
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.media-metadata.json
+.media-playback.sqlite*
+.nanime.sqlite*
+media

@@ -1,0 +1,81 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "react",
+    "react-perf",
+    "typescript",
+    "unicorn",
+    "jsx-a11y",
+    "import",
+    "promise",
+    "oxc"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error",
+    "pedantic": "error",
+    "style": "error"
+  },
+  "env": {
+    "browser": true,
+    "es2024": true
+  },
+  "jsPlugins": [
+    { "name": "react-doctor", "specifier": "oxlint-plugin-react-doctor" }
+  ],
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "unicorn/filename-case": [
+      "error",
+      { "cases": { "pascalCase": true, "camelCase": true } }
+    ],
+    "react/jsx-max-depth": ["error", { "max": 8 }],
+    "eslint/max-lines-per-function": [
+      "error",
+      { "max": 150, "skipBlankLines": true, "skipComments": true }
+    ],
+    "eslint/capitalized-comments": [
+      "error",
+      "always",
+      { "ignoreConsecutiveComments": true }
+    ],
+    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
+    "import/consistent-type-specifier-style": "off",
+    "import/group-exports": "off",
+    "import/exports-last": "off",
+    "import/no-named-export": "off",
+    "import/prefer-default-export": "off",
+    "import/no-named-as-default": "off",
+    "import/no-named-as-default-member": "off",
+    "eslint/func-style": "off",
+    "eslint/no-ternary": "off",
+    "eslint/sort-keys": "off",
+    "eslint/sort-imports": "off",
+    "eslint/one-var": "off",
+    "eslint/no-magic-numbers": "off",
+    "eslint/id-length": "off",
+    "unicorn/no-null": "off",
+    "unicorn/no-useless-undefined": "off"
+  },
+  "overrides": [
+    {
+      "files": ["src/components/ui/**/*.tsx"],
+      "rules": {
+        "react/jsx-props-no-spreading": "off",
+        "import/no-namespace": "off"
+      }
+    },
+    {
+      "files": ["server/**/*.ts", "vite.config.ts"],
+      "env": { "browser": false, "node": true },
+      "rules": {
+        "import/no-nodejs-modules": "off",
+        "eslint/no-await-in-loop": "off",
+        "eslint/no-continue": "off",
+        "eslint/max-statements": ["error", { "max": 40 }],
+        "eslint/max-lines": ["error", { "max": 500 }]
+      }
+    }
+  ]
+}

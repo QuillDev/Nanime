@@ -1,0 +1,148 @@
+import { useCallback, useState, type FormEvent } from "react";
+import { Search } from "lucide-react";
+import type { AniListMedia } from "../types.ts";
+import { mediaTitle } from "../lib/anilist.ts";
+import { useAniListSearch, useLinkAniList } from "../hooks/useShowMetadata.ts";
+import { Input } from "./ui/input.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog.tsx";
+
+interface SearchResultProps {
+  readonly media: AniListMedia;
+  readonly disabled: boolean;
+  readonly onSelect: (id: number) => void;
+}
+
+function SearchResult({ media, disabled, onSelect }: SearchResultProps): React.JSX.Element {
+  const handleClick = useCallback(() => {
+    onSelect(media.id);
+  }, [media.id, onSelect]);
+  const cover = media.coverImage.large ?? media.coverImage.extraLarge;
+  const detail = [media.format, media.seasonYear, media.episodes && `${String(media.episodes)} eps`]
+    .filter((value) => value !== null)
+    .join(" · ");
+
+  return (
+    <li className="border-b border-border last:border-b-0">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={handleClick}
+        className="flex w-full gap-3 py-3 text-left transition-colors hover:text-primary disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {cover !== null && (
+          <img src={cover} alt="" className="h-16 w-11 shrink-0 rounded object-cover" />
+        )}
+        <span className="min-w-0">
+          <span className="block font-semibold">{mediaTitle(media)}</span>
+          {media.title.english !== media.title.romaji && (
+            <span className="mt-1 block text-sm text-muted-foreground">
+              {media.title.romaji}
+            </span>
+          )}
+          <span className="mt-1 block text-xs uppercase tracking-wide text-muted-foreground">
+            {detail}
+          </span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
+interface AniListLinkDialogProps {
+  readonly metadataKey: string;
+  readonly suggestedSearch: string;
+  readonly subject: "show" | "season";
+  readonly onClose: () => void;
+}
+
+export function AniListLinkDialog({
+  metadataKey,
+  suggestedSearch,
+  subject,
+  onClose,
+}: AniListLinkDialogProps): React.JSX.Element {
+  const [draft, setDraft] = useState<string>(suggestedSearch);
+  const [searchTerm, setSearchTerm] = useState<string>(suggestedSearch);
+  const results = useAniListSearch(searchTerm);
+  const link = useLinkAniList();
+  const handleSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSearchTerm(draft.trim());
+  }, [draft]);
+  const handleDraftChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setDraft(event.target.value);
+  }, []);
+  const handleSelect = useCallback((id: number) => {
+    void (async (): Promise<void> => {
+      await link.mutateAsync({ key: metadataKey, id });
+      onClose();
+    })();
+  }, [link, metadataKey, onClose]);
+  const handleOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      onClose();
+    }
+  }, [onClose]);
+
+  return (
+    <Dialog open onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Link with AniList</DialogTitle>
+          <DialogDescription>
+            Choose the AniList entry that represents this local {subject}.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <Input
+            value={draft}
+            onChange={handleDraftChange}
+            aria-label="Search AniList"
+            placeholder="Anime title…"
+          />
+          <button
+            type="submit"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Search className="size-4" />
+            <span className="sr-only">Search</span>
+          </button>
+        </form>
+        <div className="max-h-[55vh] overflow-y-auto">
+          {results.status === "pending" && (
+            <p className="py-8 text-center text-sm text-muted-foreground">Searching AniList…</p>
+          )}
+          {results.status === "error" && (
+            <p className="py-8 text-center text-sm text-destructive">
+              {results.error.message}
+            </p>
+          )}
+          {results.status === "success" && results.data.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted-foreground">No matches found.</p>
+          )}
+          {results.status === "success" && (
+            <ul>
+              {results.data.map((media) => (
+                <SearchResult
+                  key={media.id}
+                  media={media}
+                  disabled={link.isPending}
+                  onSelect={handleSelect}
+                />
+              ))}
+            </ul>
+          )}
+          {link.isError && (
+            <p className="mt-3 text-sm text-destructive">{link.error.message}</p>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
