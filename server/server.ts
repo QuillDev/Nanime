@@ -41,6 +41,9 @@ const HWACCEL = process.env["HWACCEL"] ?? "";
 const VAAPI_DEVICE = process.env["VAAPI_DEVICE"] ?? "/dev/dri/renderD128";
 const MAX_THUMBNAIL_JOBS = 1;
 const MAX_REQUEST_BODY_BYTES = 11 * 1024 * 1024;
+// MEDIA_DIR is trusted process configuration, not request input. Canonicalizing it here
+// establishes the containment root used to validate every request-derived media path.
+// lgtm[js/path-injection] Trusted operator configuration is the intended filesystem root.
 const MEDIA_ROOT = await realpath(MEDIA_DIR).catch(() => MEDIA_DIR);
 const VIDEO_EXTS = new Set<string>([
   ".mp4", ".m4v", ".webm", ".mov", ".mkv", ".avi", ".ts", ".m2ts",

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, realpath, rename, unlink } from "node:fs/promises";
-import { basename, dirname, extname, join, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { availableParallelism, totalmem } from "node:os";
 import { database } from "./database.ts";
 import { detachTorrentsForFiles } from "./torrents.ts";
@@ -75,6 +75,7 @@ const maxWorkers = Number.isInteger(configuredWorkers) && configuredWorkers > 0
 const activeJobs = new Set<string>();
 const cancelledJobs = new Set<string>();
 const activeProcesses = new Map<string, { kill: () => void }>();
+const OUTPUT_NAME = /^(?<key>[a-f0-9]{24})-(?<id>[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.mkv$/u;
 
 function publicJob(row: TranscodeRow): object {
   return {
@@ -100,6 +101,32 @@ function presetArgs(preset: TranscodePreset): readonly string[] {
     : ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k"];
 }
 
+function transcodePreset(value: string): TranscodePreset | null {
+  return value === "space-saver" || value === "compatibility" ? value : null;
+}
+
+async function outputDirectory(options: TranscodeOptions): Promise<string | null> {
+  const directory = resolve(options.mediaRoot, ".nanime-transcodes");
+  await mkdir(directory, { recursive: true, mode: 0o700 }).catch(() => undefined);
+  const canonical = await realpath(directory).catch(() => null);
+  return canonical !== null && canonical.startsWith(options.mediaRoot + sep) ? canonical : null;
+}
+
+async function pendingOutputPath(row: TranscodeRow, options: TranscodeOptions): Promise<string | null> {
+  const name = row.output_rel.startsWith(".nanime-transcodes/")
+    ? row.output_rel.slice(".nanime-transcodes/".length)
+    : "";
+  if (!OUTPUT_NAME.test(name)) {return null;}
+  const directory = await outputDirectory(options);
+  return directory === null ? null : join(directory, name);
+}
+
+async function existingOutputPath(row: TranscodeRow, options: TranscodeOptions): Promise<string | null> {
+  const pending = await pendingOutputPath(row, options);
+  const canonical = pending === null ? null : await realpath(pending).catch(() => null);
+  return canonical !== null && canonical.startsWith(options.mediaRoot + sep) ? canonical : null;
+}
+
 async function duration(path: string): Promise<number> {
   const proc = Bun.spawn(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path], { stdout: "pipe", stderr: "ignore" });
   const text = await new Response(proc.stdout).text();
@@ -108,11 +135,16 @@ async function duration(path: string): Promise<number> {
 }
 
 async function processJob(row: TranscodeRow, options: TranscodeOptions): Promise<void> {
-  const source = resolve(options.mediaDir, row.source_rel);
-  const output = resolve(options.mediaDir, row.output_rel);
+  const [source, output] = await Promise.all([
+    safeSource(row.source_rel, options),
+    pendingOutputPath(row, options),
+  ]);
+  const preset = transcodePreset(row.preset);
+  if (source === null || output === null || preset === null) {
+    throw new Error("Transcode job contains an invalid media path or preset");
+  }
   const startedAt = Date.now();
   startJob.run(startedAt, row.id);
-  await mkdir(dirname(output), { recursive: true, mode: 0o700 });
   const sourceDuration = await duration(source);
   if (cancelledJobs.has(row.id)) {
     cancelledJobs.delete(row.id);
@@ -124,7 +156,7 @@ async function processJob(row: TranscodeRow, options: TranscodeOptions): Promise
     "-nostats", "-y", "-i", source,
     "-map", "0:v:0", "-map", "0:a?", "-map", "0:s?", "-map", "0:t?",
     "-map_metadata", "0", "-c:s", "copy", "-c:t", "copy",
-    ...presetArgs(row.preset as TranscodePreset), output,
+    ...presetArgs(preset), output,
   ], { stdout: "pipe", stderr: "pipe" });
   activeProcesses.set(row.id, proc);
   const stderr = new Response(proc.stderr).text();
@@ -160,7 +192,8 @@ async function executeJob(row: TranscodeRow, options: TranscodeOptions): Promise
     await processJob(row, options);
   } catch (error) {
     if (cancelledJobs.delete(row.id)) {
-      await unlink(resolve(options.mediaDir, row.output_rel)).catch(() => undefined);
+      const output = await pendingOutputPath(row, options);
+      if (output !== null) {await unlink(output).catch(() => undefined);}
       updateJob.run("cancelled", null, null, Date.now(), row.id);
     } else {
       const message = error instanceof Error ? error.message : "Transcode process could not start";
@@ -270,7 +303,8 @@ async function cancel(row: TranscodeRow, options: TranscodeOptions): Promise<Res
   activeProcesses.get(row.id)?.kill();
   if (row.status === "queued") {
     cancelledJobs.delete(row.id);
-    await unlink(resolve(options.mediaDir, row.output_rel)).catch(() => undefined);
+    const output = await pendingOutputPath(row, options);
+    if (output !== null) {await unlink(output).catch(() => undefined);}
   }
   updateJob.run("cancelled", null, null, Date.now(), row.id);
   return Response.json(publicJob(jobById.get(row.id) as TranscodeRow));
@@ -278,13 +312,16 @@ async function cancel(row: TranscodeRow, options: TranscodeOptions): Promise<Res
 
 async function removeOriginal(row: TranscodeRow, options: TranscodeOptions): Promise<Response> {
   if (row.status !== "complete" || row.original_deleted === 1) {return new Response("Original cannot be deleted", { status: 409 });}
-  const source = await safeSource(row.source_rel, options);
-  const output = resolve(options.mediaDir, row.output_rel);
-  if (source === null || await lstat(output).catch(() => null) === null) {return new Response("Media not found", { status: 404 });}
+  const [source, output] = await Promise.all([
+    safeSource(row.source_rel, options),
+    existingOutputPath(row, options),
+  ]);
+  const preset = transcodePreset(row.preset);
+  if (source === null || output === null || preset === null) {return new Response("Media not found", { status: 404 });}
   if (!(await detachTorrentsForFiles([source]))) {return new Response("Could not safely detach the torrent", { status: 502 });}
   const extension = extname(output);
-  const targetRel = join(dirname(row.source_rel), `${basename(row.source_rel, extname(row.source_rel))}.${row.preset}${extension}`);
-  const target = resolve(options.mediaDir, targetRel);
+  const target = join(dirname(source), `${basename(source, extname(source))}.${preset}${extension}`);
+  const targetRel = relative(options.mediaDir, target);
   if (await lstat(target).catch(() => null) !== null) {return new Response("Optimized destination already exists", { status: 409 });}
   await rename(output, target);
   try {
@@ -311,7 +348,8 @@ export async function transcodeResponse(req: Request, pathname: string, options:
   if (match?.groups?.["action"] === undefined && req.method === "DELETE") {
     if (row.original_deleted === 1) {return new Response("The optimized copy is now the library copy", { status: 409 });}
     if (row.status === "processing") {return new Response("A processing job cannot be removed", { status: 409 });}
-    await unlink(resolve(options.mediaDir, row.output_rel)).catch(() => undefined);
+    const output = await existingOutputPath(row, options);
+    if (output !== null) {await unlink(output).catch(() => undefined);}
     deleteJob.run(row.id);
     return new Response(null, { status: 204 });
   }

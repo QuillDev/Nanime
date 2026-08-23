@@ -1,4 +1,4 @@
-import { statfs } from "node:fs/promises";
+import { realpath, statfs } from "node:fs/promises";
 import { dirname } from "node:path";
 import { deleteAudioTrackResponse } from "./audioTracks.ts";
 import { deleteMediaResponse } from "./mediaDelete.ts";
@@ -17,7 +17,11 @@ interface MediaAdminOptions {
 }
 
 export async function storageResponse(mediaRoot: string): Promise<Response> {
-  let candidate = mediaRoot;
+  const canonicalRoot = await realpath(mediaRoot).catch(() => null);
+  if (canonicalRoot === null) {
+    return new Response("Storage status unavailable", { status: 503 });
+  }
+  let candidate = canonicalRoot;
   while (true) {
     try {
       const fileSystem = await statfs(candidate, { bigint: true });

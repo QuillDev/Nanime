@@ -33,9 +33,7 @@ export interface MediaUploadOptions {
 const uploads = new Map<string, UploadSession>();
 
 function safePart(value: string): boolean {
-  return value !== "" && value !== "." && value !== ".." &&
-    !value.includes("/") && !value.includes("\\") && !value.includes("\0") &&
-    value.length <= 255;
+  return value !== "." && value !== ".." && /^[^/\\\p{Cc}]{1,255}$/u.test(value);
 }
 
 function folderParts(value: string): readonly string[] | null {
