@@ -17,18 +17,22 @@ import {
   updateSearch,
   useMediaRoute,
 } from "../hooks/useMediaRoute.ts";
-import { Library } from "./Library.tsx";
+import { Library, LibrarySkeleton } from "./Library.tsx";
 import { MediaHeader } from "./MediaHeader.tsx";
+import { loadPlayer } from "../routeModules.ts";
 
 const Player = lazy(async () => {
-  const module = await import("./Player.tsx");
+  const module = await loadPlayer();
   return { default: module.Player };
 });
 
 const PLAYER_LOADING = (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black text-muted-foreground">
-    Loading player…
-  </div>
+  <output
+    className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black text-sm text-muted-foreground"
+  >
+    <span className="skeleton h-1 w-48 rounded-full" aria-hidden="true" />
+    Preparing player…
+  </output>
 );
 
 const EMPTY_PROGRESS = {};
@@ -93,7 +97,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
       />
       <main className="mx-auto max-w-7xl px-6 py-6">
         {library.status === "pending" && (
-          <p className="py-16 text-center text-muted-foreground">Loading library…</p>
+          <LibrarySkeleton />
         )}
         {library.status === "error" && (
           <p className="py-16 text-center text-destructive">

@@ -59,12 +59,12 @@ interface RankedShow {
 }
 
 function rankShows(
-  entries: readonly MediaEntry[],
+  shows: readonly ShowGroup[],
   metadata: ShowMetadata,
   needle: string,
 ): readonly RankedShow[] {
   const ranked: RankedShow[] = [];
-  for (const show of groupShows(entries, metadata)) {
+  for (const show of shows) {
     const score = matchScore(show, metadata, needle);
     if (Number.isFinite(score)) {
       ranked.push({ show, score });
@@ -85,12 +85,12 @@ function takeSuggestions(ranked: readonly RankedShow[]): readonly ShowGroup[] {
 }
 
 function searchShows(
-  entries: readonly MediaEntry[],
+  shows: readonly ShowGroup[],
   metadata: ShowMetadata,
   query: string,
 ): readonly ShowGroup[] {
   const needle = query.trim().toLocaleLowerCase();
-  return needle === "" ? [] : takeSuggestions(rankShows(entries, metadata, needle));
+  return needle === "" ? [] : takeSuggestions(rankShows(shows, metadata, needle));
 }
 
 function SearchResult({
@@ -106,7 +106,7 @@ function SearchResult({
 }): React.JSX.Element {
   const media = metadata[showMetadataKey(show.name)];
   const [preview] = show.entries;
-  const cover = media?.coverImage.extraLarge ?? media?.coverImage.large;
+  const cover = media?.coverImage.large ?? media?.coverImage.extraLarge;
   return (
     <li className="border-b border-border last:border-b-0">
       <button
@@ -137,9 +137,10 @@ export function LibrarySearch({
   onShowSelect,
 }: LibrarySearchProps): React.JSX.Element {
   const [focused, setFocused] = useState(false);
+  const shows = useMemo(() => groupShows(entries, metadata), [entries, metadata]);
   const suggestions = useMemo(
-    () => searchShows(entries, metadata, query),
-    [entries, metadata, query],
+    () => searchShows(shows, metadata, query),
+    [shows, metadata, query],
   );
   const handleFocus = useCallback(() => setFocused(true), []);
   const handleBlur = useCallback((event: FocusEvent<HTMLDivElement>) => {

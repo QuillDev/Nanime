@@ -5,7 +5,7 @@ import type {
   PlaybackProgressMap,
 } from "../types.ts";
 import { episodeMetadata, episodeNumber } from "../lib/anilist.ts";
-import { hasMeaningfulPlaybackProgress } from "../lib/playback.ts";
+import { hasMeaningfulPlaybackProgress, preloadPlayer } from "../lib/playback.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
 
 interface EpisodeCardProps {
@@ -43,6 +43,9 @@ function EpisodeCard({
       <button
         type="button"
         onClick={handleClick}
+        onFocus={preloadPlayer}
+        onPointerDown={preloadPlayer}
+        onPointerEnter={preloadPlayer}
         className="group flex min-w-0 flex-1 text-left focus-visible:outline-none"
       >
         <span className="w-32 shrink-0 sm:w-44">

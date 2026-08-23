@@ -15,6 +15,10 @@ import {
 
 const playbackProgressKey = ["playback-progress"] as const;
 
+interface DismissContext {
+  readonly previous: PlaybackProgressMap | undefined;
+}
+
 function toProgressMap(progress: readonly PlaybackProgress[]): PlaybackProgressMap {
   return Object.fromEntries(progress.map((item) => [item.rel, item]));
 }
@@ -60,11 +64,26 @@ export function useSavePlaybackProgress(): UseMutationResult<
 export function useDismissPlaybackProgress(): UseMutationResult<
   PlaybackProgress,
   Error,
-  string
+  string,
+  DismissContext
 > {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: dismissPlaybackProgress,
+    onMutate: async (rel) => {
+      await queryClient.cancelQueries({ queryKey: playbackProgressKey });
+      const previous = queryClient.getQueryData<PlaybackProgressMap>(playbackProgressKey);
+      queryClient.setQueryData<PlaybackProgressMap>(playbackProgressKey, (current) => {
+        const item = current?.[rel];
+        return item === undefined
+          ? current
+          : { ...current, [rel]: { ...item, dismissedAt: Date.now() } };
+      });
+      return { previous };
+    },
+    onError: (_error, _rel, context) => {
+      queryClient.setQueryData(playbackProgressKey, context?.previous);
+    },
     onSuccess: (saved) => {
       queryClient.setQueryData<PlaybackProgressMap>(playbackProgressKey, (current) => ({
         ...current,

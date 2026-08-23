@@ -7,29 +7,26 @@ import {
   type MediaRoute,
 } from "./hooks/useMediaRoute.ts";
 import type { AuthUser } from "./types.ts";
+import {
+  loadAdminApp,
+  loadMediaApp,
+  loadProfileApp,
+} from "./routeModules.ts";
+import { AppShellSkeleton, SessionSkeleton } from "./components/Skeleton.tsx";
 
 const AdminApp = lazy(async () => {
-  const module = await import("./components/AdminApp.tsx");
+  const module = await loadAdminApp();
   return { default: module.AdminApp };
 });
 const MediaApp = lazy(async () => {
-  const module = await import("./components/MediaApp.tsx");
+  const module = await loadMediaApp();
   return { default: module.MediaApp };
 });
 const ProfileApp = lazy(async () => {
-  const module = await import("./components/ProfileApp.tsx");
+  const module = await loadProfileApp();
   return { default: module.ProfileApp };
 });
-
-function RouteLoading(): React.JSX.Element {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
-      Loading…
-    </main>
-  );
-}
-
-const ROUTE_LOADING = <RouteLoading />;
+const ROUTE_LOADING = <AppShellSkeleton />;
 
 function AdminForbidden(): React.JSX.Element {
   return (
@@ -51,11 +48,7 @@ export function App(): React.JSX.Element {
   const currentUser = useCurrentUser();
   const route = useMediaRoute();
   if (currentUser.status === "pending") {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
-        Loading…
-      </main>
-    );
+    return <SessionSkeleton />;
   }
   if (currentUser.status === "error") {
     return (

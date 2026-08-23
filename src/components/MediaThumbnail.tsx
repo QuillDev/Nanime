@@ -33,6 +33,7 @@ export function MediaThumbnail({
           src={source ?? thumbnailUrl(rel)}
           alt=""
           loading="lazy"
+          decoding="async"
           onError={handleError}
           className="size-full object-cover"
         />

@@ -5,6 +5,7 @@ import { useTorrents } from "../hooks/useTorrents.ts";
 import type { TorrentStatus } from "../types.ts";
 import { AdminPanel } from "./AdminPanel.tsx";
 import { CancelTorrentDialog } from "./CancelTorrentDialog.tsx";
+import { ListSkeleton } from "./Skeleton.tsx";
 
 const STATE_LABELS = new Map(Object.entries({
   allocating: "Allocating",
@@ -94,7 +95,7 @@ export function AdminDownloads(): React.JSX.Element {
         className="xl:col-span-3"
       >
         {torrents.status === "pending" && (
-          <p className="py-10 text-center text-sm text-muted-foreground">Loading downloads…</p>
+          <ListSkeleton />
         )}
         {torrents.status === "error" && (
           <p className="py-4 text-sm text-destructive">{torrents.error.message}</p>

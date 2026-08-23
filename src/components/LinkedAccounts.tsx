@@ -5,6 +5,7 @@ import {
   useAniListAccount,
   useDisconnectAniList,
 } from "../hooks/useAniListAccount.ts";
+import { ListSkeleton } from "./Skeleton.tsx";
 
 export function LinkedAccounts(): React.JSX.Element {
   const account = useAniListAccount();
@@ -27,7 +28,7 @@ export function LinkedAccounts(): React.JSX.Element {
           <h3 className="font-semibold">AniList</h3>
         </div>
         {account.status === "pending" && (
-          <p className="mt-4 text-sm text-muted-foreground">Loading account…</p>
+          <ListSkeleton rows={1} />
         )}
         {account.status === "error" && (
           <p className="mt-4 select-text text-sm text-destructive">{account.error.message}</p>
