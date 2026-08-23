@@ -2,6 +2,10 @@ import { treaty } from "@elysiajs/eden";
 import type { App } from "../server/app.ts";
 import type {
   AniListMedia,
+  AniListAccountStatus,
+  AniListAuthConfig,
+  AniListListEntry,
+  AniListWatchStatus,
   AuthUser,
   MediaEntry,
   PlaybackProgress,
@@ -108,6 +112,9 @@ export interface PlaybackProgressUpdate {
   readonly position: number;
   readonly duration: number;
   readonly completed: boolean;
+  readonly anilistMediaId?: number;
+  readonly episode?: number;
+  readonly totalEpisodes?: number | null;
 }
 
 export async function savePlaybackProgress(
@@ -118,6 +125,50 @@ export async function savePlaybackProgress(
 
 export async function fetchCurrentUser(signal: AbortSignal): Promise<AuthUser | null> {
   return unwrap(await api.api.auth.me.get({ fetch: { signal } }), "Session request");
+}
+
+export async function fetchAniListAuthConfig(signal: AbortSignal): Promise<AniListAuthConfig> {
+  return unwrap(
+    await api.api.auth.anilist.config.get({ fetch: { signal } }),
+    "AniList login configuration",
+  );
+}
+
+export async function fetchAniListAccount(signal: AbortSignal): Promise<AniListAccountStatus> {
+  return unwrap(
+    await api.api.anilist.account.get({ fetch: { signal } }),
+    "AniList account request",
+  );
+}
+
+export async function disconnectAniList(): Promise<void> {
+  unwrap(await api.api.anilist.account.delete(), "Disconnecting AniList");
+}
+
+export async function fetchAniListListEntry(
+  mediaId: number,
+  signal: AbortSignal,
+): Promise<AniListListEntry | null> {
+  return unwrap(
+    await api.api.anilist.list({ id: String(mediaId) }).get({ fetch: { signal } }),
+    "AniList list entry request",
+  );
+}
+
+export interface AniListListUpdate {
+  readonly status: AniListWatchStatus;
+  readonly progress: number;
+  readonly score: number;
+}
+
+export async function updateAniListListEntry(
+  mediaId: number,
+  update: AniListListUpdate,
+): Promise<AniListListEntry> {
+  return unwrap(
+    await api.api.anilist.list({ id: String(mediaId) }).put(update),
+    "Updating AniList list entry",
+  );
 }
 
 async function authenticate(
@@ -156,6 +207,13 @@ export async function fetchUsers(signal: AbortSignal): Promise<readonly Provisio
 
 export async function provisionUser(username: string, isAdmin: boolean): Promise<string> {
   return unwrap(await api.api.users.post({ username, isAdmin }), "Provisioning").setupToken;
+}
+
+export async function cancelUserProvision(userId: number): Promise<void> {
+  unwrap(
+    await api.api.users({ id: String(userId) }).delete(),
+    "Cancelling user provision",
+  );
 }
 
 export async function addTorrent(

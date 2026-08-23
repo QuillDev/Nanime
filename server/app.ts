@@ -3,6 +3,9 @@ import { handle, serverOptions } from "./server.ts";
 import { securityHeaders } from "./security.ts";
 import {
   aniListMediaSchema,
+  aniListAccountSchema,
+  aniListAuthConfigSchema,
+  aniListListEntrySchema,
   authUserSchema,
   credentialsSchema,
   mediaEntrySchema,
@@ -50,11 +53,23 @@ const setupCredentialsSchema = schema.composite([
   credentialsSchema,
   schema.object({ setupToken: schema.string() }),
 ]);
+const optionalEpisodeCountSchema = schema.optional(schema.union([
+  schema.integer({ minimum: 1 }),
+  schema.nullValue(),
+]));
 const playbackUpdateSchema = schema.object({
   rel: schema.string(),
   position: schema.number({ minimum: 0 }),
   duration: schema.number({ minimum: 0 }),
   completed: schema.boolean(),
+  anilistMediaId: schema.optional(schema.integer({ minimum: 1 })),
+  episode: schema.optional(schema.integer({ minimum: 1 })),
+  totalEpisodes: optionalEpisodeCountSchema,
+});
+const aniListUpdateSchema = schema.object({
+  status: schema.optional(schema.string()),
+  progress: schema.optional(schema.integer({ minimum: 0 })),
+  score: schema.optional(schema.number({ minimum: 0, maximum: 10 })),
 });
 const searchQuerySchema = schema.object({ q: schema.string({ minLength: 2 }) });
 const pathQuerySchema = schema.object({ path: schema.string({ minLength: 1 }) });
@@ -78,6 +93,11 @@ export const app = new Elysia({ name: "nanime" })
   .get("/api/auth/me", ({ request, server }) => handle(request, server), {
     response: schema.union([authUserSchema, schema.nullValue()]),
   })
+  .get("/api/auth/anilist/config", ({ request, server }) => handle(request, server), {
+    response: aniListAuthConfigSchema,
+  })
+  .get("/api/auth/anilist/start", ({ request, server }) => handle(request, server))
+  .get("/api/auth/anilist/callback", ({ request, server }) => handle(request, server))
   .post("/api/auth/login", ({ request, server, body }) => (
     handle(jsonRequest(request, body), server)
   ), { body: credentialsSchema, response: authUserSchema })
@@ -107,6 +127,16 @@ export const app = new Elysia({ name: "nanime" })
     body: schema.object({ key: schema.string({ minLength: 1 }), id: schema.integer() }),
     response: aniListMediaSchema,
   })
+  .get("/api/anilist/account", ({ request, server }) => handle(request, server), {
+    response: aniListAccountSchema,
+  })
+  .delete("/api/anilist/account", ({ request, server }) => handle(request, server))
+  .get("/api/anilist/list/:id", ({ request, server }) => handle(request, server), {
+    response: schema.union([aniListListEntrySchema, schema.nullValue()]),
+  })
+  .put("/api/anilist/list/:id", ({ request, server, body }) => (
+    handle(jsonRequest(request, body), server)
+  ), { body: aniListUpdateSchema, response: aniListListEntrySchema })
   .get("/api/users", ({ request, server }) => handle(request, server), {
     response: schema.array(provisionedUserSchema),
   })
@@ -116,6 +146,7 @@ export const app = new Elysia({ name: "nanime" })
     body: schema.object({ username: schema.string(), isAdmin: schema.boolean() }),
     response: schema.object({ setupToken: schema.string() }),
   })
+  .delete("/api/users/:id", ({ request, server }) => handle(request, server))
   .get("/api/torrents", ({ request, server }) => handle(request, server), {
     response: schema.array(torrentStatusSchema),
   })

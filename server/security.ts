@@ -1,4 +1,12 @@
 import type { Server } from "bun";
+import type { AuthUser } from "./auth.ts";
+import {
+  aniListAccountResponse,
+  aniListAuthConfigResponse,
+  aniListCallbackResponse,
+  aniListEntryResponse,
+  startAniListAuthResponse,
+} from "./anilistAccount.ts";
 
 export {
   authenticatedUser,
@@ -6,6 +14,7 @@ export {
   usersResponse,
   type AuthUser,
 } from "./auth.ts";
+export { syncAniListPlayback } from "./anilistAccount.ts";
 
 const TRUST_PROXY = process.env["NANIME_TRUST_PROXY"] === "true";
 const SECURE_COOKIES = process.env["NANIME_SECURE_COOKIES"] !== "false";
@@ -26,6 +35,35 @@ function configuredPublicOrigin(value: string | undefined): string | null {
 }
 
 const PUBLIC_ORIGIN = configuredPublicOrigin(process.env["NANIME_PUBLIC_ORIGIN"]);
+
+export async function aniListPublicAuthResponse(
+  pathname: string,
+  req: Request,
+  user: AuthUser | null,
+): Promise<Response | null> {
+  if (pathname === "/api/auth/anilist/config" && req.method === "GET") {
+    return aniListAuthConfigResponse();
+  }
+  if (pathname === "/api/auth/anilist/start" && req.method === "GET") {
+    return startAniListAuthResponse(user);
+  }
+  return pathname === "/api/auth/anilist/callback" && req.method === "GET"
+    ? await aniListCallbackResponse(req)
+    : null;
+}
+
+export async function aniListUserResponse(
+  pathname: string,
+  req: Request,
+  user: AuthUser,
+): Promise<Response | null> {
+  if (pathname === "/api/anilist/account") {
+    return aniListAccountResponse(req, user);
+  }
+  return pathname.startsWith("/api/anilist/list/")
+    ? await aniListEntryResponse(req, new URL(req.url), user)
+    : null;
+}
 
 export function requestOriginAllowed(req: Request): boolean {
   if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") {

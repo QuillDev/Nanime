@@ -1,4 +1,10 @@
-import type { AniListMedia, MediaEntry, ShowMetadata } from "../types.ts";
+import type {
+  AniListMedia,
+  AniListPlaybackTarget,
+  MediaEntry,
+  ShowMetadata,
+} from "../types.ts";
+import { episodeNumber } from "./anilist.ts";
 
 export interface SeasonGroup {
   readonly name: string;
@@ -156,6 +162,31 @@ export function groupShows(
   metadata: ShowMetadata = {},
 ): readonly ShowGroup[] {
   return mergeShows(localShowGroups(entries), metadata);
+}
+
+export function aniListPlaybackTarget(
+  entries: readonly MediaEntry[] | undefined,
+  selected: MediaEntry | null,
+  metadata: ShowMetadata,
+): AniListPlaybackTarget | null {
+  if (entries === undefined || selected === null) {
+    return null;
+  }
+  const show = groupShows(entries, metadata).find((candidate) => (
+    candidate.entries.some((entry) => entry.rel === selected.rel)
+  ));
+  const season = show?.seasons.find((candidate) => (
+    candidate.entries.some((entry) => entry.rel === selected.rel)
+  ));
+  const number = episodeNumber(selected);
+  if (season === undefined || number === null) {
+    return null;
+  }
+  const media = seasonMetadata(metadata, season.sourceShow, season.name) ??
+    metadata[showMetadataKey(season.sourceShow)];
+  return media === undefined
+    ? null
+    : { mediaId: media.id, episode: number, totalEpisodes: media.episodes };
 }
 
 function localShowGroups(entries: readonly MediaEntry[]): readonly ShowGroup[] {

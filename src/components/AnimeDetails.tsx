@@ -4,6 +4,7 @@ import type { AniListMedia } from "../types.ts";
 import { mediaTitle } from "../lib/anilist.ts";
 import { Badge } from "./ui/badge.tsx";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
+import { AniListListControls } from "./AniListListControls.tsx";
 
 interface AnimeDetailsProps {
   readonly fallbackTitle: string;
@@ -103,6 +104,7 @@ export function AnimeDetails({
             <ExternalLink className="size-3.5" />
           </a>
         )}
+        {media !== undefined && <AniListListControls media={media} />}
       </div>
     </aside>
   );

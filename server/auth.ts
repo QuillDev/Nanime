@@ -54,6 +54,9 @@ const setPassword = database.query<void, [string, number]>(`
   UPDATE users SET password_hash = ?, setup_token_hash = NULL
   WHERE id = ? AND password_hash IS NULL
 `);
+const findUserById = database.query<UserRow, [number]>(`
+  SELECT id, username, password_hash, setup_token_hash, is_admin FROM users WHERE id = ?
+`);
 database.query("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
 
 function publicUser(row: UserRow): AuthUser {
@@ -82,6 +85,23 @@ function createSession(user: UserRow): Response {
   insertSession.run(tokenHash(token), user.id, now + SESSION_LIFETIME_MS, now);
   return Response.json(publicUser(user), {
     headers: { "set-cookie": sessionCookie(token, SESSION_LIFETIME_MS / 1000) },
+  });
+}
+
+export function createSessionRedirect(userId: number, location: string): Response {
+  const user = findUserById.get(userId);
+  if (user === null) {
+    return Response.redirect(`${location}?anilist=account-missing`, 303);
+  }
+  const token = randomBytes(32).toString("base64url");
+  const now = Date.now();
+  insertSession.run(tokenHash(token), user.id, now + SESSION_LIFETIME_MS, now);
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location,
+      "set-cookie": sessionCookie(token, SESSION_LIFETIME_MS / 1000),
+    },
   });
 }
 
@@ -259,6 +279,10 @@ interface UserListRow {
   readonly password_set: number;
 }
 
+interface UserSetupRow {
+  readonly password_set: number;
+}
+
 const listUsers = database.query<UserListRow, []>(`
   SELECT id, username, is_admin, password_hash IS NOT NULL AS password_set
   FROM users ORDER BY username COLLATE NOCASE
@@ -266,10 +290,25 @@ const listUsers = database.query<UserListRow, []>(`
 const insertUser = database.query<void, [string, string, number, number]>(`
   INSERT INTO users (username, setup_token_hash, is_admin, created_at) VALUES (?, ?, ?, ?)
 `);
+const findUserSetup = database.query<UserSetupRow, [number]>(`
+  SELECT password_hash IS NOT NULL AS password_set FROM users WHERE id = ?
+`);
+const deletePendingUser = database.query<void, [number]>(`
+  DELETE FROM users WHERE id = ? AND password_hash IS NULL
+`);
 
-export function usersResponse(req: Request, user: AuthUser): Response | Promise<Response> {
+export function usersResponse(
+  req: Request,
+  user: AuthUser,
+  requestedUserId: number | null = null,
+): Response | Promise<Response> {
   if (!user.isAdmin) {
     return new Response("Forbidden", { status: 403 });
+  }
+  if (requestedUserId !== null) {
+    return req.method === "DELETE"
+      ? cancelProvision(requestedUserId, user.id)
+      : new Response("Method not allowed", { status: 405 });
   }
   if (req.method === "GET") {
     return Response.json(listUsers.all().map((row) => ({
@@ -282,6 +321,24 @@ export function usersResponse(req: Request, user: AuthUser): Response | Promise<
   return req.method === "POST"
     ? provisionUser(req)
     : new Response("Method not allowed", { status: 405 });
+}
+
+function cancelProvision(userId: number, currentUserId: number): Response {
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return new Response("Invalid user ID", { status: 400 });
+  }
+  if (userId === currentUserId) {
+    return new Response("Cannot cancel your own account", { status: 409 });
+  }
+  const target = findUserSetup.get(userId);
+  if (target === null) {
+    return new Response("User not found", { status: 404 });
+  }
+  if (target.password_set === 1) {
+    return new Response("Only pending provisions can be cancelled", { status: 409 });
+  }
+  deletePendingUser.run(userId);
+  return new Response(null, { status: 204 });
 }
 
 async function provisionUser(req: Request): Promise<Response> {

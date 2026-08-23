@@ -57,6 +57,20 @@ export function navigateToAdmin(): void {
   updateUrl(url);
 }
 
+export function navigateToLogin(): void {
+  const url = new URL(globalThis.location.href);
+  url.pathname = "/login";
+  url.search = "";
+  updateUrl(url, true);
+}
+
+export function navigateAfterAuthentication(): void {
+  const url = new URL(globalThis.location.href);
+  url.pathname = "/";
+  url.search = "";
+  updateUrl(url, true);
+}
+
 export function navigateToShow(showName: string): void {
   const url = new URL(globalThis.location.href);
   url.pathname = `/shows/${encodeURIComponent(showName)}`;

@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState, type SyntheticEvent } from "react";
+import { useCallback, useRef, useState } from "react";
 import Hls from "hls.js";
-import type { MediaEntry, PlaybackProgress } from "../types.ts";
+import type { AniListPlaybackTarget, MediaEntry, PlaybackProgress } from "../types.ts";
 import { hlsUrl, streamUrl } from "../api.ts";
-import { useSavePlaybackProgress } from "../hooks/usePlaybackProgress.ts";
+import { usePlayerProgress } from "../hooks/usePlayerProgress.ts";
 import { useSubtitleTracks } from "../hooks/useSubtitleTracks.ts";
 import { hasMeaningfulPlaybackProgress } from "../lib/playback.ts";
 import { SubtitleTracks } from "./SubtitleTracks.tsx";
@@ -23,6 +23,7 @@ interface PlayerProps {
   readonly onClose: () => void;
   readonly onNext: () => void;
   readonly onPrevious: () => void;
+  readonly anilistTarget: AniListPlaybackTarget | null;
 }
 
 function tryPlay(video: HTMLVideoElement): void {
@@ -149,67 +150,6 @@ function useVideoSource(entry: MediaEntry): VideoSourceState {
   return { playbackError, videoRef, setVideo, handleVideoError, handlePlaying };
 }
 
-interface PlaybackHandlers {
-  readonly saveCurrentProgress: (video: HTMLVideoElement, completed: boolean) => void;
-  readonly handleLoadedMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
-  readonly handleTimeUpdate: (event: SyntheticEvent<HTMLVideoElement>) => void;
-  readonly handlePause: (event: SyntheticEvent<HTMLVideoElement>) => void;
-  readonly handleSeeked: (event: SyntheticEvent<HTMLVideoElement>) => void;
-  readonly handleEnded: (event: SyntheticEvent<HTMLVideoElement>) => void;
-}
-
-function usePlaybackHandlers(entry: MediaEntry, resumeAt: number): PlaybackHandlers {
-  const lastSavedAtRef = useRef<number>(0);
-  const { mutate: savePlayback } = useSavePlaybackProgress();
-  const saveCurrentProgress = useCallback((video: HTMLVideoElement, completed: boolean) => {
-    const { currentTime: position, duration } = video;
-    if (
-      !Number.isFinite(position) ||
-      !hasMeaningfulPlaybackProgress(position) ||
-      !Number.isFinite(duration)
-    ) {
-      return;
-    }
-    lastSavedAtRef.current = Date.now();
-    savePlayback({ rel: entry.rel, position, duration, completed });
-  }, [entry.rel, savePlayback]);
-
-  const handleLoadedMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    const video = event.currentTarget;
-    if (resumeAt > 0 && resumeAt < video.duration) {
-      video.currentTime = resumeAt;
-    }
-  }, [resumeAt]);
-
-  const handleTimeUpdate = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    if (Date.now() - lastSavedAtRef.current >= 10_000) {
-      saveCurrentProgress(event.currentTarget, false);
-    }
-  }, [saveCurrentProgress]);
-
-  const handlePause = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    if (!event.currentTarget.ended) {
-      saveCurrentProgress(event.currentTarget, false);
-    }
-  }, [saveCurrentProgress]);
-
-  const handleSeeked = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    saveCurrentProgress(event.currentTarget, false);
-  }, [saveCurrentProgress]);
-
-  const handleEnded = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    saveCurrentProgress(event.currentTarget, true);
-  }, [saveCurrentProgress]);
-  return {
-    saveCurrentProgress,
-    handleLoadedMetadata,
-    handleTimeUpdate,
-    handlePause,
-    handleSeeked,
-    handleEnded,
-  };
-}
-
 export function Player({
   entry,
   nextAvailable,
@@ -218,6 +158,7 @@ export function Player({
   onClose,
   onNext,
   onPrevious,
+  anilistTarget,
 }: PlayerProps): React.JSX.Element {
   const resumeAt = initialProgress?.completed === false &&
     hasMeaningfulPlaybackProgress(initialProgress.position)
@@ -237,7 +178,7 @@ export function Player({
     handlePause,
     handleSeeked,
     handleEnded,
-  } = usePlaybackHandlers(entry, resumeAt);
+  } = usePlayerProgress(entry, resumeAt, anilistTarget);
   const subtitles = useSubtitleTracks(entry.rel);
 
   const handleOpenChange = useCallback(
