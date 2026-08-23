@@ -1,22 +1,19 @@
 # Security policy
 
-## Reporting a vulnerability
+## Report a vulnerability
 
-Please do not open a public issue for a suspected vulnerability. Use the
-repository's private **Report a vulnerability** flow under the Security tab.
-Include affected versions, reproduction steps, impact, and any suggested fix.
+Use GitHub's private **Report a vulnerability** flow under the repository's
+Security tab. Do not open a public issue. Include the affected revision,
+reproduction steps, and impact. Do not access other people's data, disrupt a
+deployment, or publish details before a fix is available.
 
-Do not access data that is not yours, disrupt a running deployment, or publish
-details before a fix is available.
+## Support
 
-## Supported version
+Security fixes target the latest commit on the default branch. Older releases
+are not maintained.
 
-Security fixes target the latest commit on the default branch. This project does
-not currently maintain older release branches.
+## Operations
 
-## Operator responsibilities
-
-Nanime is designed to run behind a TLS reverse proxy. Operators are responsible
-for access control at the network edge, timely dependency updates, protecting
-the SQLite database and qBittorrent credentials, backing up state, and running
-the service with minimum filesystem privileges.
+Run Nanime behind a TLS reverse proxy with minimum filesystem privileges. Keep
+dependencies current, protect the database and qBittorrent credentials, and
+back up persistent state.
