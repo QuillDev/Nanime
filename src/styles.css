@@ -328,11 +328,13 @@
     }
   }
 
-  @media (min-width: 48rem) {
+  @media (hover: hover) and (pointer: fine) {
     .player-subtitle-position {
       bottom: 6rem;
     }
+  }
 
+  @media (min-width: 48rem) {
     .player-subtitle {
       -webkit-text-stroke-width: 2px;
       text-shadow:

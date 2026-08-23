@@ -1,67 +1,55 @@
-# AGENTS.md — Nanime
+# Nanime agent guide
 
-Nanime is a self-hosted anime library and streaming application. A Bun backend
-serves a React/Vite SPA, streams local media, persists state in SQLite, and can
-optionally integrate with qBittorrent, AniList, and TVmaze.
+Nanime is a self-hosted anime library and streaming PWA. Bun/Elysia serves a
+React/Vite client, local media, and SQLite state. Optional integrations include
+AniList and qBittorrent; metadata also uses Jikan and TVmaze.
 
-## Public repository hygiene
+## Rules
 
-This repository is public. Never commit credentials, database files, media,
-private URLs or IP addresses, hostnames, usernames, home-directory paths,
-deployment-specific service names, or details about an operator's library.
-Keep private deployment configuration outside the repository and document only
-portable examples here. Any example values must be obviously fictitious.
+- This is a public repository. Never commit secrets, databases, media, private
+  addresses, operator paths, deployment names, or library details. Examples must
+  be portable and obviously fictitious.
+- Use Bun for the runtime and package manager. `ffmpeg` and `ffprobe` must remain
+  external executables found on `PATH`.
+- Fetch client data through TanStack Query hooks in `src/hooks/`, not React
+  effects. Preserve Eden's end-to-end route types.
+- Use Tailwind CSS v4 and the existing shadcn/ui patterns. Surfaces are solid
+  black with the `#ec4899` accent; do not add translucent UI.
+- Keep the server loopback-bound by default. Public deployments require a TLS
+  reverse proxy and an exact `NANIME_PUBLIC_ORIGIN`.
 
-## Stack and conventions
+## Client capabilities
 
-- Runtime and package manager: Bun.
-- Frontend: React 19, Vite 7, and TypeScript.
-- Styling: Tailwind CSS v4 and shadcn/ui. Use solid black surfaces with the pink
-  `#ec4899` accent. Never add translucent surfaces or overlays.
-- Fetch data through TanStack Query hooks under `src/hooks/`; do not fetch from
-  React effects.
-- Backend: Elysia on Bun, with Eden Treaty providing the frontend API client and
-  end-to-end route types. Media processing uses `ffmpeg` and `ffprobe` on `PATH`.
-- The server binds to loopback by default. Public deployments belong behind a
-  TLS reverse proxy with `NANIME_PUBLIC_ORIGIN` configured.
+Do not infer mobile or desktop from width, user agent, or PWA display mode.
 
-## Security invariants
+- Width breakpoints are for available-space layout and typography only.
+- Use `(hover: hover) and (pointer: fine)` for mouse/trackpad presentation and
+  `(hover: none) and (pointer: coarse)` for touch-first presentation.
+- For an interaction, prefer the event's `pointerType`.
+- Use `display-mode` only for PWA shell behavior. Handle safe-area insets
+  independently on every client.
 
-- Authentication cookies stay `HttpOnly`, `SameSite=Strict`, and `Secure` by
-  default.
-- Mutating requests must pass same-origin validation.
-- Only administrators may provision users, alter mappings, manage torrents, or
-  delete media.
-- Account activation requires a single-use high-entropy setup code. There is no
-  public registration.
-- Resolve and validate canonical media paths before reading files.
-- Keep request-size limits, login throttling, generic authentication errors,
-  security headers, and SQLite file permissions intact.
-- Never add a network-service URL or filesystem path as an operator-specific
-  default. Use environment variables and safe local defaults.
+Landscape phones can cross desktop width breakpoints. In the player, subtitle
+typography may scale with width, but desktop control clearance must depend on
+hover and pointer capability.
 
-## Quality gate
+## Security
 
-Run `bun run check` before every commit. It must complete with zero TypeScript or
-oxlint findings and React Doctor must report `Score: 100 / 100` with zero issues.
-Do not suppress findings or weaken configuration to make the gate pass. Then run
-`bun run build` before a release.
+- Preserve `HttpOnly`, `SameSite=Strict`, secure-by-default cookies, same-origin
+  checks, security headers, login throttling, request limits, generic auth
+  errors, and restrictive SQLite permissions.
+- Only admins may provision users, change mappings, manage downloads, or delete
+  media. Account setup uses single-use high-entropy codes; there is no public
+  registration.
+- Canonicalize and validate media paths before filesystem access.
+- Configuration defaults must not contain operator-specific URLs or paths.
 
-The lint gate includes the upstream `oxlint-plugin-anti-slop` rules that reject
-evidence-losing assertions, widened known values, unsafe dictionaries, dynamic
-reflection, and similar low-signal patterns. Three deliberately architectural
-rules stay disabled: runtime `typeof` checks and `unknown` parser parameters are
-required at untrusted I/O boundaries, while mandatory comments on every type
-assertion would reward comment volume instead of validated parsing. Do not enable
-those rules without first separating boundary-parser files from application code.
+## Verification
 
-## Commands
+Run `bun run check` before every commit. It must have no TypeScript or oxlint
+findings and React Doctor must score 100/100. Do not suppress findings or weaken
+the checks. Run relevant `bun test` suites for behavior changes and `bun run
+build` before release.
 
-- `bun install` — install dependencies.
-- `bun run dev` — start Vite; run `bun run start` in another terminal.
-- `bun run start` — start the Bun backend.
-- `bun run check` — run typecheck, strict lint, and React Doctor.
-- `bun run build` — typecheck and create the production bundle in `dist/`.
-
-See `.env.example`, `README.md`, and `SECURITY.md` for portable deployment and
-security guidance.
+Common commands: `bun install`, `bun run dev`, `bun run start`, `bun run check`,
+`bun test`, and `bun run build`.
