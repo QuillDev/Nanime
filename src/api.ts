@@ -1,3 +1,5 @@
+import { treaty } from "@elysiajs/eden";
+import type { App } from "../server/app.ts";
 import type {
   AniListMedia,
   AuthUser,
@@ -8,6 +10,8 @@ import type {
   ProvisionedUser,
   TorrentStatus,
 } from "./types.ts";
+
+const api = treaty<App>(globalThis.location.origin);
 
 export function streamUrl(rel: string): string {
   return `/stream?path=${encodeURIComponent(rel)}`;
@@ -25,77 +29,76 @@ export function subtitleUrl(rel: string, index: number): string {
   return `/subtitle?path=${encodeURIComponent(rel)}&index=${String(index)}`;
 }
 
-function isMediaEntry(value: unknown): value is MediaEntry {
-  if (typeof value !== "object" || value === null) {
-    return false;
+interface EdenError {
+  readonly status: unknown;
+  readonly value: unknown;
+}
+
+function errorDetail(error: EdenError): string {
+  if (typeof error.value === "string" && error.value !== "") {
+    return error.value;
   }
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record["rel"] === "string" &&
-    typeof record["name"] === "string" &&
-    typeof record["folder"] === "string" &&
-    typeof record["size"] === "number" &&
-    typeof record["direct"] === "boolean"
-  );
+  if (typeof error.value === "object" && error.value !== null) {
+    const message = Reflect.get(error.value, "message");
+    if (typeof message === "string" && message !== "") {
+      return message;
+    }
+  }
+  return `HTTP ${String(error.status)}`;
+}
+
+function unwrap<T>(
+  result: { readonly data: T; readonly error: null } | {
+    readonly data: null;
+    readonly error: EdenError;
+  },
+  label: string,
+): T {
+  if (result.error !== null) {
+    throw new Error(`${label} failed: ${errorDetail(result.error)}`);
+  }
+  return result.data;
 }
 
 export async function fetchLibrary(signal: AbortSignal): Promise<readonly MediaEntry[]> {
-  const response = await fetch("/api/list", { signal });
-  if (!response.ok) {
-    throw new Error(`Library request failed: HTTP ${String(response.status)}`);
-  }
-  const payload: unknown = await response.json();
-  if (!Array.isArray(payload)) {
-    throw new TypeError("Library response was not a list");
-  }
-  return payload.filter((item: unknown) => isMediaEntry(item));
-}
-
-async function responseJson(response: Response, label: string): Promise<unknown> {
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`${label} failed: ${detail || `HTTP ${String(response.status)}`}`);
-  }
-  return response.json();
+  return unwrap(await api.api.list.get({ fetch: { signal } }), "Library request");
 }
 
 export async function fetchShowMetadata(signal: AbortSignal): Promise<ShowMetadata> {
-  const response = await fetch("/api/metadata", { signal });
-  return (await responseJson(response, "Metadata request")) as ShowMetadata;
+  return unwrap(await api.api.metadata.get({ fetch: { signal } }), "Metadata request");
 }
 
 export async function fetchSubtitleTracks(
   rel: string,
   signal: AbortSignal,
 ): Promise<readonly SubtitleTrack[]> {
-  const response = await fetch(`/api/subtitles?path=${encodeURIComponent(rel)}`, { signal });
-  return (await responseJson(response, "Subtitle tracks request")) as readonly SubtitleTrack[];
+  return unwrap(
+    await api.api.subtitles.get({ query: { path: rel }, fetch: { signal } }),
+    "Subtitle tracks request",
+  );
 }
 
 export async function searchAniList(
   search: string,
   signal: AbortSignal,
 ): Promise<readonly AniListMedia[]> {
-  const response = await fetch(`/api/anilist/search?q=${encodeURIComponent(search)}`, {
-    signal,
-  });
-  return (await responseJson(response, "AniList search")) as readonly AniListMedia[];
+  return unwrap(
+    await api.api.anilist.search.get({ query: { q: search }, fetch: { signal } }),
+    "AniList search",
+  );
 }
 
 export async function linkAniList(key: string, id: number): Promise<AniListMedia> {
-  const response = await fetch("/api/anilist/link", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ key, id }),
-  });
-  return (await responseJson(response, "AniList link")) as AniListMedia;
+  return unwrap(await api.api.anilist.link.post({ key, id }), "AniList link");
 }
 
 export async function fetchPlaybackProgress(
   signal: AbortSignal,
 ): Promise<readonly PlaybackProgress[]> {
-  const response = await fetch("/api/progress", { signal });
-  return (await responseJson(response, "Playback progress request")) as readonly PlaybackProgress[];
+  return unwrap(
+    await api.api.progress.get({ fetch: { signal } }),
+    "Playback progress request",
+  );
 }
 
 export interface PlaybackProgressUpdate {
@@ -108,29 +111,25 @@ export interface PlaybackProgressUpdate {
 export async function savePlaybackProgress(
   update: PlaybackProgressUpdate,
 ): Promise<PlaybackProgress> {
-  const response = await fetch("/api/progress", {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(update),
-  });
-  return (await responseJson(response, "Saving playback progress")) as PlaybackProgress;
+  return unwrap(await api.api.progress.put(update), "Saving playback progress");
 }
 
 export async function fetchCurrentUser(signal: AbortSignal): Promise<AuthUser | null> {
-  const response = await fetch("/api/auth/me", { signal });
-  return (await responseJson(response, "Session request")) as AuthUser | null;
+  return unwrap(await api.api.auth.me.get({ fetch: { signal } }), "Session request");
 }
 
 async function authenticate(
   endpoint: "login" | "setup",
   credentials: { readonly username: string; readonly password: string; readonly setupToken?: string },
 ): Promise<AuthUser> {
-  const response = await fetch(`/api/auth/${endpoint}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(credentials),
-  });
-  return (await responseJson(response, "Authentication")) as AuthUser;
+  const result = endpoint === "login"
+    ? await api.api.auth.login.post(credentials)
+    : await api.api.auth.setup.post({
+        username: credentials.username,
+        password: credentials.password,
+        setupToken: credentials.setupToken ?? "",
+      });
+  return unwrap(result, "Authentication");
 }
 
 export function login(username: string, password: string): Promise<AuthUser> {
@@ -146,28 +145,15 @@ export function setupPassword(
 }
 
 export async function logout(): Promise<void> {
-  const response = await fetch("/api/auth/logout", { method: "POST" });
-  if (!response.ok) {
-    throw new Error("Logout failed");
-  }
+  unwrap(await api.api.auth.logout.post(), "Logout");
 }
 
 export async function fetchUsers(signal: AbortSignal): Promise<readonly ProvisionedUser[]> {
-  const response = await fetch("/api/users", { signal });
-  return (await responseJson(response, "Users request")) as readonly ProvisionedUser[];
+  return unwrap(await api.api.users.get({ fetch: { signal } }), "Users request");
 }
 
 export async function provisionUser(username: string, isAdmin: boolean): Promise<string> {
-  const response = await fetch("/api/users", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username, isAdmin }),
-  });
-  if (!response.ok) {
-    throw new Error((await response.text()) || "Provisioning failed");
-  }
-  const result = (await response.json()) as { setupToken: string };
-  return result.setupToken;
+  return unwrap(await api.api.users.post({ username, isAdmin }), "Provisioning").setupToken;
 }
 
 export async function addTorrent(
@@ -175,33 +161,26 @@ export async function addTorrent(
   magnet: string,
   showFolder: string,
 ): Promise<void> {
-  const body = new FormData();
-  if (file !== null) {
-    body.append("torrent", file, file.name);
-  }
-  if (magnet !== "") {
-    body.append("magnet", magnet);
-  }
-  body.append("showFolder", showFolder);
-  const response = await fetch("/api/torrents", { method: "POST", body });
-  if (!response.ok) {
-    throw new Error((await response.text()) || "Adding torrent failed");
-  }
+  const body = {
+    ...(file === null ? {} : { torrent: file }),
+    ...(magnet === "" ? {} : { magnet }),
+    showFolder,
+  };
+  unwrap(await api.api.torrents.post(body), "Adding torrent");
 }
 
 export async function fetchTorrents(signal: AbortSignal): Promise<readonly TorrentStatus[]> {
-  const response = await fetch("/api/torrents", { signal });
-  return (await responseJson(response, "Torrent status request")) as readonly TorrentStatus[];
+  return unwrap(
+    await api.api.torrents.get({ fetch: { signal } }),
+    "Torrent status request",
+  );
 }
 
 export async function deleteMedia(paths: readonly string[]): Promise<number> {
-  const response = await fetch("/api/media/delete", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ paths }),
-  });
-  const result = (await responseJson(response, "Deleting media")) as { deleted: number };
-  return result.deleted;
+  return unwrap(
+    await api.api.media.delete.post({ paths: [...paths] }),
+    "Deleting media",
+  ).deleted;
 }
 
 export function formatDuration(seconds: number): string {

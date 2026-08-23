@@ -39,14 +39,14 @@ export function requestOriginAllowed(req: Request): boolean {
   return origin === expected;
 }
 
-export function clientAddress(req: Request, server: Server<undefined>): string {
+export function clientAddress(req: Request, server: Server<undefined> | null): string {
   if (TRUST_PROXY) {
     const forwarded = req.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim();
     if (forwarded !== undefined && forwarded !== "") {
       return forwarded.slice(0, 128);
     }
   }
-  return server.requestIP(req)?.address ?? "unknown";
+  return server?.requestIP(req)?.address ?? "unknown";
 }
 
 export function securityHeaders(response: Response): Response {

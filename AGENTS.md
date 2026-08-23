@@ -20,7 +20,8 @@ portable examples here. Any example values must be obviously fictitious.
   `#ec4899` accent. Never add translucent surfaces or overlays.
 - Fetch data through TanStack Query hooks under `src/hooks/`; do not fetch from
   React effects.
-- Backend: Bun built-ins plus `ffmpeg` and `ffprobe` on `PATH`.
+- Backend: Elysia on Bun, with Eden Treaty providing the frontend API client and
+  end-to-end route types. Media processing uses `ffmpeg` and `ffprobe` on `PATH`.
 - The server binds to loopback by default. Public deployments belong behind a
   TLS reverse proxy with `NANIME_PUBLIC_ORIGIN` configured.
 

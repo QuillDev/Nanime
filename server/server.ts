@@ -9,7 +9,7 @@
  *   GET /hls/seg?path=&i=N   -> one HLS segment, transcoded on demand from the
  *                               sought timestamp (VAAPI when HWACCEL=vaapi)
  *
- * No runtime dependencies beyond Bun built-ins and ffmpeg/ffprobe on PATH.
+ * Elysia routes are declared in app.ts; media processing uses ffmpeg/ffprobe.
  */
 import type { Dirent } from "node:fs";
 import { readdir, realpath, stat } from "node:fs/promises";
@@ -478,7 +478,7 @@ async function route(context: RequestContext): Promise<Response> {
   }
 }
 
-async function handle(req: Request, server: Server<undefined>): Promise<Response> {
+export async function handle(req: Request, server: Server<undefined> | null): Promise<Response> {
   const url = new URL(req.url);
   const { pathname } = url;
   const response = await route({ pathname, url, req, address: clientAddress(req, server) });
@@ -490,10 +490,9 @@ async function handle(req: Request, server: Server<undefined>): Promise<Response
   return securityHeaders(response);
 }
 
-Bun.serve({
+export const serverOptions = {
   port: PORT,
   hostname: HOST,
   idleTimeout: 0,
   maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
-  fetch: handle,
-});
+} as const;
