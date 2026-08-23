@@ -5,9 +5,7 @@ import type { SubtitleTrack } from "../types.ts";
 const EMPTY_TRACKS: readonly SubtitleTrack[] = [];
 
 function cueText(cue: TextTrackCue | undefined): string | null {
-  return cue !== undefined && "text" in cue && typeof cue.text === "string"
-    ? cue.text.replaceAll(/<[^>]+>/gu, "")
-    : null;
+  return cue instanceof VTTCue ? cue.getCueAsHTML().textContent : null;
 }
 
 function activeCueLines(activeCues: TextTrackCueList): readonly string[] {
