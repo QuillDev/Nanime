@@ -9,7 +9,7 @@ interface AnimeDetailsProps {
   readonly fallbackTitle: string;
   readonly previewRel: string;
   readonly media: AniListMedia | undefined;
-  readonly onLink: () => void;
+  readonly onLink?: (() => void) | undefined;
 }
 
 function MediaFacts({
@@ -44,7 +44,7 @@ export function AnimeDetails({
 }: AnimeDetailsProps): React.JSX.Element {
   const [expanded, setExpanded] = useState<boolean>(false);
   const handleLink = useCallback(() => {
-    onLink();
+    onLink?.();
   }, [onLink]);
   const handleExpand = useCallback(() => {
     setExpanded((current) => !current);
@@ -59,15 +59,17 @@ export function AnimeDetails({
       <MediaThumbnail rel={previewRel} source={cover} className="aspect-[2/3] w-full" />
       <div className="p-5">
         <div className="flex items-start gap-2">
-          <button
-            type="button"
-            onClick={handleLink}
-            aria-label={media === undefined ? "Link show with AniList" : "Change AniList match"}
-            title={media === undefined ? "Link show with AniList" : "Change AniList match"}
-            className="mt-0.5 shrink-0 rounded p-1 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Link className="size-4" />
-          </button>
+          {onLink !== undefined && (
+            <button
+              type="button"
+              onClick={handleLink}
+              aria-label={media === undefined ? "Link show with AniList" : "Change AniList match"}
+              title={media === undefined ? "Link show with AniList" : "Change AniList match"}
+              className="mt-0.5 shrink-0 rounded p-1 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Link className="size-4" />
+            </button>
+          )}
           <h2 className="min-w-0 text-xl font-semibold">
             {media === undefined ? fallbackTitle : mediaTitle(media)}
           </h2>

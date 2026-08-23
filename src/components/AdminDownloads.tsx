@@ -1,13 +1,8 @@
+import { Download } from "lucide-react";
 import { formatDuration, formatSize } from "../api.ts";
 import { useTorrents } from "../hooks/useTorrents.ts";
 import type { TorrentStatus } from "../types.ts";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog.tsx";
+import { AdminPanel } from "./AdminPanel.tsx";
 
 const STATE_LABELS: Readonly<Record<string, string>> = {
   allocating: "Allocating",
@@ -31,10 +26,7 @@ const STATE_LABELS: Readonly<Record<string, string>> = {
 };
 
 function statusLabel(torrent: TorrentStatus): string {
-  if (torrent.progress >= 1) {
-    return "Complete";
-  }
-  return STATE_LABELS[torrent.state] ?? torrent.state;
+  return torrent.progress >= 1 ? "Complete" : STATE_LABELS[torrent.state] ?? torrent.state;
 }
 
 function etaLabel(eta: number): string {
@@ -53,7 +45,7 @@ function TorrentRow({ torrent }: { readonly torrent: TorrentStatus }): React.JSX
         aria-label={`${torrent.name} download progress`}
         value={percentage}
         max={100}
-        className="h-2 w-full appearance-none overflow-hidden rounded-full bg-muted [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary"
+        className="playback-progress h-2 w-full overflow-hidden rounded-full"
       />
       <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span>{percentage.toFixed(1)}% · {formatSize(torrent.completed)} / {formatSize(torrent.size)}</span>
@@ -68,38 +60,27 @@ function TorrentRow({ torrent }: { readonly torrent: TorrentStatus }): React.JSX
   );
 }
 
-interface TorrentStatusDialogProps {
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-}
-
-export function TorrentStatusDialog({
-  open,
-  onOpenChange,
-}: TorrentStatusDialogProps): React.JSX.Element {
-  const torrents = useTorrents(open);
+export function AdminDownloads(): React.JSX.Element {
+  const torrents = useTorrents(true);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Downloads</DialogTitle>
-          <DialogDescription>
-            Active torrents and the five most recently added completed torrents. Updates every two seconds.
-          </DialogDescription>
-        </DialogHeader>
-        {torrents.status === "pending" && (
-          <p className="py-8 text-center text-sm text-muted-foreground">Loading downloads…</p>
-        )}
-        {torrents.status === "error" && (
-          <p className="py-4 text-sm text-destructive">{torrents.error.message}</p>
-        )}
-        {torrents.status === "success" && torrents.data.length === 0 && (
-          <p className="py-8 text-center text-sm text-muted-foreground">No torrents found.</p>
-        )}
-        {torrents.status === "success" && torrents.data.length > 0 && (
-          <ul>{torrents.data.map((torrent) => <TorrentRow key={torrent.hash} torrent={torrent} />)}</ul>
-        )}
-      </DialogContent>
-    </Dialog>
+    <AdminPanel
+      title="Downloads"
+      description="Active and recently completed torrents. Refreshes every two seconds."
+      icon={Download}
+      className="xl:col-span-2"
+    >
+      {torrents.status === "pending" && (
+        <p className="py-10 text-center text-sm text-muted-foreground">Loading downloads…</p>
+      )}
+      {torrents.status === "error" && (
+        <p className="py-4 text-sm text-destructive">{torrents.error.message}</p>
+      )}
+      {torrents.status === "success" && torrents.data.length === 0 && (
+        <p className="py-10 text-center text-sm text-muted-foreground">No torrents found.</p>
+      )}
+      {torrents.status === "success" && torrents.data.length > 0 && (
+        <ul>{torrents.data.map((torrent) => <TorrentRow key={torrent.hash} torrent={torrent} />)}</ul>
+      )}
+    </AdminPanel>
   );
 }

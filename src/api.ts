@@ -11,7 +11,9 @@ import type {
   TorrentStatus,
 } from "./types.ts";
 
-const api = treaty<App>(globalThis.location.origin);
+// TVmaze air dates are contractually strings. Eden otherwise revives date-like
+// JSON strings into Date objects even when the Elysia response schema says string.
+const api = treaty<App>(globalThis.location.origin, { parseDate: false });
 
 export function streamUrl(rel: string): string {
   return `/stream?path=${encodeURIComponent(rel)}`;

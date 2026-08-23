@@ -4,9 +4,9 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from "react";
-import { Film } from "lucide-react";
 import { Input } from "./ui/input.tsx";
 import { useLogin, useSetupPassword } from "../hooks/useAuth.ts";
+import { BrandLogo } from "./BrandLogo.tsx";
 
 function useTextField(): readonly [string, (event: ChangeEvent<HTMLInputElement>) => void] {
   const [value, setValue] = useState<string>("");
@@ -69,10 +69,9 @@ export function LoginScreen(): React.JSX.Element {
         onSubmit={handleSubmit}
         className="w-full max-w-sm rounded-xl border border-border bg-card p-8"
       >
-        <div className="mb-8 flex items-center gap-3">
-          <Film className="size-7 text-primary" />
+        <div className="mb-8">
+          <BrandLogo className="mb-2 h-9 w-auto" />
           <div>
-            <h1 className="text-xl font-bold">Nanime</h1>
             <p className="text-sm text-muted-foreground">
               {setupMode ? "Activate your provisioned account" : "Sign in to continue"}
             </p>

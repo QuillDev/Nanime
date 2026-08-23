@@ -5,11 +5,9 @@ import type {
   MediaEntry,
   PlaybackProgressMap,
 } from "../types.ts";
-import { formatSize } from "../api.ts";
 import { episodeMetadata, episodeNumber } from "../lib/anilist.ts";
-import { Badge } from "./ui/badge.tsx";
+import { hasMeaningfulPlaybackProgress } from "../lib/playback.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
-import { PlaybackStatus } from "./PlaybackStatus.tsx";
 
 interface EpisodeCardProps {
   readonly entry: MediaEntry;
@@ -38,6 +36,13 @@ function EpisodeCard({
   }, [entry, onDelete]);
   const details = episodeMetadata(entry, media, { showMedia, season: seasonNumber });
   const number = episodeNumber(entry);
+  const episodeProgress = progress[entry.rel];
+  const showProgress = episodeProgress !== undefined && (
+    episodeProgress.completed || hasMeaningfulPlaybackProgress(episodeProgress.position)
+  );
+  const progressPercent = episodeProgress === undefined || episodeProgress.duration <= 0
+    ? 0
+    : Math.min(100, Math.max(0, episodeProgress.position / episodeProgress.duration * 100));
 
   return (
     <li className="flex overflow-hidden rounded-lg border border-border bg-card transition-colors focus-within:ring-2 focus-within:ring-ring hover:border-primary">
@@ -46,13 +51,30 @@ function EpisodeCard({
         onClick={handleClick}
         className="group flex min-w-0 flex-1 text-left focus-visible:outline-none"
       >
-        <MediaThumbnail
-          rel={entry.rel}
-          source={details?.thumbnail}
-          className="w-32 shrink-0 self-stretch sm:w-44"
-        />
+        <span className="w-32 shrink-0 sm:w-44">
+          <span className="relative block">
+            <MediaThumbnail
+              rel={entry.rel}
+              source={details?.thumbnail}
+              className="w-full"
+            />
+            {episodeProgress?.completed === true && (
+              <span className="absolute inset-0 flex items-center justify-center bg-black/60 text-xs font-semibold uppercase tracking-wider text-white">
+                Watched
+              </span>
+            )}
+          </span>
+          {showProgress && (
+            <progress
+              aria-label="Episode progress"
+              max={100}
+              value={episodeProgress.completed ? 100 : progressPercent}
+              className="playback-progress block h-1 w-full overflow-hidden"
+            />
+          )}
+        </span>
         <span className="flex min-w-0 flex-1 flex-col justify-center p-4">
-          <span className="flex min-w-0 items-start gap-3">
+          <span className="flex min-w-0 items-baseline gap-3">
             {number !== null && (
               <span className="w-6 shrink-0 text-right font-mono text-xs text-muted-foreground">
                 {String(number).padStart(2, "0")}
@@ -62,14 +84,6 @@ function EpisodeCard({
               {details?.title ?? entry.name}
             </span>
           </span>
-          <span className="mt-2 flex items-center gap-2">
-            {!entry.direct && <Badge variant="outline">transcode</Badge>}
-            <span className="text-sm text-muted-foreground">{formatSize(entry.size)}</span>
-            {details?.airDate !== null && details?.airDate !== undefined && (
-              <span className="text-sm text-muted-foreground">{details.airDate}</span>
-            )}
-          </span>
-          <PlaybackStatus progress={progress[entry.rel]} />
         </span>
       </button>
       {onDelete !== undefined && (

@@ -16,8 +16,8 @@ interface ShowPageProps {
   readonly metadata: ShowMetadata;
   readonly progress: PlaybackProgressMap;
   readonly onBack: () => void;
-  readonly onShowLink: () => void;
-  readonly onSeasonLink: (season: SeasonGroup) => void;
+  readonly onShowLink?: (() => void) | undefined;
+  readonly onSeasonLink?: ((season: SeasonGroup) => void) | undefined;
   readonly onEpisodeSelect: (entry: MediaEntry) => void;
   readonly onShowDelete?: ((show: ShowGroup) => void) | undefined;
   readonly onSeasonDelete?: ((season: SeasonGroup) => void) | undefined;

@@ -22,6 +22,7 @@ function updateUrl(url: URL, replace = false): void {
 }
 
 export interface MediaRoute {
+  readonly admin: boolean;
   readonly showName: string | null;
   readonly episodeRel: string | null;
   readonly query: string;
@@ -42,10 +43,18 @@ export function useMediaRoute(): MediaRoute {
   const snapshot = useSyncExternalStore(subscribeToLocation, locationSnapshot, () => "/");
   const url = new URL(snapshot, globalThis.location.origin);
   return {
+    admin: url.pathname === "/admin",
     showName: showFromPath(url.pathname),
     episodeRel: url.searchParams.get("episode"),
     query: url.searchParams.get("q") ?? "",
   };
+}
+
+export function navigateToAdmin(): void {
+  const url = new URL(globalThis.location.href);
+  url.pathname = "/admin";
+  url.search = "";
+  updateUrl(url);
 }
 
 export function navigateToShow(showName: string): void {

@@ -34,6 +34,7 @@ interface LibraryProps {
   readonly onShowSelect: (show: ShowGroup) => void;
   readonly onShowsBack: () => void;
   readonly canDelete: boolean;
+  readonly canManageMappings: boolean;
 }
 
 function matchesQuery(show: ShowGroup, needle: string): boolean {
@@ -210,6 +211,7 @@ export function Library({
   onShowSelect,
   onShowsBack,
   canDelete,
+  canManageMappings,
 }: LibraryProps): React.JSX.Element {
   const { navigation, deletion } = useLibraryControls(onShowsBack);
   const metadataQuery = useShowMetadata();
@@ -252,15 +254,15 @@ export function Library({
           metadata={metadata}
           progress={progress}
           onBack={onShowsBack}
-          onShowLink={navigation.handleShowLink}
-          onSeasonLink={navigation.handleSeasonLink}
+          onShowLink={canManageMappings ? navigation.handleShowLink : undefined}
+          onSeasonLink={canManageMappings ? navigation.handleSeasonLink : undefined}
           onEpisodeSelect={onSelect}
           onShowDelete={canDelete ? deletion.handleShowDelete : undefined}
           onSeasonDelete={canDelete ? deletion.handleSeasonDelete : undefined}
           onEpisodeDelete={canDelete ? deletion.handleEpisodeDelete : undefined}
         />
       )}
-      {navigation.linkTarget !== null && dialogKey !== null && (
+      {canManageMappings && navigation.linkTarget !== null && dialogKey !== null && (
         <AniListLinkDialog
           metadataKey={dialogKey}
           suggestedSearch={suggestedSearch}

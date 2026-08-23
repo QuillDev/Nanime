@@ -400,7 +400,9 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
     });
   }
   if (pathname === "/api/anilist/search" && req.method === "GET") {
-    return searchAniListResponse(url);
+    return user.isAdmin
+      ? searchAniListResponse(url)
+      : new Response("Forbidden", { status: 403 });
   }
   if (pathname === "/api/anilist/link" && req.method === "POST") {
     return user.isAdmin

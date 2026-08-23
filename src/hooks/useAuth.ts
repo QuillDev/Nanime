@@ -63,7 +63,8 @@ export function useLogout(): UseMutationResult<void, Error, void> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: logout,
-    onSuccess: () => {
+    onSuccess: async () => {
+      await queryClient.cancelQueries();
       queryClient.clear();
       queryClient.setQueryData(authKey, null);
     },

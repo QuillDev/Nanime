@@ -16,7 +16,7 @@ interface SeasonSectionProps {
   readonly defaultOpen: boolean;
   readonly progress: PlaybackProgressMap;
   readonly onEpisodeSelect: (entry: MediaEntry) => void;
-  readonly onLink: (season: SeasonGroup) => void;
+  readonly onLink?: ((season: SeasonGroup) => void) | undefined;
   readonly onSeasonDelete?: ((season: SeasonGroup) => void) | undefined;
   readonly onEpisodeDelete?: ((entry: MediaEntry) => void) | undefined;
   readonly showMedia: AniListMedia | undefined;
@@ -38,7 +38,7 @@ function SeasonSection({
     setOpen((current) => !current);
   }, []);
   const handleLink = useCallback(() => {
-    onLink(season);
+    onLink?.(season);
   }, [onLink, season]);
   const handleDelete = useCallback(() => {
     onSeasonDelete?.(season);
@@ -49,15 +49,17 @@ function SeasonSection({
   return (
     <li className="border-b border-border pb-3 last:border-b-0">
       <div className="flex items-center py-2">
-        <button
-          type="button"
-          onClick={handleLink}
-          aria-label={media === undefined ? `Link ${season.name} with AniList` : `Change match for ${title}`}
-          title={media === undefined ? "Link with AniList" : "Change AniList match"}
-          className={`mr-2 shrink-0 rounded p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${media === undefined ? "text-muted-foreground hover:text-primary" : "text-primary"}`}
-        >
-          <Link className="size-4" />
-        </button>
+        {onLink !== undefined && (
+          <button
+            type="button"
+            onClick={handleLink}
+            aria-label={media === undefined ? `Link ${season.name} with AniList` : `Change match for ${title}`}
+            title={media === undefined ? "Link with AniList" : "Change AniList match"}
+            className={`mr-2 shrink-0 rounded p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${media === undefined ? "text-muted-foreground hover:text-primary" : "text-primary"}`}
+          >
+            <Link className="size-4" />
+          </button>
+        )}
         <button
           type="button"
           aria-expanded={open}
@@ -106,7 +108,7 @@ interface SeasonListProps {
   readonly metadata: ShowMetadata;
   readonly progress: PlaybackProgressMap;
   readonly onEpisodeSelect: (entry: MediaEntry) => void;
-  readonly onLink: (season: SeasonGroup) => void;
+  readonly onLink?: ((season: SeasonGroup) => void) | undefined;
   readonly onSeasonDelete?: ((season: SeasonGroup) => void) | undefined;
   readonly onEpisodeDelete?: ((entry: MediaEntry) => void) | undefined;
   readonly showMedia: AniListMedia | undefined;
