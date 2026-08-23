@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 283 82" role="img" aria-labelledby="title description">
+  <title id="title">Nanime</title>
+  <desc id="description">The pink Japanese hiragana character na followed by nime in white.</desc>
+  <text
+    x="2"
+    y="69"
+    fill="#ec4899"
+    font-family="'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif"
+    font-size="72"
+    font-weight="800"
+  >な</text>
+  <text
+    x="79"
+    y="65"
+    fill="#fafafa"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-size="55"
+    font-weight="750"
+    letter-spacing="-2"
+  >nime</text>
+</svg>

@@ -1,11 +1,6 @@
 import { useCallback, type ChangeEvent } from "react";
 import type { AuthUser, MediaEntry, ShowMetadata } from "../types.ts";
-import {
-  nextEpisode,
-  previousEpisode,
-  sourceShowFolders,
-  type ShowGroup,
-} from "../lib/library.ts";
+import { nextEpisode, previousEpisode, type ShowGroup } from "../lib/library.ts";
 import { useLibrary } from "../hooks/useLibrary.ts";
 import { usePlaybackProgress } from "../hooks/usePlaybackProgress.ts";
 import { useShowMetadata } from "../hooks/useShowMetadata.ts";
@@ -77,8 +72,8 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
     <div className="min-h-screen bg-background text-foreground">
       <MediaHeader
         user={user}
+        view="library"
         query={route.query}
-        showFolders={sourceShowFolders(library.data ?? [])}
         onQueryChange={handleQueryChange}
       />
       <main className="mx-auto max-w-7xl px-6 py-6">
@@ -100,6 +95,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
             onShowSelect={handleShowSelect}
             onShowsBack={navigateToShows}
             canDelete={user.isAdmin}
+            canManageMappings={user.isAdmin}
           />
         )}
       </main>
