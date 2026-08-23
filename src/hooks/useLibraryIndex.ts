@@ -68,13 +68,17 @@ function indexSeasonTargets(options: SeasonTargetOptions): void {
   const { season, show, metadata, targets } = options;
   const media = seasonMetadata(metadata, season.sourceShow, season.name) ??
     metadata[showMetadataKey(show.name)];
-  if (media === undefined) {
+  if (media === undefined || media.anilistId === null) {
     return;
   }
   for (const entry of season.entries) {
     const episode = episodeNumber(entry);
     if (episode !== null) {
-      targets.set(entry.rel, { mediaId: media.id, episode, totalEpisodes: media.episodes });
+      targets.set(entry.rel, {
+        mediaId: media.anilistId,
+        episode,
+        totalEpisodes: media.episodes,
+      });
     }
   }
 }

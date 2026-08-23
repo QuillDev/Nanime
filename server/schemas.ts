@@ -108,7 +108,9 @@ const streamingEpisodeSchema = object({
 });
 const optionalTvmazeSchema = optional(union([tvmazeMatchSchema, nullValue()]));
 export const aniListMediaSchema = object({
+  provider: union([literal("anilist"), literal("jikan")]),
   id: number(),
+  anilistId: nullableNumber,
   idMal: nullableNumber,
   title: aniListTitleSchema,
   description: nullableString,

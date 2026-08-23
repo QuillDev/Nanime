@@ -2,7 +2,6 @@ import { treaty } from "@elysiajs/eden";
 import type { App } from "../server/app.ts";
 import { apiError } from "./apiError.ts";
 import type {
-  AniListMedia,
   AniListAccountStatus,
   AniListAuthConfig,
   AniListListEntry,
@@ -11,7 +10,6 @@ import type {
   MediaEntry,
   MediaScan,
   PlaybackProgress,
-  ShowMetadata,
   SubtitleTrack,
   ProvisionedUser,
   StorageStatus,
@@ -58,10 +56,6 @@ export async function fetchLibrary(signal: AbortSignal): Promise<readonly MediaE
   return unwrap(await api.api.list.get({ fetch: { signal } }), "Library request");
 }
 
-export async function fetchShowMetadata(signal: AbortSignal): Promise<ShowMetadata> {
-  return unwrap(await api.api.metadata.get({ fetch: { signal } }), "Metadata request");
-}
-
 export async function fetchSubtitleTracks(
   rel: string,
   signal: AbortSignal,
@@ -70,20 +64,6 @@ export async function fetchSubtitleTracks(
     await api.api.subtitles.get({ query: { path: rel }, fetch: { signal } }),
     "Subtitle tracks request",
   );
-}
-
-export async function searchAniList(
-  search: string,
-  signal: AbortSignal,
-): Promise<readonly AniListMedia[]> {
-  return unwrap(
-    await api.api.anilist.search.get({ query: { q: search }, fetch: { signal } }),
-    "AniList search",
-  );
-}
-
-export async function linkAniList(key: string, id: number): Promise<AniListMedia> {
-  return unwrap(await api.api.anilist.link.post({ key, id }), "AniList link");
 }
 
 export async function fetchPlaybackProgress(

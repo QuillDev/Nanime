@@ -1,6 +1,6 @@
-import type { AniListMedia } from "./anilist.ts";
 import type { TvmazeEpisode, TvmazeMatch } from "../shared/types.ts";
 import { jsonObject } from "./json.ts";
+import type { AnimeMetadata } from "./metadataTypes.ts";
 
 const TVMAZE_URL = "https://api.tvmaze.com";
 
@@ -77,7 +77,7 @@ function episodeFromResult(value: unknown): TvmazeEpisode | null {
   };
 }
 
-function titleCandidates(media: AniListMedia): readonly string[] {
+function titleCandidates(media: AnimeMetadata): readonly string[] {
   return [...new Set([media.title.english, media.title.romaji].filter(
     (title): title is string => title !== null && title !== "",
   ))];
@@ -98,7 +98,7 @@ function exactShow(
   }) ?? null;
 }
 
-export async function matchTvmaze(media: AniListMedia): Promise<TvmazeMatch | null> {
+export async function matchTvmaze(media: AnimeMetadata): Promise<TvmazeMatch | null> {
   const titles = titleCandidates(media);
   for (const title of titles) {
     const response = await fetch(`${TVMAZE_URL}/search/shows?q=${encodeURIComponent(title)}`);

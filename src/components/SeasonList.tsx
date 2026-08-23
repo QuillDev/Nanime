@@ -44,6 +44,7 @@ function SeasonSection({
   }, [onLink, season]);
   const title = media === undefined ? season.name : mediaTitle(media);
   const number = seasonNumber(season, media);
+  const providerName = media?.provider === "jikan" ? "MyAnimeList" : "AniList";
 
   return (
     <Collapsible defaultOpen={defaultOpen} asChild>
@@ -64,8 +65,8 @@ function SeasonSection({
           <button
             type="button"
             onClick={handleLink}
-            aria-label={media === undefined ? `Link ${season.name} with AniList` : `Change match for ${title}`}
-            title={media === undefined ? "Link with AniList" : "Change AniList match"}
+            aria-label={media === undefined ? `Match metadata for ${season.name}` : `Change match for ${title}`}
+            title={media === undefined ? "Match metadata" : "Change metadata match"}
             className={`shrink-0 rounded p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${media === undefined ? "text-muted-foreground hover:text-primary" : "text-primary"}`}
           >
             <Link className="size-4" />
@@ -76,11 +77,13 @@ function SeasonSection({
             href={media.siteUrl}
             target="_blank"
             rel="noreferrer"
-            aria-label={`View ${title} on AniList`}
-            title="View on AniList"
+            aria-label={`View ${title} on ${providerName}`}
+            title={`View on ${providerName}`}
             className="inline-flex shrink-0 items-center gap-1 rounded p-2 text-muted-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <img src={aniListLogoUrl} alt="" className="size-5" />
+            {media.provider === "anilist"
+              ? <img src={aniListLogoUrl} alt="" className="size-5" />
+              : <span className="flex size-5 items-center justify-center rounded bg-primary text-xs font-bold text-primary-foreground">J</span>}
             <ExternalLink className="size-4" />
           </a>
         )}
@@ -96,7 +99,9 @@ function SeasonSection({
       </div>
       <CollapsibleContent>
         <div className="pb-2 pl-8">
-          {listMedia !== undefined && <AniListListControls media={listMedia} />}
+          {listMedia !== undefined && listMedia.anilistId !== null && (
+            <AniListListControls media={listMedia} mediaId={listMedia.anilistId} />
+          )}
           <EpisodeGrid
             entries={season.entries}
             media={media}
