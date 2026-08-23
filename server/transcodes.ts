@@ -107,10 +107,8 @@ function transcodePreset(value: string): TranscodePreset | null {
 
 async function outputDirectory(options: TranscodeOptions): Promise<string | null> {
   const directory = resolve(options.mediaRoot, ".nanime-transcodes");
-  // eslint-disable-next-line no-inline-comments, capitalized-comments -- CodeQL syntax is fixed.
-  await mkdir(directory, { recursive: true, mode: 0o700 }).catch(() => undefined); // lgtm[js/path-injection]
-  // eslint-disable-next-line no-inline-comments, capitalized-comments -- CodeQL syntax is fixed.
-  const canonical = await realpath(directory).catch(() => null); // lgtm[js/path-injection]
+  await mkdir(directory, { recursive: true, mode: 0o700 }).catch(() => undefined);
+  const canonical = await realpath(directory).catch(() => null);
   return canonical !== null && canonical.startsWith(options.mediaRoot + sep) ? canonical : null;
 }
 

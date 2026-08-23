@@ -32,7 +32,7 @@ import {
 } from "./security.ts";
 
 const MEDIA_DIR = resolve(
-  process.env["MEDIA_DIR"] ?? resolve(import.meta.dir, "..", "media"),
+  Bun.env["MEDIA_DIR"] ?? resolve(import.meta.dir, "..", "media"),
 );
 const DIST_DIR = resolve(import.meta.dir, "..", "dist");
 const PORT = Number(process.env["PORT"] ?? "8096");
@@ -41,10 +41,9 @@ const HWACCEL = process.env["HWACCEL"] ?? "";
 const VAAPI_DEVICE = process.env["VAAPI_DEVICE"] ?? "/dev/dri/renderD128";
 const MAX_THUMBNAIL_JOBS = 1;
 const MAX_REQUEST_BODY_BYTES = 11 * 1024 * 1024;
-// MEDIA_DIR is trusted process configuration, not request input. Canonicalizing it here
-// establishes the containment root used to validate every request-derived media path.
-// eslint-disable-next-line no-inline-comments, capitalized-comments -- CodeQL syntax is fixed.
-const MEDIA_ROOT = await realpath(MEDIA_DIR).catch(() => MEDIA_DIR); // lgtm[js/path-injection]
+// MEDIA_DIR is trusted process configuration. This canonical root is used to validate
+// every request-derived media path before it reaches the filesystem.
+const MEDIA_ROOT = await realpath(MEDIA_DIR).catch(() => MEDIA_DIR);
 const VIDEO_EXTS = new Set<string>([
   ".mp4", ".m4v", ".webm", ".mov", ".mkv", ".avi", ".ts", ".m2ts",
   ".wmv", ".flv", ".mpg", ".mpeg", ".ogv", ".3gp",

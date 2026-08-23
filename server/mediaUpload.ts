@@ -51,8 +51,7 @@ async function safeDestinationDirectory(
   mediaRoot: string,
   parts: readonly string[],
 ): Promise<string | null> {
-  // eslint-disable-next-line no-inline-comments, capitalized-comments -- CodeQL syntax is fixed.
-  const canonicalRoot = await realpath(mediaRoot).catch(() => null); // lgtm[js/path-injection]
+  const canonicalRoot = await realpath(mediaRoot).catch(() => null);
   if (canonicalRoot === null) {
     return null;
   }
