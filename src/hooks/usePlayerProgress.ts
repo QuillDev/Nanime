@@ -3,7 +3,7 @@ import type { AniListPlaybackTarget, MediaEntry } from "../types.ts";
 import { useSavePlaybackProgress } from "./usePlaybackProgress.ts";
 import { hasMeaningfulPlaybackProgress } from "../lib/playback.ts";
 
-interface PlaybackHandlers {
+export interface PlaybackHandlers {
   readonly saveCurrentProgress: (video: HTMLVideoElement, completed: boolean) => void;
   readonly handleLoadedMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handleTimeUpdate: (event: SyntheticEvent<HTMLVideoElement>) => void;

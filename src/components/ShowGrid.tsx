@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type { AniListMedia, ShowMetadata } from "../types.ts";
 import { showMetadataKey, type ShowGroup } from "../lib/library.ts";
 import { mediaTitle } from "../lib/anilist.ts";
@@ -18,7 +18,7 @@ function ShowCard({ show, media, onSelect }: ShowCardProps): React.JSX.Element {
   const cover = media?.coverImage.extraLarge ?? media?.coverImage.large;
 
   return (
-    <li>
+    <div>
       <button
         type="button"
         onClick={handleClick}
@@ -37,7 +37,7 @@ function ShowCard({ show, media, onSelect }: ShowCardProps): React.JSX.Element {
           </span>
         </span>
       </button>
-    </li>
+    </div>
   );
 }
 
@@ -51,16 +51,34 @@ function showMedia(show: ShowGroup, metadata: ShowMetadata): AniListMedia | unde
   return metadata[showMetadataKey(show.name)];
 }
 
+function showTransitionName(name: string): string {
+  let hash = 0;
+  for (const character of name) {
+    hash = (hash * 31 + (character.codePointAt(0) ?? 0)) % 2_147_483_647;
+  }
+  return `show-card-${hash.toString(36)}`;
+}
+
+function ShowGridItem({ show, metadata, onSelect }: {
+  readonly show: ShowGroup;
+  readonly metadata: ShowMetadata;
+  readonly onSelect: (show: ShowGroup) => void;
+}): React.JSX.Element {
+  const style = useMemo(() => ({
+    viewTransitionName: showTransitionName(show.name),
+  }), [show.name]);
+  return (
+    <li style={style}>
+      <ShowCard show={show} media={showMedia(show, metadata)} onSelect={onSelect} />
+    </li>
+  );
+}
+
 export function ShowGrid({ shows, metadata, onSelect }: ShowGridProps): React.JSX.Element {
   return (
     <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {shows.map((show) => (
-        <ShowCard
-          key={show.name}
-          show={show}
-          media={showMedia(show, metadata)}
-          onSelect={onSelect}
-        />
+        <ShowGridItem key={show.name} show={show} metadata={metadata} onSelect={onSelect} />
       ))}
     </ul>
   );

@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App.tsx";
+import { CopyableErrorBoundary } from "./components/CopyableErrorBoundary.tsx";
+import { PwaRegistration } from "./components/PwaRegistration.tsx";
 import { queryClient } from "./lib/queryClient.ts";
 import "./styles.css";
 
@@ -12,8 +14,11 @@ if (container === null) {
 
 createRoot(container).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
+    <CopyableErrorBoundary title="Nanime encountered an error">
+      <QueryClientProvider client={queryClient}>
+        <PwaRegistration />
+        <App />
+      </QueryClientProvider>
+    </CopyableErrorBoundary>
   </StrictMode>,
 );

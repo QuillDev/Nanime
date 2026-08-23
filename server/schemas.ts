@@ -119,6 +119,20 @@ export const torrentStatusSchema = object({
   state: string(),
   addedOn: number(),
 });
+export const nyaaSearchResultSchema = object({
+  id: string(),
+  name: string(),
+  category: string(),
+  size: string(),
+  seeders: number(),
+  leechers: number(),
+  downloads: number(),
+  publishedAt: string(),
+  trusted: boolean(),
+  remake: boolean(),
+  detailsUrl: string(),
+  magnet: string(),
+});
 export const credentialsSchema = object({ username: string(), password: string() });
 
 export const schema = {

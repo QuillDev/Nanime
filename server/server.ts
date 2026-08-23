@@ -407,9 +407,9 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
     const requestedUserId = pathname === "/api/users" ? null : Number(pathname.slice(11));
     return usersResponse(req, user, requestedUserId);
   }
-  if (pathname === "/api/torrents") {
+  if (pathname === "/api/torrents" || pathname === "/api/torrents/search") {
     return user.isAdmin
-      ? torrentsResponse(req, MEDIA_DIR)
+      ? torrentsResponse(req, MEDIA_DIR, url)
       : new Response("Forbidden", { status: 403 });
   }
   if (pathname === "/api/media/delete") {

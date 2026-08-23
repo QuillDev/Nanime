@@ -11,6 +11,7 @@ import type {
   AniListAccountRow,
   AniListListEntry,
   AniListPlaybackTarget,
+  DeleteMediaListData,
   GraphQlResponse,
   ListUpdate,
   MediaListData,
@@ -80,6 +81,9 @@ const deleteAccount = database.query<void, [number]>(
 );
 const deleteSyncProgress = database.query<void, [number]>(
   "DELETE FROM anilist_sync_progress WHERE user_id = ?",
+);
+const deleteMediaSyncProgress = database.query<void, [number, number]>(
+  "DELETE FROM anilist_sync_progress WHERE user_id = ? AND media_id = ?",
 );
 const disconnectAccount = database.transaction((userId: number): void => {
   deleteAccount.run(userId);
@@ -366,7 +370,7 @@ async function fetchListEntry(token: string, mediaId: number): Promise<AniListLi
   return data.Media?.mediaListEntry ?? null;
 }
 
-const LIST_STATUSES = new Set(["CURRENT", "PLANNING", "COMPLETED", "DROPPED", "PAUSED", "REPEATING"]);
+const LIST_STATUSES = new Set(["NONE", "CURRENT", "PLANNING", "COMPLETED", "DROPPED", "PAUSED", "REPEATING"]);
 
 function validListUpdate(value: unknown): value is ListUpdate {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -413,6 +417,16 @@ async function saveListEntry(
   return data.SaveMediaListEntry;
 }
 
+async function deleteListEntry(token: string, entryId: number): Promise<void> {
+  const query = `mutation ($id: Int!) {
+    DeleteMediaListEntry(id: $id) { deleted }
+  }`;
+  const data = await graphQl<DeleteMediaListData>(token, query, { id: entryId });
+  if (!data.DeleteMediaListEntry.deleted) {
+    throw new Error("AniList list entry was not deleted");
+  }
+}
+
 function mediaIdFromUrl(url: URL): number | null {
   const value = Number(url.pathname.slice("/api/anilist/list/".length));
   return Number.isInteger(value) && value > 0 ? value : null;
@@ -436,6 +450,14 @@ export async function aniListEntryResponse(req: Request, url: URL, user: AuthUse
   const body: unknown = await req.json().catch((): null => null);
   if (!validListUpdate(body)) {
     return new Response("Invalid AniList list update", { status: 400 });
+  }
+  if (body.status === "NONE") {
+    const current = await fetchListEntry(account.token, mediaId);
+    if (current !== null) {
+      await deleteListEntry(account.token, current.id);
+    }
+    deleteMediaSyncProgress.run(user.id, mediaId);
+    return Response.json(null);
   }
   const result = await saveListEntry(account.token, mediaId, body);
   upsertSyncProgress.run(user.id, mediaId, result.progress, result.status, Date.now());

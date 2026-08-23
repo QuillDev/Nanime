@@ -85,6 +85,228 @@
       ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
 
+  body::before {
+    background-color: #000000;
+    content: "";
+    height: env(safe-area-inset-top);
+    left: 0;
+    pointer-events: none;
+    position: fixed;
+    right: 0;
+    top: 0;
+    z-index: 60;
+  }
+
+  @media (display-mode: standalone), (display-mode: fullscreen) {
+    #root {
+      box-sizing: border-box;
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+      padding-top: env(safe-area-inset-top);
+    }
+  }
+
+  .player-safe-controls {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+    padding-right: max(0.5rem, env(safe-area-inset-right));
+  }
+
+  .player-safe-close {
+    right: max(1rem, env(safe-area-inset-right));
+    top: max(1rem, env(safe-area-inset-top));
+  }
+
+  .player-subtitle {
+    -webkit-text-stroke: 0.5px #000000;
+    paint-order: stroke fill;
+    text-shadow: 0 1px 1px #000000;
+  }
+
+  .player-subtitle-small {
+    font-size: 1.125rem;
+  }
+
+  .player-subtitle-medium {
+    font-size: 1.40625rem;
+  }
+
+  .player-subtitle-large {
+    font-size: 1.6875rem;
+  }
+
+  .player-subtitle-bottom {
+    bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .mobile-account-controls {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .library-search {
+    margin-left: auto;
+    max-width: 20rem;
+    position: relative;
+    width: 100%;
+  }
+
+  .mobile-nav-item {
+    align-items: center;
+    border-radius: var(--radius);
+    color: var(--muted-foreground);
+    display: inline-flex;
+    gap: 0.375rem;
+    justify-content: center;
+    padding: 0.5rem;
+  }
+
+  .mobile-nav-item:hover,
+  .mobile-nav-item[data-active="true"] {
+    background-color: var(--accent);
+    color: var(--foreground);
+  }
+
+  .mobile-nav-item[data-active="true"] {
+    color: var(--primary);
+  }
+
+  .collapsible-content {
+    overflow: hidden;
+  }
+
+  .collapsible-content[data-state="open"] {
+    animation: collapsible-drawer-down 250ms ease-out;
+  }
+
+  .collapsible-content[data-state="closed"] {
+    animation: collapsible-drawer-up 200ms ease-in;
+  }
+
+  .collapsible-chevron {
+    transition: transform 200ms ease-out;
+  }
+
+  .collapsible-trigger[data-state="closed"] .collapsible-chevron {
+    transform: rotate(-90deg);
+  }
+
+  .anime-description {
+    max-height: 7.5rem;
+    overflow: hidden;
+    transition: max-height 300ms ease-out;
+  }
+
+  [data-slot="collapsible"][data-state="open"] .anime-description {
+    max-height: 60rem;
+  }
+
+  @keyframes collapsible-drawer-down {
+    from {
+      height: 0;
+    }
+
+    to {
+      height: var(--radix-collapsible-content-height);
+    }
+  }
+
+  @keyframes collapsible-drawer-up {
+    from {
+      height: var(--radix-collapsible-content-height);
+    }
+
+    to {
+      height: 0;
+    }
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+
+  ::view-transition-group(*) {
+    animation-duration: 260ms;
+    animation-timing-function: ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .collapsible-content,
+    .collapsible-chevron,
+    .anime-description {
+      animation: none;
+      transition: none;
+    }
+  }
+
+  @media (hover: none) and (pointer: coarse) {
+    input,
+    select,
+    textarea {
+      font-size: 1rem;
+    }
+
+    #root:has(.mobile-account-controls) {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    #root:has(.mobile-account-controls)::after {
+      content: "";
+      display: block;
+      height: 4.75rem;
+    }
+
+    .mobile-account-controls {
+      background-color: var(--background);
+      border-top: 1px solid var(--border);
+      bottom: 0;
+      justify-content: space-around;
+      left: 0;
+      min-height: calc(4.25rem + env(safe-area-inset-bottom));
+      padding: 0.75rem max(1rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+      position: fixed;
+      right: 0;
+      z-index: 40;
+    }
+
+    .mobile-nav-item {
+      flex: 1;
+      flex-direction: column;
+      font-size: 0.75rem;
+      gap: 0.25rem;
+      min-height: 2.75rem;
+      min-width: 2.75rem;
+    }
+
+    [data-slot="dialog-content"]:has([data-player-controls-visible="false"])
+      [data-slot="dialog-close"] {
+      visibility: hidden;
+    }
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .library-search {
+      flex: 1;
+      margin-left: 0;
+      max-width: none;
+    }
+
+    .player-subtitle-small {
+      font-size: 1.125rem;
+    }
+
+    .player-subtitle-medium {
+      font-size: 1.5rem;
+    }
+
+    .player-subtitle-large {
+      font-size: 1.875rem;
+    }
+  }
+
   .playback-progress {
     appearance: none;
     background-color: var(--muted);
