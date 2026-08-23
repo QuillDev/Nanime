@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
 import type { PlaybackHandlers } from "../hooks/usePlayerProgress.ts";
 import { usePlayerSurfaceInteraction } from "../hooks/usePlayerSurfaceInteraction.ts";
-import { useSubtitleTracks } from "../hooks/useSubtitleTracks.ts";
+import { useAudioSelection, useSubtitleTracks } from "../hooks/useSubtitleTracks.ts";
 import { useVideoControls, type VideoControls } from "../hooks/useVideoControls.ts";
 import { cn } from "../lib/utils.ts";
 import type { MediaEntry, SubtitleTrack } from "../types.ts";
@@ -9,13 +9,11 @@ import {
   PlayerControls,
   type SubtitleAppearance,
 } from "./PlayerControls.tsx";
-import { PlayerPlaybackOverlay } from "./PlayerPlaybackOverlay.tsx";
+import { PlayerErrors, PlayerPlaybackOverlay } from "./PlayerPlaybackOverlay.tsx";
 import { SubtitleTracks } from "./SubtitleTracks.tsx";
 
 const EMPTY_SUBTITLES: readonly SubtitleTrack[] = [];
-const DEFAULT_SUBTITLE_APPEARANCE: SubtitleAppearance = {
-  size: "medium",
-};
+const DEFAULT_SUBTITLE_APPEARANCE: SubtitleAppearance = { size: "medium" };
 const SUBTITLE_APPEARANCE_KEY = "nanime-subtitle-appearance-v1";
 function parseSubtitleAppearance(value: unknown): SubtitleAppearance {
   if (typeof value === "object" && value !== null) {
@@ -174,10 +172,9 @@ interface PlayerSurfaceProps {
   readonly handleVideoError: () => void;
   readonly handlePlaying: () => void;
   readonly progress: PlaybackHandlers;
-  readonly previousAvailable: boolean;
-  readonly nextAvailable: boolean;
-  readonly onPrevious: () => void;
-  readonly onNext: () => void;
+  readonly previousAvailable: boolean; readonly nextAvailable: boolean;
+  readonly onPrevious: () => void; readonly onNext: () => void;
+  readonly onAudioTrack: (index: number) => void;
 }
 
 export function PlayerSurface({
@@ -191,17 +188,17 @@ export function PlayerSurface({
   nextAvailable,
   onPrevious,
   onNext,
+  onAudioTrack,
 }: PlayerSurfaceProps): React.JSX.Element {
   const subtitles = useSubtitleTracks(entry.rel);
+  const audio = useAudioSelection(entry.rel, onAudioTrack);
   const playerRef = useRef<HTMLDivElement | null>(null);
   const controls = useVideoControls(videoRef, playerRef);
   const visibility = useControlVisibility();
   const playbackEvents = usePlaybackEvents(progress, controls, visibility.handleActivity);
-  const tracks = subtitles.data ?? EMPTY_SUBTITLES;
   const display = useSubtitleDisplay(subtitles.data);
   const controlsVisible = visibility.visible || display.settingsOpen;
   const interaction = usePlayerSurfaceInteraction({
-    paused: controls.paused,
     controlsVisible,
     onTogglePlayback: controls.handleTogglePlayback,
     onShowControls: visibility.handleActivity,
@@ -262,7 +259,9 @@ export function PlayerSurface({
             fullscreen={controls.fullscreen}
             previousAvailable={previousAvailable}
             nextAvailable={nextAvailable}
-            tracks={tracks}
+            tracks={subtitles.data ?? EMPTY_SUBTITLES}
+            audioTracks={audio.tracks}
+            selectedAudioTrack={audio.selectedTrack}
             selectedTrack={display.selectedTrack}
             appearance={display.appearance}
             settingsOpen={display.settingsOpen}
@@ -275,24 +274,17 @@ export function PlayerSurface({
             onNext={onNext}
             onToggleSettings={display.handleToggleSettings}
             onTrack={display.handleTrack}
+            onAudioTrack={audio.handleTrack}
             onAppearance={display.handleAppearance}
           />
         </div>
-        {subtitles.status === "success" && tracks.length === 0 && controlsVisible && (
-          <p className="absolute left-4 top-4 z-20 rounded-md bg-black px-3 py-2 text-sm text-muted-foreground">
-            No compatible embedded subtitles found.
-          </p>
-        )}
-        {subtitles.status === "error" && (
-          <p className="absolute left-4 top-4 z-20 rounded-md bg-black px-3 py-2 text-sm text-destructive">
-            Failed to load subtitles: {subtitles.error.message}
-          </p>
-        )}
-        {controls.fullscreenError !== null && (
-          <pre className="absolute left-4 top-16 z-30 max-w-[calc(100%-2rem)] select-text overflow-auto rounded-md border border-destructive bg-black p-3 text-xs text-destructive">
-            {controls.fullscreenError}
-          </pre>
-        )}
+        <PlayerErrors
+          noSubtitles={subtitles.status === "success" && subtitles.data.length === 0}
+          controlsVisible={controlsVisible}
+          subtitleError={subtitles.error}
+          audioError={audio.error}
+          fullscreenError={controls.fullscreenError}
+        />
     </div>
   );
 }

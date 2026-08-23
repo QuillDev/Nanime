@@ -50,7 +50,9 @@ export function App(): React.JSX.Element {
 
 function authenticatedView(user: AuthUser, route: MediaRoute): React.JSX.Element {
   if (route.admin) {
-    return user.isAdmin ? <AdminApp user={user} /> : <AdminForbidden />;
+    return user.isAdmin
+      ? <AdminApp user={user} tab={route.adminTab} />
+      : <AdminForbidden />;
   }
   return route.profile ? <ProfileApp user={user} /> : <MediaApp user={user} />;
 }

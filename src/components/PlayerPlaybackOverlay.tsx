@@ -9,6 +9,47 @@ interface PlayerPlaybackOverlayProps {
   readonly onCenterPlayback: () => void;
 }
 
+interface PlayerErrorsProps {
+  readonly noSubtitles: boolean;
+  readonly controlsVisible: boolean;
+  readonly subtitleError: Error | null;
+  readonly audioError: Error | null;
+  readonly fullscreenError: string | null;
+}
+
+export function PlayerErrors({
+  noSubtitles,
+  controlsVisible,
+  subtitleError,
+  audioError,
+  fullscreenError,
+}: PlayerErrorsProps): React.JSX.Element {
+  return (
+    <>
+      {noSubtitles && controlsVisible && (
+        <p className="absolute left-4 top-4 z-20 rounded-md bg-black px-3 py-2 text-sm text-muted-foreground">
+          No compatible subtitles found.
+        </p>
+      )}
+      {subtitleError !== null && (
+        <p className="absolute left-4 top-4 z-20 rounded-md bg-black px-3 py-2 text-sm text-destructive">
+          Failed to load subtitles: {subtitleError.message}
+        </p>
+      )}
+      {audioError !== null && (
+        <p className="absolute left-4 top-16 z-20 rounded-md bg-black px-3 py-2 text-sm text-destructive">
+          Failed to load audio tracks: {audioError.message}
+        </p>
+      )}
+      {fullscreenError !== null && (
+        <pre className="absolute left-4 top-16 z-30 max-w-[calc(100%-2rem)] select-text overflow-auto rounded-md border border-destructive bg-black p-3 text-xs text-destructive">
+          {fullscreenError}
+        </pre>
+      )}
+    </>
+  );
+}
+
 export function PlayerPlaybackOverlay({
   paused,
   controlsVisible,
@@ -23,7 +64,7 @@ export function PlayerPlaybackOverlay({
         className="absolute inset-0 z-10 touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         onPointerUp={onSurfacePointerUp}
         onClick={onSurfaceClick}
-        aria-label={paused ? "Show or hide player controls" : "Pause video or show player controls"}
+        aria-label="Show or hide player controls"
       />
       <button
         type="button"

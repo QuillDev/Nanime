@@ -1,9 +1,10 @@
 import {
-  Captions,
+  ChevronDown,
   Maximize,
   Minimize,
   RotateCcw,
   RotateCw,
+  Settings2,
   SkipBack,
   SkipForward,
   Volume2,
@@ -11,7 +12,7 @@ import {
 } from "lucide-react";
 import { useCallback, type ChangeEvent, type MouseEvent } from "react";
 import { formatDuration } from "../api.ts";
-import type { SubtitleTrack } from "../types.ts";
+import type { AudioTrack, SubtitleTrack } from "../types.ts";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible.tsx";
 
 export type SubtitleSize = "small" | "medium" | "large";
@@ -29,6 +30,8 @@ interface PlayerControlsProps {
   readonly previousAvailable: boolean;
   readonly nextAvailable: boolean;
   readonly tracks: readonly SubtitleTrack[];
+  readonly audioTracks: readonly AudioTrack[];
+  readonly selectedAudioTrack: number | null;
   readonly selectedTrack: number | null;
   readonly appearance: SubtitleAppearance;
   readonly settingsOpen: boolean;
@@ -41,6 +44,7 @@ interface PlayerControlsProps {
   readonly onNext: () => void;
   readonly onToggleSettings: () => void;
   readonly onTrack: (track: number | null) => void;
+  readonly onAudioTrack: (track: number) => void;
   readonly onAppearance: (appearance: SubtitleAppearance) => void;
 }
 
@@ -88,6 +92,9 @@ interface SubtitleMenuProps {
   readonly appearance: SubtitleAppearance;
   readonly onTrack: (track: number | null) => void;
   readonly onAppearance: (appearance: SubtitleAppearance) => void;
+  readonly audioTracks: readonly AudioTrack[];
+  readonly selectedAudioTrack: number | null;
+  readonly onAudioTrack: (track: number) => void;
 }
 
 function SubtitleMenu({
@@ -96,10 +103,13 @@ function SubtitleMenu({
   appearance,
   onTrack,
   onAppearance,
+  audioTracks,
+  selectedAudioTrack,
+  onAudioTrack,
 }: SubtitleMenuProps): React.JSX.Element {
-  const handleTrack = useCallback((event: MouseEvent<HTMLButtonElement>) => {
-    const value = event.currentTarget.dataset["track"];
-    onTrack(value === "" || value === undefined ? null : Number(value));
+  const handleTrack = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    const { value } = event.currentTarget;
+    onTrack(value === "" ? null : Number(value));
   }, [onTrack]);
   const handleSize = useCallback((event: MouseEvent<HTMLButtonElement>) => {
     const size = event.currentTarget.dataset["value"];
@@ -107,24 +117,48 @@ function SubtitleMenu({
       onAppearance({ size });
     }
   }, [onAppearance]);
+  const handleAudioTrack = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    const value = Number(event.currentTarget.value);
+    if (Number.isInteger(value)) {
+      onAudioTrack(value);
+    }
+  }, [onAudioTrack]);
   return (
     <div className="p-4">
-      <h3 className="mb-2 text-sm font-semibold">Subtitles</h3>
-      <div className="mb-4 grid gap-2">
-        <button type="button" data-track="" className={optionClass(selectedTrack === null)} onClick={handleTrack}>
-          Off
-        </button>
-        {tracks.map((track) => (
-          <button
-            key={track.index}
-            type="button"
-            data-track={track.index}
-            className={optionClass(selectedTrack === track.index)}
-            onClick={handleTrack}
+      {audioTracks.length > 1 && (
+        <div className="mb-4">
+          <label className="mb-2 block text-sm font-semibold" htmlFor="player-audio-track">Audio</label>
+          <div className="relative">
+              <select
+                id="player-audio-track"
+                value={selectedAudioTrack ?? ""}
+                onChange={handleAudioTrack}
+                className="h-10 w-full appearance-none rounded-md border border-border bg-secondary px-3 pr-9 text-sm text-secondary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {audioTracks.map((track) => (
+                  <option key={track.index} value={track.index}>{track.label}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          </div>
+        </div>
+      )}
+      <div className="mb-4">
+        <label className="mb-2 block text-sm font-semibold" htmlFor="player-subtitle-track">Subtitles</label>
+        <div className="relative">
+          <select
+            id="player-subtitle-track"
+            value={selectedTrack ?? ""}
+            onChange={handleTrack}
+            className="h-10 w-full appearance-none rounded-md border border-border bg-secondary px-3 pr-9 text-sm text-secondary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            {track.label}
-          </button>
-        ))}
+            <option value="">Off</option>
+            {tracks.map((track) => (
+              <option key={track.index} value={track.index}>{track.label}</option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        </div>
       </div>
       <h3 className="mb-2 text-sm font-semibold">Text size</h3>
       <div className="grid grid-cols-3 gap-2">
@@ -205,15 +239,24 @@ export function PlayerControls(props: PlayerControlsProps): React.JSX.Element {
         </span>
         <span className="flex-1" />
         <VolumeControl muted={props.muted} volume={props.volume} onToggleMuted={props.onToggleMuted} onVolume={props.onVolume} />
-        <button type="button" className={controlClass} onClick={props.onToggleSettings} aria-label="Subtitle settings" title="Subtitle settings">
-          <Captions className={props.selectedTrack === null ? "size-5" : "size-5 text-primary"} />
+        <button type="button" className={controlClass} onClick={props.onToggleSettings} aria-label="Playback settings" title="Playback settings">
+          <Settings2 className="size-5" />
         </button>
         <button type="button" className={controlClass} onClick={props.onToggleFullscreen} aria-label={props.fullscreen ? "Exit fullscreen" : "Enter fullscreen"} title={props.fullscreen ? "Exit fullscreen" : "Enter fullscreen"}>
           {props.fullscreen ? <Minimize className="size-5" /> : <Maximize className="size-5" />}
         </button>
       </div>
       <CollapsibleContent className="absolute bottom-16 right-2 z-20 max-h-[min(28rem,70vh)] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
-        <SubtitleMenu tracks={props.tracks} selectedTrack={props.selectedTrack} appearance={props.appearance} onTrack={props.onTrack} onAppearance={props.onAppearance} />
+        <SubtitleMenu
+          tracks={props.tracks}
+          selectedTrack={props.selectedTrack}
+          appearance={props.appearance}
+          audioTracks={props.audioTracks}
+          selectedAudioTrack={props.selectedAudioTrack}
+          onTrack={props.onTrack}
+          onAudioTrack={props.onAudioTrack}
+          onAppearance={props.onAppearance}
+        />
       </CollapsibleContent>
       {!props.settingsOpen && <IntroSkipButton onSeekBy={props.onSeekBy} />}
     </div>

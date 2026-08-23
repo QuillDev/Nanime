@@ -1,8 +1,10 @@
 import { resolve } from "node:path";
 import { database } from "./database.ts";
+import { aniListGraphQl } from "./anilistClient.ts";
 import { matchTvmaze, plainText, type TvmazeMatch } from "./tvmaze.ts";
 
-const ANILIST_URL = "https://graphql.anilist.co";
+export { aniListErrorResponse } from "./anilistClient.ts";
+
 const METADATA_FILE = resolve(
   process.env["MEDIA_METADATA_FILE"] ?? resolve(import.meta.dir, "..", ".media-metadata.json"),
 );
@@ -45,11 +47,6 @@ type MetadataStore = Record<string, AniListMedia>;
 interface MetadataRow {
   readonly key: string;
   readonly payload: string;
-}
-
-interface GraphQlResponse<T> {
-  readonly data?: T;
-  readonly errors?: readonly { readonly message: string }[];
 }
 
 interface SearchData {
@@ -156,20 +153,6 @@ async function refreshTvmazeMetadata(store: MetadataStore): Promise<void> {
   }
 }
 
-async function aniListQuery<T>(query: string, variables: object): Promise<T> {
-  const response = await fetch(ANILIST_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify({ query, variables }),
-  });
-  const payload = (await response.json()) as GraphQlResponse<T>;
-  const error = payload.errors?.[0]?.message;
-  if (!response.ok || payload.data === undefined) {
-    throw new Error(error ?? `AniList returned HTTP ${String(response.status)}`);
-  }
-  return payload.data;
-}
-
 function cleanDescription(description: string | null): string | null {
   return plainText(description);
 }
@@ -194,7 +177,12 @@ export async function searchAniListResponse(url: URL): Promise<Response> {
       media(search: $search, type: ANIME, sort: SEARCH_MATCH) { ${MEDIA_FIELDS} }
     }
   }`;
-  const data = await aniListQuery<SearchData>(query, { search });
+  const data = await aniListGraphQl<SearchData>({
+    query,
+    variables: { search },
+    cacheKey: `search:${search.toLocaleLowerCase()}`,
+    cacheMs: 5 * 60_000,
+  });
   return Response.json(data.Page.media.map((media) => cleanMedia(media)));
 }
 
@@ -216,7 +204,7 @@ export async function linkAniListResponse(req: Request): Promise<Response> {
   const query = `query ($id: Int!) {
     Media(id: $id, type: ANIME) { ${MEDIA_FIELDS} }
   }`;
-  const data = await aniListQuery<MediaData>(query, { id: body.id });
+  const data = await aniListGraphQl<MediaData>({ query, variables: { id: body.id } });
   const clean = cleanMedia(data.Media);
   const media = body.key.startsWith("show:") ? await tvmazeEnrichment(clean) : clean;
   const store = await metadata();

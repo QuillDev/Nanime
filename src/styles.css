@@ -324,4 +324,28 @@
   .playback-progress::-moz-progress-bar {
     background-color: var(--primary);
   }
+
+  .searchable-select-results {
+    scrollbar-color: var(--primary) var(--background);
+    scrollbar-width: thin;
+  }
+
+  .searchable-select-results::-webkit-scrollbar {
+    width: 0.5rem;
+  }
+
+  .searchable-select-results::-webkit-scrollbar-track {
+    background-color: var(--background);
+    border-radius: 9999px;
+  }
+
+  .searchable-select-results::-webkit-scrollbar-thumb {
+    background-color: var(--primary);
+    border: 2px solid var(--background);
+    border-radius: 9999px;
+  }
+
+  .searchable-select-results::-webkit-scrollbar-thumb:hover {
+    background-color: #f472b6;
+  }
 }

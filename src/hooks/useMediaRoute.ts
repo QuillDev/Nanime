@@ -23,10 +23,18 @@ function updateUrl(url: URL, replace = false): void {
 
 export interface MediaRoute {
   readonly admin: boolean;
+  readonly adminTab: AdminTab;
   readonly profile: boolean;
   readonly showName: string | null;
   readonly episodeRel: string | null;
   readonly query: string;
+}
+
+export type AdminTab = "downloads" | "videos" | "users" | "system";
+
+function adminTabFromUrl(url: URL): AdminTab {
+  const tab = url.searchParams.get("tab");
+  return tab === "videos" || tab === "users" || tab === "system" ? tab : "downloads";
 }
 
 function showFromPath(pathname: string): string | null {
@@ -45,11 +53,23 @@ export function useMediaRoute(): MediaRoute {
   const url = new URL(snapshot, globalThis.location.origin);
   return {
     admin: url.pathname === "/admin",
+    adminTab: adminTabFromUrl(url),
     profile: url.pathname === "/profile",
     showName: showFromPath(url.pathname),
     episodeRel: url.searchParams.get("episode"),
     query: url.searchParams.get("q") ?? "",
   };
+}
+
+export function navigateToAdminTab(tab: AdminTab): void {
+  const url = new URL(globalThis.location.href);
+  url.pathname = "/admin";
+  if (tab === "downloads") {
+    url.searchParams.delete("tab");
+  } else {
+    url.searchParams.set("tab", tab);
+  }
+  updateUrl(url);
 }
 
 export function navigateToAdmin(): void {

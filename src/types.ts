@@ -11,6 +11,23 @@ export interface SubtitleTrack {
   readonly codec: string;
   readonly language: string;
   readonly label: string;
+  readonly sizeBytes: number | null;
+}
+
+export interface AudioTrack {
+  readonly index: number;
+  readonly codec: string;
+  readonly language: string;
+  readonly label: string;
+  readonly channels: number;
+  readonly isDefault: boolean;
+  readonly sizeBytes: number | null;
+}
+
+export interface TrackPruneOperation {
+  readonly path: string;
+  readonly audioIndices: readonly number[];
+  readonly subtitleIndices: readonly number[];
 }
 
 export interface AniListTitle {
@@ -79,6 +96,7 @@ export interface PlaybackProgress {
   readonly duration: number;
   readonly completed: boolean;
   readonly updatedAt: number;
+  readonly dismissedAt: number | null;
 }
 
 export interface AniListPlaybackTarget {
@@ -141,6 +159,44 @@ export interface TorrentStatus {
   readonly size: number;
   readonly state: string;
   readonly addedOn: number;
+}
+
+export interface StorageStatus {
+  readonly totalBytes: number;
+  readonly availableBytes: number;
+}
+
+export type TranscodePreset = "space-saver" | "compatibility";
+export interface TranscodeJob {
+  readonly id: string;
+  readonly sourcePath: string;
+  readonly preset: TranscodePreset;
+  readonly status: "queued" | "processing" | "complete" | "failed" | "cancelled";
+  readonly inputSize: number;
+  readonly outputSize: number | null;
+  readonly progress: number;
+  readonly speed: number;
+  readonly startedAt: number | null;
+  readonly error: string | null;
+  readonly originalDeleted: boolean;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+export interface MediaScan {
+  readonly sourcePath: string;
+  readonly status: "queued" | "scanning" | "complete" | "failed";
+  readonly fileSize: number;
+  readonly duration: number | null;
+  readonly formatName: string | null;
+  readonly videoCodec: string | null;
+  readonly width: number | null;
+  readonly height: number | null;
+  readonly audioBytes: number;
+  readonly subtitleBytes: number;
+  readonly scannedAt: number | null;
+  readonly error: string | null;
+  readonly updatedAt: number;
 }
 
 export interface NyaaSearchResult {

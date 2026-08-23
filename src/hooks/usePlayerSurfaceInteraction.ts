@@ -16,7 +16,6 @@ interface PendingTap {
 }
 
 interface PlayerSurfaceInteractionOptions {
-  readonly paused: boolean;
   readonly controlsVisible: boolean;
   readonly onTogglePlayback: () => void;
   readonly onShowControls: () => void;
@@ -119,7 +118,6 @@ function useTouchTaps({
 }
 
 export function usePlayerSurfaceInteraction({
-  paused,
   controlsVisible,
   onTogglePlayback,
   onShowControls,
@@ -138,11 +136,12 @@ export function usePlayerSurfaceInteraction({
     onSeekBy,
   });
   const handleDesktopSurface = useCallback(() => {
-    if (!paused) {
-      onTogglePlayback();
+    if (controlsVisible) {
+      onHideControls();
+    } else {
+      onShowControls();
     }
-    onShowControls();
-  }, [onShowControls, onTogglePlayback, paused]);
+  }, [controlsVisible, onHideControls, onShowControls]);
   const handleSurfacePointerUp = useCallback((event: PointerEvent<HTMLButtonElement>) => {
     if (event.pointerType === "touch" || event.pointerType === "pen") {
       handleTouchTap(event);

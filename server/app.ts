@@ -6,14 +6,18 @@ import {
   aniListAccountSchema,
   aniListAuthConfigSchema,
   aniListListEntrySchema,
+  audioTrackSchema,
   authUserSchema,
   credentialsSchema,
   mediaEntrySchema,
+  mediaScanSchema,
   nyaaSearchResultSchema,
   playbackProgressSchema,
   provisionedUserSchema,
   schema,
+  storageStatusSchema,
   subtitleTrackSchema,
+  transcodeJobSchema,
   torrentStatusSchema,
 } from "./schemas.ts";
 
@@ -50,6 +54,27 @@ function formRequest(
   return requestWithBody(req, form);
 }
 
+function uploadChunkRequest(
+  req: Request,
+  body: { readonly chunk: File; readonly offset: number },
+): Request {
+  const form = new FormData();
+  form.append("chunk", body.chunk, "chunk");
+  form.append("offset", String(body.offset));
+  return requestWithBody(req, form);
+}
+
+function subtitleUploadRequest(
+  req: Request,
+  body: { readonly path: string; readonly subtitle: File; readonly offsetSeconds: number },
+): Request {
+  const form = new FormData();
+  form.append("path", body.path);
+  form.append("subtitle", body.subtitle, body.subtitle.name);
+  form.append("offsetSeconds", String(body.offsetSeconds));
+  return requestWithBody(req, form);
+}
+
 const setupCredentialsSchema = schema.composite([
   credentialsSchema,
   schema.object({ setupToken: schema.string() }),
@@ -67,6 +92,7 @@ const playbackUpdateSchema = schema.object({
   episode: schema.optional(schema.integer({ minimum: 1 })),
   totalEpisodes: optionalEpisodeCountSchema,
 });
+const playbackDismissSchema = schema.object({ rel: schema.string({ minLength: 1 }) });
 const aniListUpdateSchema = schema.object({
   status: schema.optional(schema.string()),
   progress: schema.optional(schema.integer({ minimum: 0 })),
@@ -81,15 +107,27 @@ const nyaaSearchQuerySchema = schema.object({
 const pathQuerySchema = schema.object({ path: schema.string({ minLength: 1 }) });
 const indexedPathQuerySchema = schema.object({
   path: schema.string({ minLength: 1 }),
-  index: schema.integer({ minimum: 0 }),
+  index: schema.integer(),
 });
 const segmentQuerySchema = schema.object({
   path: schema.string({ minLength: 1 }),
   i: schema.integer({ minimum: 0 }),
+  audio: schema.optional(schema.integer({ minimum: 0 })),
+});
+const hlsQuerySchema = schema.object({
+  path: schema.string({ minLength: 1 }),
+  audio: schema.optional(schema.integer({ minimum: 0 })),
 });
 const optionalTorrentFileSchema = schema.optional(schema.file());
 const optionalMagnetSchema = schema.optional(schema.string());
 const mediaPathsSchema = schema.array(schema.string(), { minItems: 1, maxItems: 5000 });
+const trackIndicesSchema = schema.array(schema.integer(), { maxItems: 100 });
+const trackPruneOperationSchema = schema.object({
+  path: schema.string({ minLength: 1 }),
+  audioIndices: trackIndicesSchema,
+  subtitleIndices: trackIndicesSchema,
+});
+const transcodePathsSchema = schema.array(schema.string(), { minItems: 1, maxItems: 500 });
 
 export const app = new Elysia({ name: "nanime" })
   .onError(({ code }) => securityHeaders(new Response(
@@ -123,6 +161,9 @@ export const app = new Elysia({ name: "nanime" })
   .put("/api/progress", ({ request, server, body }) => (
     handle(jsonRequest(request, body), server)
   ), { body: playbackUpdateSchema, response: playbackProgressSchema })
+  .post("/api/progress/dismiss", ({ request, server, body }) => (
+    handle(jsonRequest(request, body), server)
+  ), { body: playbackDismissSchema, response: playbackProgressSchema })
   .get("/api/anilist/search", ({ request, server }) => handle(request, server), {
     query: searchQuerySchema,
     response: schema.array(aniListMediaSchema),
@@ -159,6 +200,34 @@ export const app = new Elysia({ name: "nanime" })
   .get("/api/torrents", ({ request, server }) => handle(request, server), {
     response: schema.array(torrentStatusSchema),
   })
+  .get("/api/storage", ({ request, server }) => handle(request, server), {
+    response: storageStatusSchema,
+  })
+  .get("/api/transcodes", ({ request, server }) => handle(request, server), {
+    response: schema.array(transcodeJobSchema),
+  })
+  .post("/api/transcodes", ({ request, server, body }) => (
+    handle(jsonRequest(request, body), server)
+  ), {
+    body: schema.object({ path: schema.string(), preset: schema.string() }),
+    response: transcodeJobSchema,
+  })
+  .post("/api/transcodes/bulk", ({ request, server, body }) => (
+    handle(jsonRequest(request, body), server)
+  ), {
+    body: schema.object({
+      paths: transcodePathsSchema,
+      preset: schema.string(),
+    }),
+    response: schema.array(transcodeJobSchema),
+  })
+  .delete("/api/transcodes/:id", ({ request, server }) => handle(request, server))
+  .post("/api/transcodes/:id/cancel", ({ request, server }) => handle(request, server), {
+    response: transcodeJobSchema,
+  })
+  .delete("/api/transcodes/:id/original", ({ request, server }) => handle(request, server), {
+    response: transcodeJobSchema,
+  })
   .get("/api/torrents/search", ({ request, server }) => handle(request, server), {
     query: nyaaSearchQuerySchema,
     response: schema.array(nyaaSearchResultSchema),
@@ -173,6 +242,12 @@ export const app = new Elysia({ name: "nanime" })
     }),
     response: schema.object({ added: schema.boolean() }),
   })
+  .post("/api/torrents/:hash/cancel", ({ request, server, body }) => (
+    handle(jsonRequest(request, body), server)
+  ), {
+    body: schema.object({ deleteFiles: schema.boolean() }),
+    response: schema.object({ cancelled: schema.boolean() }),
+  })
   .post("/api/media/delete", ({ request, server, body }) => (
     handle(jsonRequest(request, body), server)
   ), {
@@ -181,9 +256,68 @@ export const app = new Elysia({ name: "nanime" })
     }),
     response: schema.object({ deleted: schema.number() }),
   })
+  .post("/api/media/prune-tracks", ({ request, server, body }) => (
+    handle(jsonRequest(request, body), server)
+  ), {
+    body: schema.object({
+      operations: schema.array(trackPruneOperationSchema, { minItems: 1, maxItems: 100 }),
+    }),
+    response: schema.object({ processed: schema.integer() }),
+  })
+  .get("/api/media/scans", ({ request, server }) => handle(request, server), {
+    response: schema.array(mediaScanSchema),
+  })
+  .post("/api/media/scans", ({ request, server, body }) => (
+    handle(jsonRequest(request, body), server)
+  ), {
+    body: schema.object({ paths: mediaPathsSchema }),
+    response: schema.array(mediaScanSchema),
+  })
+  .post("/api/media/uploads", ({ request, server, body }) => (
+    handle(jsonRequest(request, body), server)
+  ), {
+    body: schema.object({
+      fileName: schema.string({ minLength: 1, maxLength: 255 }),
+      folder: schema.string({ maxLength: 1000 }),
+      size: schema.integer({ minimum: 1 }),
+    }),
+    response: schema.object({ id: schema.string(), chunkSize: schema.integer() }),
+  })
+  .post("/api/media/uploads/:id", ({ request, server, body }) => (
+    handle(uploadChunkRequest(request, body), server)
+  ), {
+    body: schema.object({ chunk: schema.file(), offset: schema.integer({ minimum: 0 }) }),
+    response: schema.object({ received: schema.integer() }),
+  })
+  .post("/api/media/uploads/:id/complete", ({ request, server }) => (
+    handle(request, server)
+  ), {
+    response: schema.object({ path: schema.string() }),
+  })
+  .delete("/api/media/uploads/:id", ({ request, server }) => handle(request, server))
+  .post("/api/subtitles", ({ request, server, body }) => (
+    handle(subtitleUploadRequest(request, body), server)
+  ), {
+    body: schema.object({
+      path: schema.string({ minLength: 1 }),
+      subtitle: schema.file(),
+      offsetSeconds: schema.number({ minimum: -3600, maximum: 3600 }),
+    }),
+    response: schema.object({ uploaded: schema.boolean() }),
+  })
   .get("/api/subtitles", ({ request, server }) => handle(request, server), {
     query: pathQuerySchema,
     response: schema.array(subtitleTrackSchema),
+  })
+  .get("/api/audio-tracks", ({ request, server }) => handle(request, server), {
+    query: pathQuerySchema,
+    response: schema.array(audioTrackSchema),
+  })
+  .delete("/api/audio-tracks", ({ request, server, body }) => (
+    handle(jsonRequest(request, body), server)
+  ), {
+    body: schema.object({ path: schema.string({ minLength: 1 }), index: schema.integer({ minimum: 0 }) }),
+    response: schema.object({ deleted: schema.boolean() }),
   })
   .get("/stream", ({ request, server }) => handle(request, server), {
     query: pathQuerySchema,
@@ -195,7 +329,7 @@ export const app = new Elysia({ name: "nanime" })
     query: indexedPathQuerySchema,
   })
   .get("/hls/index", ({ request, server }) => handle(request, server), {
-    query: pathQuerySchema,
+    query: hlsQuerySchema,
   })
   .get("/hls/seg", ({ request, server }) => handle(request, server), {
     query: segmentQuerySchema,

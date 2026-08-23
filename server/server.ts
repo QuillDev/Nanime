@@ -2,11 +2,22 @@ import type { Dirent } from "node:fs";
 import { readdir, realpath, stat } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import type { Server } from "bun";
-import { linkAniListResponse, metadataResponse, searchAniListResponse } from "./anilist.ts";
-import { playbackProgressResponse, updatePlaybackProgress } from "./playback.ts";
-import { subtitleResponse, subtitleTracksResponse } from "./subtitles.ts";
+import {
+  aniListErrorResponse,
+  linkAniListResponse,
+  metadataResponse,
+  searchAniListResponse,
+} from "./anilist.ts";
+import { dismissPlaybackProgress, playbackProgressResponse, updatePlaybackProgress } from "./playback.ts";
+import {
+  audioTracksResponse,
+  hlsPlaylist,
+  hlsSegment,
+  subtitleResponse,
+  subtitleTracksResponse,
+} from "./subtitles.ts";
 import { torrentsResponse } from "./torrents.ts";
-import { deleteMediaResponse } from "./mediaDelete.ts";
+import { mediaAdminResponse } from "./mediaAdmin.ts";
 import {
   authenticatedUser,
   aniListPublicAuthResponse,
@@ -21,24 +32,18 @@ import {
 } from "./security.ts";
 
 const MEDIA_DIR = resolve(
-  process.env["MEDIA_DIR"] ?? resolve(import.meta.dir, "..", "media"),
+  Bun.env["MEDIA_DIR"] ?? resolve(import.meta.dir, "..", "media"),
 );
 const DIST_DIR = resolve(import.meta.dir, "..", "dist");
 const PORT = Number(process.env["PORT"] ?? "8096");
 const HOST = process.env["HOST"] ?? "127.0.0.1";
 const HWACCEL = process.env["HWACCEL"] ?? "";
 const VAAPI_DEVICE = process.env["VAAPI_DEVICE"] ?? "/dev/dri/renderD128";
-const SEG_SECONDS = 6;
 const MAX_THUMBNAIL_JOBS = 1;
 const MAX_REQUEST_BODY_BYTES = 11 * 1024 * 1024;
-async function canonicalMediaRoot(): Promise<string> {
-  try {
-    return await realpath(MEDIA_DIR);
-  } catch {
-    return MEDIA_DIR;
-  }
-}
-const MEDIA_ROOT = await canonicalMediaRoot();
+// MEDIA_DIR is trusted process configuration. This canonical root is used to validate
+// every request-derived media path before it reaches the filesystem.
+const MEDIA_ROOT = await realpath(MEDIA_DIR).catch(() => MEDIA_DIR);
 const VIDEO_EXTS = new Set<string>([
   ".mp4", ".m4v", ".webm", ".mov", ".mkv", ".avi", ".ts", ".m2ts",
   ".wmv", ".flv", ".mpg", ".mpeg", ".ogv", ".3gp",
@@ -71,7 +76,7 @@ async function walk(dir: string, acc: MediaEntry[]): Promise<void> {
 
   for (const item of items) {
     const abs = join(dir, item.name);
-    if (item.isDirectory()) {
+    if (item.isDirectory() && !item.name.startsWith(".nanime-")) {
       await walk(abs, acc);
     } else if (item.isFile() && VIDEO_EXTS.has(extname(item.name).toLowerCase())) {
       const { size } = await stat(abs).catch(() => ({ size: 0 }));
@@ -224,89 +229,6 @@ async function thumbnailResponse(abs: string): Promise<Response> {
   });
 }
 
-function hlsPlaylist(rel: string, duration: number): Response {
-  const count = Math.ceil(duration / SEG_SECONDS);
-  const lines = [
-    "#EXTM3U",
-    "#EXT-X-VERSION:3",
-    "#EXT-X-PLAYLIST-TYPE:VOD",
-    "#EXT-X-INDEPENDENT-SEGMENTS",
-    `#EXT-X-TARGETDURATION:${String(SEG_SECONDS + 1)}`,
-    "#EXT-X-MEDIA-SEQUENCE:0",
-  ];
-  const encoded = encodeURIComponent(rel);
-  for (let index = 0; index < count; index += 1) {
-    const remaining = duration - index * SEG_SECONDS;
-    const length = remaining < SEG_SECONDS ? remaining : SEG_SECONDS;
-    lines.push(
-      `#EXTINF:${length.toFixed(6)},`,
-      `/hls/seg?path=${encoded}&i=${String(index)}`,
-    );
-  }
-  lines.push("#EXT-X-ENDLIST");
-  return new Response(lines.join("\n"), {
-    headers: {
-      "content-type": "application/vnd.apple.mpegurl",
-      "cache-control": "no-store",
-    },
-  });
-}
-
-function segmentArgs(abs: string, start: number, length: number): readonly string[] {
-  // Input-seek (fast, keyframe-accurate) and reset timestamps, then shift them
-  // back to the real position with -output_ts_offset so segments line up in the
-  // player timeline. (-copyts + -t would drop everything: -t is read as an
-  // absolute timestamp once copyts is on.)
-  const seek = ["-ss", String(start), "-i", abs, "-t", String(length)];
-  const audio = ["-c:a", "aac", "-ac", "2", "-b:a", "160k"];
-  const mux = [
-    "-output_ts_offset", String(start),
-    "-muxdelay", "0",
-    "-f", "mpegts", "pipe:1",
-  ];
-
-  if (HWACCEL === "vaapi") {
-    return [
-      "-hide_banner", "-loglevel", "error",
-      "-hwaccel", "vaapi",
-      "-hwaccel_device", VAAPI_DEVICE,
-      "-hwaccel_output_format", "vaapi",
-      ...seek,
-      "-vf", "scale_vaapi=format=nv12",
-      "-c:v", "h264_vaapi", "-b:v", "6M", "-maxrate", "8M", "-bufsize", "12M",
-      ...audio,
-      ...mux,
-    ];
-  }
-  return [
-    "-hide_banner", "-loglevel", "error",
-    ...seek,
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-    ...audio,
-    ...mux,
-  ];
-}
-
-async function hlsSegment(abs: string, index: number, req: Request): Promise<Response> {
-  const duration = await probeDuration(abs);
-  const start = index * SEG_SECONDS;
-  if (start >= duration && duration > 0) {
-    return new Response("Not found", { status: 404 });
-  }
-  const remaining = duration - start;
-  const length = remaining > 0 && remaining < SEG_SECONDS ? remaining : SEG_SECONDS;
-  const proc = Bun.spawn(["ffmpeg", ...segmentArgs(abs, start, length)], {
-    stdout: "pipe",
-    stderr: "ignore",
-  });
-  req.signal.addEventListener("abort", () => {
-    proc.kill();
-  });
-  return new Response(proc.stdout, {
-    headers: { "content-type": "video/mp2t", "cache-control": "no-store" },
-  });
-}
-
 async function serveStatic(pathname: string): Promise<Response> {
   const rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/u, "");
   const candidate = resolve(DIST_DIR, rel);
@@ -340,22 +262,49 @@ async function handleMedia(pathname: string, url: URL, req: Request): Promise<Re
     return thumbnailResponse(abs);
   }
   if (pathname === "/api/subtitles" && req.method === "GET") {
-    return subtitleTracksResponse(abs);
+    return subtitleTracksResponse(abs, url.searchParams.get("path") ?? "");
+  }
+  if (pathname === "/api/audio-tracks" && req.method === "GET") {
+    return audioTracksResponse(abs, url.searchParams.get("path") ?? "");
   }
   if (pathname === "/subtitle") {
     const index = Number(url.searchParams.get("index") ?? "");
-    return Number.isInteger(index) && index >= 0
+    return Number.isInteger(index)
       ? subtitleResponse(abs, index)
       : new Response("Bad request", { status: 400 });
   }
   if (pathname === "/hls/index") {
-    return hlsPlaylist(relative(MEDIA_ROOT, abs), await probeDuration(abs));
+    const audioIndex = optionalAudioIndex(url);
+    if (audioIndex === undefined) {
+      return new Response("Bad request", { status: 400 });
+    }
+    return hlsPlaylist(relative(MEDIA_ROOT, abs), await probeDuration(abs), audioIndex);
   }
   const index = Number(url.searchParams.get("i") ?? "");
   if (!Number.isInteger(index) || index < 0) {
     return new Response("Bad request", { status: 400 });
   }
-  return hlsSegment(abs, index, req);
+  const audioIndex = optionalAudioIndex(url);
+  return audioIndex === undefined
+    ? new Response("Bad request", { status: 400 })
+    : hlsSegment({
+        abs,
+        index,
+        audioIndex,
+        duration: await probeDuration(abs),
+        request: req,
+        hardwareAcceleration: HWACCEL,
+        vaapiDevice: VAAPI_DEVICE,
+      });
+}
+
+function optionalAudioIndex(url: URL): number | null | undefined {
+  const value = url.searchParams.get("audio");
+  if (value === null) {
+    return null;
+  }
+  const index = Number(value);
+  return Number.isInteger(index) && index >= 0 ? index : undefined;
 }
 
 interface RouteContext {
@@ -389,6 +338,9 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
       },
     );
   }
+  if (pathname === "/api/progress/dismiss" && req.method === "POST") {
+    return dismissPlaybackProgress(req, user.id);
+  }
   const aniListUser = await aniListUserResponse(pathname, req, user);
   if (aniListUser !== null) {
     return aniListUser;
@@ -407,17 +359,25 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
     const requestedUserId = pathname === "/api/users" ? null : Number(pathname.slice(11));
     return usersResponse(req, user, requestedUserId);
   }
-  if (pathname === "/api/torrents" || pathname === "/api/torrents/search") {
+  if (pathname === "/api/torrents" || pathname.startsWith("/api/torrents/")) {
     return user.isAdmin
       ? torrentsResponse(req, MEDIA_DIR, url)
       : new Response("Forbidden", { status: 403 });
   }
-  if (pathname === "/api/media/delete") {
-    return user.isAdmin
-      ? deleteMediaResponse(req, MEDIA_DIR, VIDEO_EXTS)
-      : new Response("Forbidden", { status: 403 });
+  const mediaAdmin = mediaAdminResponse(req, pathname, {
+    isAdmin: user.isAdmin,
+    userId: user.id,
+    mediaDir: MEDIA_DIR,
+    mediaRoot: MEDIA_ROOT,
+    videoExtensions: VIDEO_EXTS,
+  });
+  if (mediaAdmin !== null) {
+    return await mediaAdmin;
   }
   if (pathname === "/api/subtitles") {
+    return await handleMedia(pathname, url, req);
+  }
+  if (pathname === "/api/audio-tracks" && req.method === "GET") {
     return await handleMedia(pathname, url, req);
   }
   if ((req.method === "GET" || req.method === "HEAD") && (
@@ -474,8 +434,8 @@ async function route(context: RequestContext): Promise<Response> {
         : await serveStatic(pathname);
     }
     return await authenticatedRoute({ pathname, url, req, user });
-  } catch {
-    return new Response("Server error", { status: 500 });
+  } catch (error) {
+    return aniListErrorResponse(error) ?? new Response("Server error", { status: 500 });
   }
 }
 

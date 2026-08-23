@@ -45,6 +45,7 @@ export function Player({
     setVideo,
     handleVideoError,
     handlePlaying,
+    handleAudioTrack,
   } = useVideoSource(entry);
   const progress = usePlayerProgress(entry, resumeAt, anilistTarget);
 
@@ -76,6 +77,7 @@ export function Player({
             setVideo={setVideo}
             handleVideoError={handleVideoError}
             handlePlaying={handlePlaying}
+            onAudioTrack={handleAudioTrack}
             progress={progress}
             previousAvailable={previousAvailable}
             nextAvailable={nextAvailable}

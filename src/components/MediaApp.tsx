@@ -104,7 +104,6 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
             onSelect={handleSelect}
             onShowSelect={handleShowSelect}
             onShowsBack={navigateToShows}
-            canDelete={user.isAdmin}
             canManageMappings={user.isAdmin}
           />
         )}

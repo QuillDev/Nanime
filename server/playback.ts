@@ -8,6 +8,7 @@ interface PlaybackRow {
   readonly duration: number;
   readonly completed: number;
   readonly updated_at: number;
+  readonly dismissed_at: number | null;
 }
 
 interface PlaybackUpdate {
@@ -38,17 +39,18 @@ export interface PlaybackProgress {
   readonly duration: number;
   readonly completed: boolean;
   readonly updatedAt: number;
+  readonly dismissedAt: number | null;
 }
 
 const listProgress = database.query<PlaybackRow, [number]>(`
-  SELECT rel, position, duration, completed, updated_at
+  SELECT rel, position, duration, completed, updated_at, dismissed_at
   FROM playback_progress
   WHERE user_id = ?
   ORDER BY updated_at DESC
 `);
 
 const getProgress = database.query<PlaybackRow, [number, string]>(`
-  SELECT rel, position, duration, completed, updated_at
+  SELECT rel, position, duration, completed, updated_at, dismissed_at
   FROM playback_progress
   WHERE user_id = ? AND rel = ?
 `);
@@ -60,7 +62,12 @@ const upsertProgress = database.query<void, [number, string, number, number, num
     position = excluded.position,
     duration = excluded.duration,
     completed = excluded.completed,
-    updated_at = excluded.updated_at
+    updated_at = excluded.updated_at,
+    dismissed_at = NULL
+`);
+const dismissProgress = database.query<void, [number, number, string]>(`
+  UPDATE playback_progress SET dismissed_at = ?
+  WHERE user_id = ? AND rel = ?
 `);
 const deleteProgress = database.query<void, [string]>(`
   DELETE FROM playback_progress WHERE rel = ?
@@ -82,11 +89,24 @@ function progressFromRow(row: PlaybackRow): PlaybackProgress {
     duration: row.duration,
     completed: row.completed === 1,
     updatedAt: row.updated_at,
+    dismissedAt: row.dismissed_at,
   };
 }
 
 export function playbackProgressResponse(userId: number): Response {
   return Response.json(listProgress.all(userId).map((row) => progressFromRow(row)));
+}
+
+export async function dismissPlaybackProgress(req: Request, userId: number): Promise<Response> {
+  const body = (await req.json().catch(() => null)) as { readonly rel?: unknown } | null;
+  if (body === null || typeof body.rel !== "string" || body.rel === "") {
+    return new Response("Invalid playback progress", { status: 400 });
+  }
+  dismissProgress.run(Date.now(), userId, body.rel);
+  const progress = getProgress.get(userId, body.rel);
+  return progress === null
+    ? new Response("Playback progress not found", { status: 404 })
+    : Response.json(progressFromRow(progress));
 }
 
 function validNumber(value: unknown): value is number {
@@ -125,6 +145,7 @@ export async function updatePlaybackProgress(
     duration: body.duration,
     completed: wasCompleted || isMeaningful && (body.completed || nearEnd),
     updatedAt: Date.now(),
+    dismissedAt: null,
   };
   upsertProgress.run(
     userId,

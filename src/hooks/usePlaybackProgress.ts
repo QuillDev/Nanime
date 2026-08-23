@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import type { PlaybackProgress, PlaybackProgressMap } from "../types.ts";
 import {
+  dismissPlaybackProgress,
   fetchPlaybackProgress,
   savePlaybackProgress,
   type PlaybackProgressUpdate,
@@ -34,7 +35,11 @@ export function useSavePlaybackProgress(): UseMutationResult<
   return useMutation({
     mutationFn: savePlaybackProgress,
     onMutate: (update) => {
-      const optimistic: PlaybackProgress = { ...update, updatedAt: Date.now() };
+      const optimistic: PlaybackProgress = {
+        ...update,
+        updatedAt: Date.now(),
+        dismissedAt: null,
+      };
       queryClient.setQueryData<PlaybackProgressMap>(playbackProgressKey, (current) => ({
         ...current,
         [update.rel]: optimistic,
@@ -48,6 +53,23 @@ export function useSavePlaybackProgress(): UseMutationResult<
         }
         return { ...current, [saved.rel]: saved };
       });
+    },
+  });
+}
+
+export function useDismissPlaybackProgress(): UseMutationResult<
+  PlaybackProgress,
+  Error,
+  string
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: dismissPlaybackProgress,
+    onSuccess: (saved) => {
+      queryClient.setQueryData<PlaybackProgressMap>(playbackProgressKey, (current) => ({
+        ...current,
+        [saved.rel]: saved,
+      }));
     },
   });
 }

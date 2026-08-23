@@ -35,11 +35,14 @@ export function AdminUsers(): React.JSX.Element {
   return (
     <AdminPanel
       title="Users"
-      description="Provision accounts and review activation status."
+      description="Provision accounts and review access."
       icon={Users}
-      className="xl:col-span-3"
+      className="xl:col-span-5"
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3 md:flex-row md:items-end">
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-3 rounded-md border border-border bg-background p-4 md:flex-row md:items-end"
+      >
         <label htmlFor="provision-username" className="min-w-0 flex-1 text-sm font-medium">
           Username
           <Input
@@ -80,7 +83,7 @@ export function AdminUsers(): React.JSX.Element {
       {users.status === "error" && (
         <p className="mt-4 text-sm text-destructive">{users.error.message}</p>
       )}
-      <ul className="mt-5 divide-y divide-border border-t border-border">
+      <ul className="mt-5 divide-y divide-border">
         {users.data?.map((listedUser) => (
           <li key={listedUser.id} className="flex items-center justify-between gap-4 py-4 text-sm">
             <div>

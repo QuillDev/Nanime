@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { Trash2 } from "lucide-react";
 import type {
   AniListMedia,
   MediaEntry,
@@ -14,7 +13,6 @@ interface EpisodeCardProps {
   readonly media: AniListMedia | undefined;
   readonly progress: PlaybackProgressMap;
   readonly onSelect: (entry: MediaEntry) => void;
-  readonly onDelete?: ((entry: MediaEntry) => void) | undefined;
   readonly showMedia: AniListMedia | undefined;
   readonly seasonNumber: number;
 }
@@ -24,16 +22,12 @@ function EpisodeCard({
   media,
   progress,
   onSelect,
-  onDelete,
   showMedia,
   seasonNumber,
 }: EpisodeCardProps): React.JSX.Element {
   const handleClick = useCallback(() => {
     onSelect(entry);
   }, [entry, onSelect]);
-  const handleDelete = useCallback(() => {
-    onDelete?.(entry);
-  }, [entry, onDelete]);
   const details = episodeMetadata(entry, media, { showMedia, season: seasonNumber });
   const number = episodeNumber(entry);
   const episodeProgress = progress[entry.rel];
@@ -86,17 +80,6 @@ function EpisodeCard({
           </span>
         </span>
       </button>
-      {onDelete !== undefined && (
-        <button
-          type="button"
-          onClick={handleDelete}
-          aria-label={`Delete ${details?.title ?? entry.name}`}
-          title="Delete episode"
-          className="shrink-0 self-stretch px-3 text-muted-foreground hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-none"
-        >
-          <Trash2 className="size-4" />
-        </button>
-      )}
     </li>
   );
 }
@@ -106,7 +89,6 @@ interface EpisodeGridProps {
   readonly media: AniListMedia | undefined;
   readonly progress: PlaybackProgressMap;
   readonly onSelect: (entry: MediaEntry) => void;
-  readonly onDelete?: ((entry: MediaEntry) => void) | undefined;
   readonly showMedia: AniListMedia | undefined;
   readonly seasonNumber: number;
 }
@@ -116,7 +98,6 @@ export function EpisodeGrid({
   media,
   progress,
   onSelect,
-  onDelete,
   showMedia,
   seasonNumber,
 }: EpisodeGridProps): React.JSX.Element {
@@ -129,7 +110,6 @@ export function EpisodeGrid({
           media={media}
           progress={progress}
           onSelect={onSelect}
-          onDelete={onDelete}
           showMedia={showMedia}
           seasonNumber={seasonNumber}
         />

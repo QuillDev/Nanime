@@ -13,14 +13,24 @@ function tryPlay(video: HTMLVideoElement): void {
   })();
 }
 
-function bindHlsEvents(
-  hls: Hls,
-  video: HTMLVideoElement,
-  onError: (message: string) => void,
-): void {
+interface HlsAttachment {
+  readonly video: HTMLVideoElement;
+  readonly url: string;
+  readonly onError: (message: string) => void;
+  readonly resumeAt?: number;
+  readonly shouldPlay?: boolean;
+}
+
+function bindHlsEvents(hls: Hls, options: HlsAttachment): void {
+  const { video, onError, resumeAt = 0, shouldPlay = true } = options;
   let recoveredMediaError = false;
   hls.on(Hls.Events.MANIFEST_PARSED, () => {
-    tryPlay(video);
+    if (resumeAt > 0) {
+      video.currentTime = resumeAt;
+    }
+    if (shouldPlay) {
+      tryPlay(video);
+    }
   });
   hls.on(Hls.Events.ERROR, (_event, data) => {
     if (!data.fatal) {
@@ -35,30 +45,32 @@ function bindHlsEvents(
   });
 }
 
-function attachNativeHls(
-  video: HTMLVideoElement,
-  url: string,
-  onError: (message: string) => void,
-): void {
+function attachNativeHls(options: HlsAttachment): void {
+  const { video, url, onError, resumeAt = 0, shouldPlay = true } = options;
   if (video.canPlayType("application/vnd.apple.mpegurl") === "") {
     onError("This browser does not support HLS video playback.");
     return;
   }
   video.src = url;
-  tryPlay(video);
+  const handleMetadata = (): void => {
+    if (resumeAt > 0) {
+      video.currentTime = resumeAt;
+    }
+    if (shouldPlay) {
+      tryPlay(video);
+    }
+  };
+  video.addEventListener("loadedmetadata", handleMetadata, { once: true });
 }
 
-function attachHls(
-  video: HTMLVideoElement,
-  url: string,
-  onError: (message: string) => void,
-): (() => void) | undefined {
+function attachHls(options: HlsAttachment): (() => void) | undefined {
+  const { video, url } = options;
   if (!Hls.isSupported()) {
-    attachNativeHls(video, url, onError);
+    attachNativeHls(options);
     return undefined;
   }
   const hls = new Hls({ enableWorker: true });
-  bindHlsEvents(hls, video, onError);
+  bindHlsEvents(hls, options);
   hls.loadSource(url);
   hls.attachMedia(video);
   return () => {
@@ -76,7 +88,7 @@ function attachSource(
     tryPlay(video);
     return undefined;
   }
-  return attachHls(video, hlsUrl(entry.rel), onError);
+  return attachHls({ video, url: hlsUrl(entry.rel), onError });
 }
 
 export interface VideoSourceState {
@@ -85,11 +97,13 @@ export interface VideoSourceState {
   readonly setVideo: (video: HTMLVideoElement | null) => (() => void) | undefined;
   readonly handleVideoError: () => void;
   readonly handlePlaying: () => void;
+  readonly handleAudioTrack: (index: number) => void;
 }
 
 export function useVideoSource(entry: MediaEntry): VideoSourceState {
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const detachRef = useRef<(() => void) | undefined>(undefined);
   const setVideo = useCallback(
     (video: HTMLVideoElement | null): (() => void) | undefined => {
       if (video === null) {
@@ -98,9 +112,11 @@ export function useVideoSource(entry: MediaEntry): VideoSourceState {
       videoRef.current = video;
       try {
         const detachSource = attachSource(video, entry, setPlaybackError);
+        detachRef.current = detachSource;
         return () => {
           videoRef.current = null;
-          detachSource?.();
+          detachRef.current?.();
+          detachRef.current = undefined;
         };
       } catch (error: unknown) {
         setPlaybackError(
@@ -117,5 +133,29 @@ export function useVideoSource(entry: MediaEntry): VideoSourceState {
   const handlePlaying = useCallback(() => {
     setPlaybackError(null);
   }, []);
-  return { playbackError, videoRef, setVideo, handleVideoError, handlePlaying };
+  const handleAudioTrack = useCallback((index: number) => {
+    const video = videoRef.current;
+    if (video === null) {
+      return;
+    }
+    const resumeAt = video.currentTime;
+    const shouldPlay = !video.paused;
+    detachRef.current?.();
+    setPlaybackError(null);
+    detachRef.current = attachHls({
+      video,
+      url: hlsUrl(entry.rel, index),
+      onError: setPlaybackError,
+      resumeAt,
+      shouldPlay,
+    });
+  }, [entry.rel]);
+  return {
+    playbackError,
+    videoRef,
+    setVideo,
+    handleVideoError,
+    handlePlaying,
+    handleAudioTrack,
+  };
 }
