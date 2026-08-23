@@ -1,5 +1,5 @@
 import { readdir } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import type { TorrentStatus } from "../shared/types.ts";
 import { jsonObject } from "./json.ts";
 import { searchNyaaResponse } from "./nyaa.ts";
@@ -146,13 +146,23 @@ function validMagnetLink(value: string): boolean {
   }
 }
 
-function torrentStatus(value: unknown): TorrentStatus | null {
+function torrentShowFolder(mediaDir: string, contentPath: string): string | null {
+  const root = resolve(mediaDir);
+  const content = resolve(contentPath);
+  if (content === root || !content.startsWith(root + sep)) {
+    return null;
+  }
+  return relative(root, content).split(sep)[0] ?? null;
+}
+
+function torrentStatus(value: unknown, mediaDir: string): TorrentStatus | null {
   const item = jsonObject(value);
   if (item === null) {
     return null;
   }
   const valid = typeof item["hash"] === "string" &&
     typeof item["name"] === "string" &&
+    typeof item["content_path"] === "string" &&
     typeof item["progress"] === "number" &&
     typeof item["dlspeed"] === "number" &&
     typeof item["eta"] === "number" &&
@@ -166,6 +176,7 @@ function torrentStatus(value: unknown): TorrentStatus | null {
   return {
     hash: item["hash"] as string,
     name: item["name"] as string,
+    showFolder: torrentShowFolder(mediaDir, item["content_path"] as string),
     progress: item["progress"] as number,
     downloadSpeed: item["dlspeed"] as number,
     eta: item["eta"] as number,
@@ -176,7 +187,7 @@ function torrentStatus(value: unknown): TorrentStatus | null {
   };
 }
 
-async function torrentListResponse(): Promise<Response> {
+async function torrentListResponse(mediaDir: string): Promise<Response> {
   const response = await qBittorrentRequest(
     "/api/v2/torrents/info?sort=added_on&reverse=true&limit=50",
   );
@@ -192,7 +203,7 @@ async function torrentListResponse(): Promise<Response> {
   if (!Array.isArray(payload)) {
     return new Response("qBittorrent returned an invalid torrent list", { status: 502 });
   }
-  const torrents = payload.map((item) => torrentStatus(item)).filter(
+  const torrents = payload.map((item) => torrentStatus(item, mediaDir)).filter(
     (item): item is TorrentStatus => item !== null,
   );
   const incomplete = torrents.filter((item) => item.progress < 1);
@@ -290,5 +301,5 @@ export function torrentsResponse(req: Request, mediaDir: string, url: URL): Prom
   if (cancelHash !== undefined) {
     return cancelTorrentResponse(req, cancelHash);
   }
-  return req.method === "GET" ? torrentListResponse() : addTorrentResponse(req, mediaDir);
+  return req.method === "GET" ? torrentListResponse(mediaDir) : addTorrentResponse(req, mediaDir);
 }

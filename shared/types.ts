@@ -48,6 +48,7 @@ export interface AniListListEntry {
 export interface TorrentStatus {
   readonly hash: string;
   readonly name: string;
+  readonly showFolder: string | null;
   readonly progress: number;
   readonly downloadSpeed: number;
   readonly eta: number;

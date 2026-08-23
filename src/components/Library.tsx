@@ -4,6 +4,7 @@ import type {
   MediaEntry,
   PlaybackProgressMap,
   ShowMetadata,
+  TorrentStatus,
 } from "../types.ts";
 import {
   seasonMetadataKey,
@@ -19,8 +20,11 @@ import {
 } from "./ContinueWatching.tsx";
 import { ShowGrid } from "./ShowGrid.tsx";
 import { ShowPage } from "./ShowPage.tsx";
+import { useTorrents } from "../hooks/useTorrents.ts";
 
 export { LibrarySkeleton } from "./Skeleton.tsx";
+
+const EMPTY_TORRENTS: readonly TorrentStatus[] = [];
 
 interface LibraryProps {
   readonly entries: readonly MediaEntry[];
@@ -54,6 +58,7 @@ interface HomePageProps {
   readonly showContinueWatching: boolean;
   readonly onShowSelect: (show: ShowGroup) => void;
   readonly onEpisodeSelect: (entry: MediaEntry) => void;
+  readonly downloads: readonly TorrentStatus[];
 }
 
 function HomePage({
@@ -64,6 +69,7 @@ function HomePage({
   showContinueWatching,
   onShowSelect,
   onEpisodeSelect,
+  downloads,
 }: HomePageProps): React.JSX.Element {
   if (entries.length === 0) {
     return (
@@ -91,7 +97,12 @@ function HomePage({
             {shows.length} {shows.length === 1 ? "show" : "shows"}
           </p>
         </div>
-        <ShowGrid shows={shows} metadata={metadata} onSelect={onShowSelect} />
+        <ShowGrid
+          shows={shows}
+          metadata={metadata}
+          downloads={downloads}
+          onSelect={onShowSelect}
+        />
       </section>
     </>
   );
@@ -168,6 +179,7 @@ export function Library({
     query,
     selectedShowName,
   });
+  const torrents = useTorrents(canManageMappings && selectedShow === null);
   const continueWatching = useContinueWatchingItems(allShows, metadata, progress);
   const showMedia = selectedShow === null
     ? undefined
@@ -192,6 +204,7 @@ export function Library({
           showContinueWatching={query.trim() === ""}
           onShowSelect={onShowSelect}
           onEpisodeSelect={onSelect}
+          downloads={torrents.data ?? EMPTY_TORRENTS}
         />
       ) : (
         <ShowPage
