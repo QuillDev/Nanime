@@ -132,6 +132,7 @@ export const aniListMediaSchema = object({
 export const torrentStatusSchema = object({
   hash: string(),
   name: string(),
+  showFolder: nullableString,
   progress: number(),
   downloadSpeed: number(),
   eta: number(),

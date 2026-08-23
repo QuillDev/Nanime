@@ -3,7 +3,7 @@ import type { NyaaSearchResult } from "../shared/types.ts";
 
 const NYAA_ORIGIN = "https://nyaa.si";
 const SEARCH_TIMEOUT_MS = 10_000;
-const MAX_FEED_BYTES = 2 * 1024 * 1024;
+const MAX_SEARCH_BYTES = 2 * 1024 * 1024;
 const MAX_RESULTS = 50;
 const CATEGORIES = new Set(["1_0", "1_2", "1_3", "1_4"]);
 const SORTS = new Set(["id", "size", "seeders", "leechers", "downloads"]);
@@ -94,20 +94,6 @@ function searchResult(value: unknown): NyaaSearchResult | null {
   };
 }
 
-const FEED_FIELDS = [
-  ["title", "title"],
-  ["guid", "guid"],
-  ["pubdate", "pubDate"],
-  [String.raw`nyaa\:category`, "nyaa:category"],
-  [String.raw`nyaa\:size`, "nyaa:size"],
-  [String.raw`nyaa\:infohash`, "nyaa:infoHash"],
-  [String.raw`nyaa\:seeders`, "nyaa:seeders"],
-  [String.raw`nyaa\:leechers`, "nyaa:leechers"],
-  [String.raw`nyaa\:downloads`, "nyaa:downloads"],
-  [String.raw`nyaa\:trusted`, "nyaa:trusted"],
-  [String.raw`nyaa\:remake`, "nyaa:remake"],
-] as const;
-
 function feedTextHandler(
   field: string,
   currentItem: () => Record<string, string> | null,
@@ -122,12 +108,88 @@ function feedTextHandler(
   };
 }
 
-async function parseFeed(xml: string): Promise<readonly NyaaSearchResult[]> {
+function setAttribute(
+  field: string,
+  attribute: string,
+  currentItem: () => Record<string, string> | null,
+): HTMLRewriterTypes.HTMLRewriterElementContentHandlers {
+  return {
+    element(element) {
+      const item = currentItem();
+      const value = element.getAttribute(attribute);
+      if (item !== null && value !== null) {
+        item[field] = value;
+      }
+    },
+  };
+}
+
+function setDetails(currentItem: () => Record<string, string> | null): HTMLRewriterTypes.HTMLRewriterElementContentHandlers {
+  return {
+    element(element) {
+      const item = currentItem();
+      const href = element.getAttribute("href");
+      const id = href === null ? null : /^\/view\/(?<id>\d+)$/u.exec(href)?.groups?.["id"];
+      const title = element.getAttribute("title");
+      if (item !== null && id !== null && id !== undefined && title !== null) {
+        item["guid"] = `${NYAA_ORIGIN}/view/${id}`;
+        item["title"] = title;
+      }
+    },
+  };
+}
+
+function setMagnet(currentItem: () => Record<string, string> | null): HTMLRewriterTypes.HTMLRewriterElementContentHandlers {
+  return {
+    element(element) {
+      const item = currentItem();
+      const href = element.getAttribute("href")?.replaceAll("&amp;", "&");
+      if (item === null || href === undefined) {
+        return;
+      }
+      try {
+        const exactTopic = new URL(href).searchParams.get("xt");
+        const infoHash = exactTopic === null ? null : /^urn:btih:(?<hash>[a-f\d]{40})$/iu.exec(exactTopic)?.groups?.["hash"];
+        if (infoHash !== null && infoHash !== undefined) {
+          item["nyaa:infoHash"] = infoHash;
+        }
+      } catch {
+        // Ignore malformed links from the upstream search page.
+      }
+    },
+  };
+}
+
+function dataTimestamp(element: HTMLRewriterTypes.Element): string | undefined {
+  for (const [name, value] of element.attributes) {
+    if (name === "data-timestamp") {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function setPublishedAt(currentItem: () => Record<string, string> | null): HTMLRewriterTypes.HTMLRewriterElementContentHandlers {
+  return {
+    element(element) {
+      const item = currentItem();
+      const timestamp = dataTimestamp(element);
+      if (item !== null && timestamp !== undefined && /^\d+$/u.test(timestamp)) {
+        item["pubDate"] = new Date(Number(timestamp) * 1e3).toISOString();
+      }
+    },
+  };
+}
+
+async function parseSearchPage(html: string): Promise<readonly NyaaSearchResult[]> {
   const results: NyaaSearchResult[] = [];
   let current: Record<string, string> | null = null;
-  const rewriter = new HTMLRewriter().on("item", {
+  const rewriter = new HTMLRewriter().on("table.torrent-list > tbody > tr", {
     element(element) {
       const item: Record<string, string> = {};
+      const rowClass = element.getAttribute("class");
+      item["nyaa:trusted"] = rowClass === "success" ? "Yes" : "No";
+      item["nyaa:remake"] = rowClass === "danger" ? "Yes" : "No";
       current = item;
       element.onEndTag(() => {
         const result = searchResult(item);
@@ -139,10 +201,16 @@ async function parseFeed(xml: string): Promise<readonly NyaaSearchResult[]> {
     },
   });
   const currentItem = (): Record<string, string> | null => current;
-  for (const [selector, field] of FEED_FIELDS) {
-    rewriter.on(`item > ${selector}`, feedTextHandler(field, currentItem));
-  }
-  await rewriter.transform(new Response(xml)).text();
+  rewriter
+    .on("table.torrent-list > tbody > tr > td:nth-child(1) a", setAttribute("nyaa:category", "title", currentItem))
+    .on("table.torrent-list > tbody > tr > td:nth-child(2) a", setDetails(currentItem))
+    .on("table.torrent-list > tbody > tr > td:nth-child(3) a[href^='magnet:']", setMagnet(currentItem))
+    .on("table.torrent-list > tbody > tr > td:nth-child(4)", feedTextHandler("nyaa:size", currentItem))
+    .on("table.torrent-list > tbody > tr > td:nth-child(5)", setPublishedAt(currentItem))
+    .on("table.torrent-list > tbody > tr > td:nth-child(6)", feedTextHandler("nyaa:seeders", currentItem))
+    .on("table.torrent-list > tbody > tr > td:nth-child(7)", feedTextHandler("nyaa:leechers", currentItem))
+    .on("table.torrent-list > tbody > tr > td:nth-child(8)", feedTextHandler("nyaa:downloads", currentItem));
+  await rewriter.transform(new Response(html)).text();
   return results;
 }
 
@@ -161,7 +229,6 @@ export async function searchNyaaResponse(url: URL): Promise<Response> {
 
   const searchUrl = new URL("/", NYAA_ORIGIN);
   searchUrl.search = new URLSearchParams({
-    page: "rss",
     q: query,
     c: category,
     f: trusted ? "2" : "0",
@@ -172,7 +239,7 @@ export async function searchNyaaResponse(url: URL): Promise<Response> {
   try {
     const response = await fetch(searchUrl, {
       headers: {
-        accept: "application/rss+xml, application/xml;q=0.9",
+        accept: "text/html",
         "user-agent": "Nanime/1.0",
       },
       signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
@@ -181,14 +248,14 @@ export async function searchNyaaResponse(url: URL): Promise<Response> {
       return new Response("Nyaa rejected the search request", { status: 502 });
     }
     const contentLength = Number(response.headers.get("content-length") ?? "0");
-    if (contentLength > MAX_FEED_BYTES) {
+    if (contentLength > MAX_SEARCH_BYTES) {
       return new Response("Nyaa returned an unexpectedly large response", { status: 502 });
     }
-    const feed = await response.text();
-    if (new TextEncoder().encode(feed).byteLength > MAX_FEED_BYTES) {
+    const page = await response.text();
+    if (new TextEncoder().encode(page).byteLength > MAX_SEARCH_BYTES) {
       return new Response("Nyaa returned an unexpectedly large response", { status: 502 });
     }
-    return Response.json(await parseFeed(feed));
+    return Response.json(await parseSearchPage(page));
   } catch {
     return new Response("Could not search Nyaa", { status: 502 });
   }
