@@ -1,4 +1,4 @@
-import { useCallback, type ChangeEvent } from "react";
+import { lazy, Suspense, useCallback, type ChangeEvent } from "react";
 import type { AuthUser, MediaEntry, ShowMetadata } from "../types.ts";
 import {
   aniListPlaybackTarget,
@@ -18,8 +18,18 @@ import {
   useMediaRoute,
 } from "../hooks/useMediaRoute.ts";
 import { Library } from "./Library.tsx";
-import { Player } from "./Player.tsx";
 import { MediaHeader } from "./MediaHeader.tsx";
+
+const Player = lazy(async () => {
+  const module = await import("./Player.tsx");
+  return { default: module.Player };
+});
+
+const PLAYER_LOADING = (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black text-muted-foreground">
+    Loading player…
+  </div>
+);
 
 const EMPTY_PROGRESS = {};
 const EMPTY_ENTRIES: readonly MediaEntry[] = [];
@@ -104,17 +114,19 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
         )}
       </main>
       {selected !== null && (
-        <Player
-          key={selected.rel}
-          entry={selected}
-          anilistTarget={aniListPlaybackTarget(library.data, selected, metadata.data ?? {})}
-          nextAvailable={navigation.next !== null}
-          previousAvailable={navigation.previous !== null}
-          initialProgress={playbackProgress.data?.[selected.rel]}
-          onClose={closeEpisode}
-          onNext={navigation.handleNext}
-          onPrevious={navigation.handlePrevious}
-        />
+        <Suspense fallback={PLAYER_LOADING}>
+          <Player
+            key={selected.rel}
+            entry={selected}
+            anilistTarget={aniListPlaybackTarget(library.data, selected, metadata.data ?? {})}
+            nextAvailable={navigation.next !== null}
+            previousAvailable={navigation.previous !== null}
+            initialProgress={playbackProgress.data?.[selected.rel]}
+            onClose={closeEpisode}
+            onNext={navigation.handleNext}
+            onPrevious={navigation.handlePrevious}
+          />
+        </Suspense>
       )}
     </div>
   );

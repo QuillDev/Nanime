@@ -1,14 +1,35 @@
+import { lazy, Suspense } from "react";
 import { useCurrentUser } from "./hooks/useAuth.ts";
 import { LoginScreen } from "./components/LoginScreen.tsx";
-import { MediaApp } from "./components/MediaApp.tsx";
-import { AdminApp } from "./components/AdminApp.tsx";
-import { ProfileApp } from "./components/ProfileApp.tsx";
 import {
   navigateToShows,
   useMediaRoute,
   type MediaRoute,
 } from "./hooks/useMediaRoute.ts";
 import type { AuthUser } from "./types.ts";
+
+const AdminApp = lazy(async () => {
+  const module = await import("./components/AdminApp.tsx");
+  return { default: module.AdminApp };
+});
+const MediaApp = lazy(async () => {
+  const module = await import("./components/MediaApp.tsx");
+  return { default: module.MediaApp };
+});
+const ProfileApp = lazy(async () => {
+  const module = await import("./components/ProfileApp.tsx");
+  return { default: module.ProfileApp };
+});
+
+function RouteLoading(): React.JSX.Element {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
+      Loading…
+    </main>
+  );
+}
+
+const ROUTE_LOADING = <RouteLoading />;
 
 function AdminForbidden(): React.JSX.Element {
   return (
@@ -43,9 +64,14 @@ export function App(): React.JSX.Element {
       </main>
     );
   }
-  return currentUser.data === null
-    ? <LoginScreen />
-    : authenticatedView(currentUser.data, route);
+  if (currentUser.data === null) {
+    return <LoginScreen />;
+  }
+  return (
+    <Suspense fallback={ROUTE_LOADING}>
+      {authenticatedView(currentUser.data, route)}
+    </Suspense>
+  );
 }
 
 function authenticatedView(user: AuthUser, route: MediaRoute): React.JSX.Element {

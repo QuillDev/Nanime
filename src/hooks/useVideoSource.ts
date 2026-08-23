@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
-import Hls from "hls.js";
 import { hlsUrl, streamUrl } from "../api.ts";
 import type { MediaEntry } from "../types.ts";
+import type { HlsAttachment } from "../lib/hlsPlayback.ts";
 
 function tryPlay(video: HTMLVideoElement): void {
   void (async (): Promise<void> => {
@@ -11,38 +11,6 @@ function tryPlay(video: HTMLVideoElement): void {
       // Autoplay may be blocked by the browser; the user can press play.
     }
   })();
-}
-
-interface HlsAttachment {
-  readonly video: HTMLVideoElement;
-  readonly url: string;
-  readonly onError: (message: string) => void;
-  readonly resumeAt?: number;
-  readonly shouldPlay?: boolean;
-}
-
-function bindHlsEvents(hls: Hls, options: HlsAttachment): void {
-  const { video, onError, resumeAt = 0, shouldPlay = true } = options;
-  let recoveredMediaError = false;
-  hls.on(Hls.Events.MANIFEST_PARSED, () => {
-    if (resumeAt > 0) {
-      video.currentTime = resumeAt;
-    }
-    if (shouldPlay) {
-      tryPlay(video);
-    }
-  });
-  hls.on(Hls.Events.ERROR, (_event, data) => {
-    if (!data.fatal) {
-      return;
-    }
-    if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !recoveredMediaError) {
-      recoveredMediaError = true;
-      hls.recoverMediaError();
-      return;
-    }
-    onError(`Playback failed: ${data.details}.`);
-  });
 }
 
 function attachNativeHls(options: HlsAttachment): void {
@@ -63,18 +31,29 @@ function attachNativeHls(options: HlsAttachment): void {
   video.addEventListener("loadedmetadata", handleMetadata, { once: true });
 }
 
-function attachHls(options: HlsAttachment): (() => void) | undefined {
-  const { video, url } = options;
-  if (!Hls.isSupported()) {
+function attachHls(options: HlsAttachment): () => void {
+  if (options.video.canPlayType("application/vnd.apple.mpegurl") !== "") {
     attachNativeHls(options);
-    return undefined;
+    return () => undefined;
   }
-  const hls = new Hls({ enableWorker: true });
-  bindHlsEvents(hls, options);
-  hls.loadSource(url);
-  hls.attachMedia(video);
+  let active = true;
+  let detach: (() => void) | undefined = undefined;
+  void (async (): Promise<void> => {
+    try {
+      const module = await import("../lib/hlsPlayback.ts");
+      if (active) {
+        detach = module.attachHls(options);
+      }
+    } catch (error: unknown) {
+      if (active) {
+        const detail = error instanceof Error ? error.message : "Unknown loading error";
+        options.onError(`Could not load HLS playback support: ${detail}`);
+      }
+    }
+  })();
   return () => {
-    hls.destroy();
+    active = false;
+    detach?.();
   };
 }
 
