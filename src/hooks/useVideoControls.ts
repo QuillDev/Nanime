@@ -203,6 +203,7 @@ function useKeyboardSeeking(onSeekBy: (seconds: number) => void): void {
 export function useVideoControls(
   videoRef: RefObject<HTMLVideoElement | null>,
   playerRef: RefObject<HTMLDivElement | null>,
+  onBeforeSeek: () => void,
 ): VideoControls {
   const playback = useVideoState();
   const handleTogglePlayback = useCallback(() => {
@@ -218,10 +219,11 @@ export function useVideoControls(
   }, [videoRef]);
   const handleSeek = useCallback((time: number) => {
     if (videoRef.current !== null) {
+      onBeforeSeek();
       videoRef.current.currentTime = time;
       playback.setState((current) => ({ ...current, currentTime: time }));
     }
-  }, [playback, videoRef]);
+  }, [onBeforeSeek, playback, videoRef]);
   const handleSeekBy = useCallback((seconds: number) => {
     const video = videoRef.current;
     if (video !== null) {

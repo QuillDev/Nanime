@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
 import type { PlaybackHandlers } from "../hooks/usePlayerProgress.ts";
+import { usePlayerVideo } from "../hooks/usePlayerVideo.ts";
 import { usePlayerSurfaceInteraction } from "../hooks/usePlayerSurfaceInteraction.ts";
 import { useAudioSelection, useSubtitleTracks } from "../hooks/useSubtitleTracks.ts";
-import { useVideoControls, type VideoControls } from "../hooks/useVideoControls.ts";
-import { cn } from "../lib/utils.ts";
+import type { VideoControls } from "../hooks/useVideoControls.ts";
 import type { MediaEntry, SubtitleTrack } from "../types.ts";
 import {
   PlayerControls,
@@ -36,12 +36,7 @@ function loadSubtitleAppearance(): SubtitleAppearance {
   }
 }
 function subtitleClass(appearance: SubtitleAppearance): string {
-  return cn(
-    "player-subtitle max-w-[90%] whitespace-pre-line text-center font-semibold leading-snug text-white",
-    appearance.size === "small" && "player-subtitle-small",
-    appearance.size === "medium" && "player-subtitle-medium",
-    appearance.size === "large" && "player-subtitle-large",
-  );
+  return `player-subtitle player-subtitle-${appearance.size} max-w-[90%] whitespace-pre-line text-center font-semibold leading-snug text-white`;
 }
 function subtitlePreference(track: SubtitleTrack): number {
   const english = /^(?:en|eng)$/iu.test(track.language) ? 100 : 0;
@@ -174,7 +169,17 @@ export function PlayerSurface({
   const subtitles = useSubtitleTracks(entry.rel);
   const audio = useAudioSelection(entry.rel, onAudioTrack);
   const playerRef = useRef<HTMLDivElement | null>(null);
-  const controls = useVideoControls(videoRef, playerRef);
+  const {
+    buffering,
+    controls,
+    frameRef,
+    frameVisible,
+    handleBuffering,
+    handleLoadStart,
+    handleReady,
+    handlePlayerPlaying,
+    handlePlayerSeeked,
+  } = usePlayerVideo({ videoRef, playerRef, progress, onPlaying: handlePlaying });
   const visibility = useControlVisibility();
   const playbackEvents = usePlaybackEvents(progress, controls, visibility.handleActivity);
   const display = useSubtitleDisplay(subtitles.data);
@@ -186,7 +191,6 @@ export function PlayerSurface({
     onHideControls: visibility.handleHide,
     onSeekBy: controls.handleSeekBy,
   });
-
   return (
     <div
       ref={playerRef}
@@ -199,21 +203,33 @@ export function PlayerSurface({
             ref={setVideo}
             playsInline
             onError={handleVideoError}
-            onPlaying={handlePlaying}
+            onLoadStart={handleLoadStart}
+            onLoadedData={handleReady}
+            onCanPlay={handleReady}
+            onWaiting={handleBuffering}
+            onStalled={handleBuffering}
+            onSeeking={handleBuffering}
+            onPlaying={handlePlayerPlaying}
             onPlay={playbackEvents.handlePlay}
             onLoadedMetadata={playbackEvents.handleLoadedMetadata}
             onDurationChange={controls.handleDurationChange}
             onTimeUpdate={playbackEvents.handleTimeUpdate}
             onPause={playbackEvents.handlePause}
-            onSeeked={progress.handleSeeked}
+            onSeeked={handlePlayerSeeked}
             onEnded={playbackEvents.handleEnded}
             className="h-full w-full bg-black object-contain"
           >
             <track kind="captions" />
             <SubtitleTracks rel={entry.rel} tracks={subtitles.data} selectedTrack={display.selectedTrack} onCueText={display.handleCueText} />
           </video>
+          <canvas
+            ref={frameRef}
+            className={`pointer-events-none absolute inset-0 z-[1] h-full w-full bg-black object-contain${frameVisible ? "" : " hidden"}`}
+            aria-hidden="true"
+          />
           <PlayerPlaybackOverlay
             paused={controls.paused}
+            buffering={buffering}
             controlsVisible={controlsVisible}
             onSurfacePointerUp={interaction.handleSurfacePointerUp}
             onSurfaceClick={interaction.handleSurfaceClick}
