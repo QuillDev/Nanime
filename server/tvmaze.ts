@@ -57,8 +57,23 @@ function showFromResult(value: unknown): TvmazeShow | null {
   };
 }
 
-function cleanSummary(value: string | null): string | null {
-  return value?.replaceAll(/<[^>]*>/gu, "").trim() || null;
+export function plainText(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+  const result: string[] = [];
+  let insideTag = false;
+  for (const character of value) {
+    if (character === "<") {
+      insideTag = true;
+      result.push(" ");
+    } else if (character === ">") {
+      insideTag = false;
+    } else if (!insideTag) {
+      result.push(character);
+    }
+  }
+  return result.join("").replaceAll(/\s+/gu, " ").trim() || null;
 }
 
 function episodeFromResult(value: unknown): TvmazeEpisode | null {
@@ -79,7 +94,7 @@ function episodeFromResult(value: unknown): TvmazeEpisode | null {
     number: episode["number"],
     type: episode["type"],
     title: episode["name"],
-    summary: cleanSummary(typeof episode["summary"] === "string" ? episode["summary"] : null),
+    summary: plainText(typeof episode["summary"] === "string" ? episode["summary"] : null),
     airDate: typeof episode["airdate"] === "string" ? episode["airdate"] : null,
     thumbnail: typeof image?.["original"] === "string" ? image["original"] : null,
   };

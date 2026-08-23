@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { database } from "./database.ts";
-import { matchTvmaze, type TvmazeMatch } from "./tvmaze.ts";
+import { matchTvmaze, plainText, type TvmazeMatch } from "./tvmaze.ts";
 
 const ANILIST_URL = "https://graphql.anilist.co";
 const METADATA_FILE = resolve(
@@ -171,16 +171,7 @@ async function aniListQuery<T>(query: string, variables: object): Promise<T> {
 }
 
 function cleanDescription(description: string | null): string | null {
-  if (description === null) {
-    return null;
-  }
-  return description
-    .replaceAll(/<br\s*\/?>/giu, "\n")
-    .replaceAll(/<[^>]*>/gu, "")
-    .replaceAll("&amp;", "&")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#039;", "'")
-    .trim();
+  return plainText(description);
 }
 
 function cleanMedia(media: AniListMedia): AniListMedia {
