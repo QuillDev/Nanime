@@ -6,7 +6,7 @@ import type {
   PlaybackProgressMap,
   ShowMetadata,
 } from "../types.ts";
-import { formatDuration } from "../api.ts";
+import { formatDuration } from "../format.ts";
 import { episodeMetadata } from "../lib/anilist.ts";
 import { hasMeaningfulPlaybackProgress } from "../lib/playback.ts";
 import { useDismissPlaybackProgress } from "../hooks/usePlaybackProgress.ts";

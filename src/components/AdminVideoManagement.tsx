@@ -7,9 +7,11 @@ import type { MediaEntry, ShowMetadata, TranscodePreset } from "../types.ts";
 import { AdminPanel } from "./AdminPanel.tsx";
 import { AdminTranscodes } from "./AdminTranscodes.tsx";
 import { AdminVideoTree } from "./AdminVideoTree.tsx";
-import { AdminVideoActions, AdminVideoDialogs } from "./AdminVideoDialogs.tsx";
-
-type PruneMode = "audio" | "subtitles";
+import {
+  AdminVideoActions,
+  AdminVideoDialogs,
+  type PruneMode,
+} from "./AdminVideoDialogs.tsx";
 
 function resolvedShowTitle(show: ShowGroup, metadata: ShowMetadata): string {
   const media = metadata[showMetadataKey(show.name)];
@@ -24,7 +26,11 @@ function useVideoSelection(entries: readonly MediaEntry[]) {
       const next = new Set(current);
       const shouldSelect = targets.some((entry) => !next.has(entry.rel));
       for (const entry of targets) {
-        if (shouldSelect && next.size < 100) {next.add(entry.rel);} else if (!shouldSelect) {next.delete(entry.rel);}
+        if (shouldSelect && next.size < 100) {
+          next.add(entry.rel);
+        } else if (!shouldSelect) {
+          next.delete(entry.rel);
+        }
       }
       return next;
     });

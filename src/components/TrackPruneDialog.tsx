@@ -1,11 +1,15 @@
 import { useQueries } from "@tanstack/react-query";
 import { useCallback, useMemo, useState, type ChangeEvent } from "react";
-import { Check } from "lucide-react";
-import { fetchSubtitleTracks, formatSize } from "../api.ts";
+import { fetchSubtitleTracks } from "../api.ts";
 import { fetchAudioTracks } from "../audio.ts";
-import { usePruneTracks } from "../hooks/usePruneTracks.ts";
+import {
+  usePruneTracks,
+  type ManagedTrack,
+  type PruneMode,
+} from "../hooks/usePruneTracks.ts";
 import type { MediaEntry, TrackPruneOperation } from "../types.ts";
-import { TrackTypeSelector } from "./TrackTypeSelector.tsx";
+import { TrackSelectionContent, TrackTypeSelector } from "./TrackTypeSelector.tsx";
+import { DialogActions } from "./DialogActions.tsx";
 import {
   Dialog,
   DialogContent,
@@ -20,8 +24,6 @@ import {
   CollapsibleTrigger,
 } from "./ui/collapsible.tsx";
 
-type PruneMode = "audio" | "subtitles";
-interface ManagedTrack { readonly index: number; readonly label: string; readonly sizeBytes: number | null }
 type TrackSelections = Readonly<Record<string, readonly number[]>>;
 const EMPTY_TRACKS: readonly ManagedTrack[] = [];
 const EMPTY_SELECTION: readonly number[] = [];
@@ -73,22 +75,23 @@ function TrackGroup({
           const checked = selectedSet.has(track.index);
           const disabled = mode === "audio" && !checked && selected.length >= removable;
           return (
-            <label key={track.index} className="flex min-w-0 cursor-pointer items-center gap-3 rounded-md border border-border bg-secondary px-3 py-2.5 text-sm has-disabled:cursor-not-allowed has-disabled:text-muted-foreground">
+            <div key={track.index} className="relative flex min-w-0 items-center gap-3 rounded-md border border-border bg-secondary px-3 py-2.5 text-sm has-disabled:cursor-not-allowed has-disabled:text-muted-foreground">
               <input
                 type="checkbox"
                 data-path={entry.rel}
                 value={track.index}
                 checked={checked}
                 disabled={disabled}
+                aria-label={`Remove ${track.label} from ${entry.name}`}
                 onChange={onToggle}
-                className="sr-only"
+                className="absolute inset-0 z-10 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
               />
-              <span aria-hidden="true" className={`flex size-5 shrink-0 items-center justify-center rounded border ${checked ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"}`}>
-                {checked && <Check className="size-3.5 stroke-[3]" />}
-              </span>
-              <span className="min-w-0 flex-1 truncate">{track.label}</span>
-              {track.sizeBytes !== null && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">≈ {formatSize(track.sizeBytes)}</span>}
-            </label>
+              <TrackSelectionContent
+                label={track.label}
+                state={checked ? "checked" : "unchecked"}
+                sizeBytes={track.sizeBytes}
+              />
+            </div>
           );
         })}
       </div>
@@ -130,14 +133,18 @@ function allMatchingSelected(current: TrackSelections, toggle: TrackTypeToggle):
   return matches.length > 0 && matches.every(Boolean);
 }
 
-function toggleTypeSelections(current: TrackSelections, toggle: TrackTypeToggle): TrackSelections {
+function toggleTypeSelections(current: TrackSelections, toggle: TrackTypeToggle) {
   const remove = allMatchingSelected(current, toggle);
   const next = { ...current };
   toggle.entries.forEach((entry, index) => {
     const tracks = toggle.tracksByEntry[index] ?? EMPTY_TRACKS;
     const selected = new Set(current[entry.rel]);
     for (const track of tracks.filter((candidate) => candidate.label === toggle.label)) {
-      if (remove) {selected.delete(track.index);} else if (toggle.mode === "subtitles" || selected.size < tracks.length - 1) {selected.add(track.index);}
+      if (remove) {
+        selected.delete(track.index);
+      } else if (toggle.mode === "subtitles" || selected.size < tracks.length - 1) {
+        selected.add(track.index);
+      }
     }
     next[entry.rel] = [...selected];
   });
@@ -155,7 +162,9 @@ function usePruneSelection(entries: readonly MediaEntry[], mode: PruneMode) {
     const path = event.currentTarget.dataset["path"] ?? "";
     const index = Number(event.currentTarget.value);
     const { checked } = event.currentTarget;
-    if (!Number.isInteger(index)) {return;}
+    if (!Number.isInteger(index)) {
+      return;
+    }
     setSelections((current) => {
       const existing = current[path] ?? [];
       return {
@@ -180,7 +189,9 @@ function IndividualTrackGroups({ entries, tracksByEntry, selections, mode, onTog
   const groups = entries.map((entry, index) => (
     <TrackGroup key={entry.rel} entry={entry} tracks={tracksByEntry[index] ?? EMPTY_TRACKS} selected={selections[entry.rel] ?? EMPTY_SELECTION} mode={mode} onToggle={onToggle} />
   ));
-  if (entries.length === 1) {return <div>{groups}</div>;}
+  if (entries.length === 1) {
+    return <div>{groups}</div>;
+  }
   return (
     <Collapsible>
       <CollapsibleTrigger className="flex w-full items-center gap-2 py-3 text-left text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -230,12 +241,14 @@ export function TrackPruneDialog({
         {!pending && queryError === null && entries.length > 1 && <TrackTypeSelector paths={paths} tracksByEntry={tracksByEntry} selections={selection.selections} onToggleType={selection.handleToggleType} />}
         {!pending && queryError === null && <IndividualTrackGroups entries={entries} tracksByEntry={tracksByEntry} selections={selection.selections} mode={mode} onToggle={selection.handleToggle} />}
         {pruning.error !== null && <p className="select-text text-sm text-destructive">{pruning.error.message}</p>}
-        <div className="flex justify-end gap-3">
-          <button type="button" onClick={onClose} disabled={pruning.isPending} className="h-10 rounded-md border border-border bg-background px-4 text-sm font-semibold hover:bg-accent">Cancel</button>
-          <button type="button" onClick={handlePrune} disabled={pending || selection.operations.length === 0 || pruning.isPending} className="h-10 rounded-md bg-destructive px-4 text-sm font-semibold text-destructive-foreground disabled:bg-muted disabled:text-muted-foreground">
-            {pruning.isPending ? "Removing…" : `Remove ${String(selection.selectedTrackCount)} ${selection.selectedTrackCount === 1 ? "track" : "tracks"} from ${String(selection.operations.length)} ${selection.operations.length === 1 ? "video" : "videos"}`}
-          </button>
-        </div>
+        <DialogActions
+          actionLabel={`Remove ${String(selection.selectedTrackCount)} ${selection.selectedTrackCount === 1 ? "track" : "tracks"} from ${String(selection.operations.length)} ${selection.operations.length === 1 ? "video" : "videos"}`}
+          disabled={pending || selection.operations.length === 0}
+          onAction={handlePrune}
+          onCancel={onClose}
+          pending={pruning.isPending}
+          pendingLabel="Removing…"
+        />
       </DialogContent>
     </Dialog>
   );

@@ -1,5 +1,5 @@
 import { HardDrive } from "lucide-react";
-import { formatSize } from "../api.ts";
+import { formatSize } from "../format.ts";
 import { useStorageStatus } from "../hooks/useStorageStatus.ts";
 
 export function AdminStorageStatus(): React.JSX.Element {

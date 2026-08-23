@@ -1,7 +1,9 @@
 import { resolve } from "node:path";
+import type { TvmazeMatch } from "../shared/types.ts";
 import { database } from "./database.ts";
 import { aniListGraphQl } from "./anilistClient.ts";
-import { matchTvmaze, plainText, type TvmazeMatch } from "./tvmaze.ts";
+import { jsonObject } from "./json.ts";
+import { matchTvmaze, plainText } from "./tvmaze.ts";
 
 export { aniListErrorResponse } from "./anilistClient.ts";
 
@@ -86,16 +88,55 @@ const writeMetadataTransaction = database.transaction((store: MetadataStore) => 
   }
 });
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function nullableString(value: unknown): boolean {
+  return typeof value === "string" || value === null;
+}
+
+function nullableNumber(value: unknown): boolean {
+  return typeof value === "number" || value === null;
+}
+
+function mediaFromUnknown(value: unknown): AniListMedia | null {
+  const media = jsonObject(value);
+  const title = jsonObject(media?.["title"]);
+  const coverImage = jsonObject(media?.["coverImage"]);
+  if (
+    typeof media?.["id"] !== "number" ||
+    !nullableNumber(media["idMal"]) ||
+    !nullableString(title?.["english"]) || typeof title?.["romaji"] !== "string" ||
+    !nullableString(title["native"]) ||
+    !nullableString(coverImage?.["extraLarge"]) || !nullableString(coverImage?.["large"]) ||
+    !nullableString(coverImage?.["color"]) || !nullableString(media["description"]) ||
+    !nullableString(media["bannerImage"]) || typeof media["siteUrl"] !== "string" ||
+    !nullableNumber(media["episodes"]) || !nullableNumber(media["duration"]) ||
+    !nullableString(media["season"]) || !nullableNumber(media["seasonYear"]) ||
+    !nullableString(media["format"]) || !nullableString(media["status"]) ||
+    !nullableNumber(media["averageScore"]) ||
+    !Array.isArray(media["genres"]) || !media["genres"].every((genre) => typeof genre === "string") ||
+    !Array.isArray(media["streamingEpisodes"])
+  ) {
+    return null;
+  }
+  return value as AniListMedia;
+}
+
+function metadataStore(value: unknown): MetadataStore {
+  const object = jsonObject(value);
+  if (object === null) {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(object).flatMap(([key, media]) => {
+    const parsed = mediaFromUnknown(media);
+    return parsed === null ? [] : [[key, parsed]];
+  }));
 }
 
 async function loadMetadata(): Promise<MetadataStore> {
   const rows = listMetadata.all();
   if (rows.length > 0) {
     return Object.fromEntries(rows.flatMap((row) => {
-      const value: unknown = JSON.parse(row.payload);
-      return isRecord(value) ? [[row.key, value as unknown as AniListMedia]] : [];
+      const media = mediaFromUnknown(JSON.parse(row.payload));
+      return media === null ? [] : [[row.key, media]];
     }));
   }
   const file = Bun.file(METADATA_FILE);
@@ -103,7 +144,7 @@ async function loadMetadata(): Promise<MetadataStore> {
     return {};
   }
   const value: unknown = await file.json().catch((): null => null);
-  const store = isRecord(value) ? (value as MetadataStore) : {};
+  const store = metadataStore(value);
   writeMetadata(store);
   return store;
 }
@@ -187,10 +228,11 @@ export async function searchAniListResponse(url: URL): Promise<Response> {
 }
 
 function linkBody(value: unknown): { readonly key: string; readonly id: number } | null {
-  if (!isRecord(value)) {
+  const object = jsonObject(value);
+  if (object === null) {
     return null;
   }
-  const { key, id } = value;
+  const { key, id } = object;
   return typeof key === "string" && key !== "" && Number.isInteger(id)
     ? { key, id: id as number }
     : null;

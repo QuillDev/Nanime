@@ -33,12 +33,7 @@ function useAdjacentEpisodeNavigation(
   entries: readonly MediaEntry[] | undefined,
   selected: MediaEntry | null,
   metadata: ShowMetadata,
-): {
-  readonly previous: MediaEntry | null;
-  readonly next: MediaEntry | null;
-  readonly handlePrevious: () => void;
-  readonly handleNext: () => void;
-} {
+) {
   const previous = entries === undefined || selected === null
     ? null
     : previousEpisode(entries, selected.rel, metadata);

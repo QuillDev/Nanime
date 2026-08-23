@@ -9,6 +9,7 @@ import {
 } from "./subtitles.ts";
 import { detachTorrentsForFiles } from "./torrents.ts";
 import { invalidateMediaScan } from "./scanCache.ts";
+import type { MediaLibraryOptions } from "./mediaLibraryOptions.ts";
 
 interface PruneOperationBody {
   readonly path?: unknown;
@@ -18,12 +19,6 @@ interface PruneOperationBody {
 
 interface PruneBody {
   readonly operations?: unknown;
-}
-
-interface PruneOptions {
-  readonly mediaDir: string;
-  readonly mediaRoot: string;
-  readonly videoExtensions: ReadonlySet<string>;
 }
 
 interface PruneOperation {
@@ -39,7 +34,7 @@ function validIndices(value: unknown): value is readonly number[] {
     value.every((index) => typeof index === "number" && Number.isInteger(index));
 }
 
-async function safeMedia(path: string, options: PruneOptions): Promise<string | null> {
+async function safeMedia(path: string, options: MediaLibraryOptions): Promise<string | null> {
   const candidate = resolve(options.mediaDir, path);
   if (
     candidate === options.mediaDir || !candidate.startsWith(options.mediaDir + sep) ||
@@ -53,7 +48,7 @@ async function safeMedia(path: string, options: PruneOptions): Promise<string | 
 
 async function prepareOperation(
   value: PruneOperationBody,
-  options: PruneOptions,
+  options: MediaLibraryOptions,
 ): Promise<PruneOperation | null> {
   if (
     typeof value.path !== "string" || value.path === "" ||
@@ -137,7 +132,7 @@ async function applyOperation(operation: PruneOperation): Promise<boolean> {
   }
 }
 
-export async function pruneTracksResponse(req: Request, options: PruneOptions): Promise<Response> {
+export async function pruneTracksResponse(req: Request, options: MediaLibraryOptions): Promise<Response> {
   const body = (await req.json().catch(() => null)) as PruneBody | null;
   if (!Array.isArray(body?.operations) || body.operations.length === 0 || body.operations.length > 100) {
     return new Response("Choose tracks from up to 100 videos", { status: 400 });

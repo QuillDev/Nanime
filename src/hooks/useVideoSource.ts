@@ -91,7 +91,7 @@ function attachSource(
   return attachHls({ video, url: hlsUrl(entry.rel), onError });
 }
 
-export interface VideoSourceState {
+interface VideoSourceState {
   readonly playbackError: string | null;
   readonly videoRef: React.RefObject<HTMLVideoElement | null>;
   readonly setVideo: (video: HTMLVideoElement | null) => (() => void) | undefined;

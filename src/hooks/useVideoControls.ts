@@ -43,14 +43,7 @@ function finiteDuration(video: HTMLVideoElement): number {
   return Number.isFinite(video.duration) ? video.duration : 0;
 }
 
-function useVideoState(): {
-  readonly state: VideoControlState;
-  readonly setState: Dispatch<SetStateAction<VideoControlState>>;
-  readonly handleDurationChange: (event: SyntheticEvent<HTMLVideoElement>) => void;
-  readonly handleTimeUpdate: (event: SyntheticEvent<HTMLVideoElement>) => void;
-  readonly handlePlay: () => void;
-  readonly handlePause: () => void;
-} {
+function useVideoState() {
   const [state, setState] = useState<VideoControlState>(INITIAL_STATE);
   const handleDurationChange = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     const video = event.currentTarget;
@@ -87,12 +80,11 @@ function setNativeCaptionMode(video: HTMLVideoElement, fullscreen: boolean): voi
 }
 
 function enterNativeVideoFullscreen(video: HTMLVideoElement): boolean {
-  const enterFullscreen: unknown = Reflect.get(video, "webkitEnterFullscreen");
-  if (typeof enterFullscreen !== "function") {
+  if (!("webkitEnterFullscreen" in video) || typeof video.webkitEnterFullscreen !== "function") {
     return false;
   }
   setNativeCaptionMode(video, true);
-  Reflect.apply(enterFullscreen, video, []);
+  video.webkitEnterFullscreen();
   return true;
 }
 
@@ -134,11 +126,7 @@ function nativeFullscreenError(video: HTMLVideoElement | null): string | null {
 function useFullscreen(
   playerRef: RefObject<HTMLDivElement | null>,
   videoRef: RefObject<HTMLVideoElement | null>,
-): {
-  readonly fullscreen: boolean;
-  readonly fullscreenError: string | null;
-  readonly handleToggleFullscreen: () => void;
-} {
+) {
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
   const handleToggleFullscreen = useCallback(() => {

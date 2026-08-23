@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 import type { MediaEntry } from "../types.ts";
+import type { PruneMode } from "../trackPruning.ts";
 import { DeleteMediaDialog } from "./DeleteMediaDialog.tsx";
 import { SubtitleUploadDialog } from "./SubtitleUploadDialog.tsx";
 import { TrackPruneDialog } from "./TrackPruneDialog.tsx";
 
 export { AdminVideoActions } from "./AdminVideoActions.tsx";
-
-type PruneMode = "audio" | "subtitles";
+export type { PruneMode } from "../trackPruning.ts";
 
 export function AdminVideoDialogs({
   selected,

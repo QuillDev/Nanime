@@ -3,9 +3,10 @@ import { extname, resolve, sep } from "node:path";
 import { database } from "./database.ts";
 import { audioTracks } from "./audioTracks.ts";
 import { sidecarSubtitlePaths, subtitleTracks } from "./subtitles.ts";
+import type { TrackKind } from "./scanCache.ts";
+import type { MediaLibraryOptions } from "./mediaLibraryOptions.ts";
 
 type ScanStatus = "queued" | "scanning" | "complete" | "failed";
-type TrackKind = "audio" | "subtitle";
 
 interface ScanRow {
   readonly source_rel: string;
@@ -23,12 +24,6 @@ interface ScanRow {
   readonly error: string | null;
   readonly created_at: number;
   readonly updated_at: number;
-}
-
-interface ScanOptions {
-  readonly mediaDir: string;
-  readonly mediaRoot: string;
-  readonly videoExtensions: ReadonlySet<string>;
 }
 
 interface ProbeStream {
@@ -82,7 +77,7 @@ const insertTrack = database.query<void, [string, number, TrackKind, number]>(`
 database.run("UPDATE media_scans SET status = 'queued' WHERE status = 'scanning'");
 let active = false;
 
-function publicScan(row: ScanRow): object {
+function publicScan(row: ScanRow) {
   return {
     sourcePath: row.source_rel,
     status: row.status,
@@ -100,9 +95,11 @@ function publicScan(row: ScanRow): object {
   };
 }
 
-async function safeSource(path: string, options: ScanOptions): Promise<{ readonly abs: string; readonly size: number; readonly modifiedAt: number } | null> {
+async function safeSource(path: string, options: MediaLibraryOptions): Promise<{ readonly abs: string; readonly size: number; readonly modifiedAt: number } | null> {
   const candidate = resolve(options.mediaDir, path);
-  if (candidate === options.mediaDir || !candidate.startsWith(options.mediaDir + sep)) {return null;}
+  if (candidate === options.mediaDir || !candidate.startsWith(options.mediaDir + sep)) {
+    return null;
+  }
   const abs = await realpath(candidate).catch(() => null);
   const stats = abs === null ? null : await lstat(abs).catch(() => null);
   return abs !== null && abs.startsWith(options.mediaRoot + sep) && stats?.isFile() === true &&
@@ -122,7 +119,9 @@ async function probeMetadata(abs: string): Promise<ProbeOutput> {
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
-  if (code !== 0) {throw new Error(error.trim() || "ffprobe could not inspect the video");}
+  if (code !== 0) {
+    throw new Error(error.trim() || "ffprobe could not inspect the video");
+  }
   const parsed: unknown = JSON.parse(text);
   return typeof parsed === "object" && parsed !== null ? parsed as ProbeOutput : {};
 }
@@ -143,7 +142,9 @@ async function readPacketSizes(stream: ReadableStream<Uint8Array>): Promise<Read
   let remaining = "";
   while (true) {
     const chunk = await reader.read();
-    if (chunk.done) {break;}
+    if (chunk.done) {
+      break;
+    }
     const lines = `${remaining}${decoder.decode(chunk.value, { stream: true })}`.split("\n");
     remaining = lines.pop() ?? "";
     for (const line of lines) {
@@ -151,7 +152,9 @@ async function readPacketSizes(stream: ReadableStream<Uint8Array>): Promise<Read
     }
   }
   remaining += decoder.decode();
-  if (remaining !== "") {addPacketSize(remaining, sizes);}
+  if (remaining !== "") {
+    addPacketSize(remaining, sizes);
+  }
   return sizes;
 }
 
@@ -165,7 +168,9 @@ async function embeddedPacketSizes(abs: string): Promise<ReadonlyMap<number, num
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
-  if (code !== 0) {throw new Error(error.trim() || "ffprobe could not measure media streams");}
+  if (code !== 0) {
+    throw new Error(error.trim() || "ffprobe could not measure media streams");
+  }
   return sizes;
 }
 
@@ -208,11 +213,13 @@ function saveScan(row: ScanRow, probe: ProbeOutput, tracks: readonly TrackSize[]
   })();
 }
 
-async function executeScan(row: ScanRow, options: ScanOptions): Promise<void> {
+async function executeScan(row: ScanRow, options: MediaLibraryOptions): Promise<void> {
   startScan.run(Date.now(), row.source_rel);
   try {
     const source = await safeSource(row.source_rel, options);
-    if (source === null) {throw new Error("Video no longer exists");}
+    if (source === null) {
+      throw new Error("Video no longer exists");
+    }
     const [probe, tracks] = await Promise.all([probeMetadata(source.abs), measuredTracks(source.abs)]);
     saveScan(row, probe, tracks);
   } catch (error) {
@@ -221,17 +228,21 @@ async function executeScan(row: ScanRow, options: ScanOptions): Promise<void> {
   }
 }
 
-async function runQueue(options: ScanOptions): Promise<void> {
-  if (active) {return;}
+async function runQueue(options: MediaLibraryOptions): Promise<void> {
+  if (active) {
+    return;
+  }
   const [next] = queuedScans.all();
-  if (next === undefined) {return;}
+  if (next === undefined) {
+    return;
+  }
   active = true;
   await executeScan(next, options);
   active = false;
   void runQueue(options);
 }
 
-async function queueScans(req: Request, options: ScanOptions): Promise<Response> {
+async function queueScans(req: Request, options: MediaLibraryOptions): Promise<Response> {
   const body = (await req.json().catch(() => null)) as { readonly paths?: unknown } | null;
   if (!Array.isArray(body?.paths) || body.paths.length === 0 || body.paths.length > 500 ||
     !body.paths.every((path) => typeof path === "string")) {
@@ -239,7 +250,9 @@ async function queueScans(req: Request, options: ScanOptions): Promise<Response>
   }
   const unique = [...new Set(body.paths as string[])];
   const sources = await Promise.all(unique.map(async (path) => ({ path, source: await safeSource(path, options) })));
-  if (sources.some(({ source }) => source === null)) {return new Response("One or more videos no longer exist", { status: 404 });}
+  if (sources.some(({ source }) => source === null)) {
+    return new Response("One or more videos no longer exist", { status: 404 });
+  }
   const now = Date.now();
   for (const { path, source } of sources) {
     if (source !== null) {queueScan.run(path, source.size, source.modifiedAt, now, now);}
@@ -248,7 +261,7 @@ async function queueScans(req: Request, options: ScanOptions): Promise<Response>
   return Response.json(unique.map((path) => publicScan(scanByPath.get(path) as ScanRow)), { status: 201 });
 }
 
-export function mediaScanResponse(req: Request, options: ScanOptions): Response | Promise<Response> {
+export function mediaScanResponse(req: Request, options: MediaLibraryOptions): Response | Promise<Response> {
   void runQueue(options);
   return req.method === "GET"
     ? Response.json(scans.all().map((row) => publicScan(row)))

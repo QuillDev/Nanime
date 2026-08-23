@@ -7,6 +7,7 @@ import { invalidateSubtitleTracks, subtitleUploadResponse } from "./subtitles.ts
 import { transcodeResponse } from "./transcodes.ts";
 import { pruneTracksResponse } from "./trackPruning.ts";
 import { mediaScanResponse } from "./mediaScans.ts";
+import { fileSystemErrorCode } from "./fileSystemError.ts";
 
 interface MediaAdminOptions {
   readonly isAdmin: boolean;
@@ -16,7 +17,17 @@ interface MediaAdminOptions {
   readonly videoExtensions: ReadonlySet<string>;
 }
 
-export async function storageResponse(mediaRoot: string): Promise<Response> {
+const ADMIN_ROUTE_KEYS = new Set([
+  "DELETE /api/audio-tracks",
+  "GET /api/media/scans",
+  "GET /api/storage",
+  "POST /api/media/delete",
+  "POST /api/media/prune-tracks",
+  "POST /api/media/scans",
+  "POST /api/subtitles",
+]);
+
+async function storageResponse(mediaRoot: string): Promise<Response> {
   const canonicalRoot = await realpath(mediaRoot).catch(() => null);
   if (canonicalRoot === null) {
     return new Response("Storage status unavailable", { status: 503 });
@@ -31,9 +42,7 @@ export async function storageResponse(mediaRoot: string): Promise<Response> {
       });
     } catch (error) {
       const parent = dirname(candidate);
-      const errorCode = typeof error === "object" && error !== null
-        ? Reflect.get(error, "code")
-        : null;
+      const errorCode = fileSystemErrorCode(error);
       if (errorCode !== "ENOENT" || parent === candidate) {
         return new Response("Storage status unavailable", { status: 503 });
       }
@@ -47,45 +56,43 @@ export function mediaAdminResponse(
   pathname: string,
   options: MediaAdminOptions,
 ): Response | Promise<Response> | null {
+  const supported = ADMIN_ROUTE_KEYS.has(`${req.method} ${pathname}`) ||
+    pathname === "/api/media/uploads" ||
+    pathname.startsWith("/api/media/uploads/") ||
+    pathname === "/api/transcodes" ||
+    pathname.startsWith("/api/transcodes/");
+  if (!supported) {
+    return null;
+  }
+  if (!options.isAdmin) {
+    return new Response("Forbidden", { status: 403 });
+  }
   if (pathname === "/api/storage" && req.method === "GET") {
-    return options.isAdmin
-      ? storageResponse(options.mediaRoot)
-      : new Response("Forbidden", { status: 403 });
+    return storageResponse(options.mediaRoot);
   }
   if (pathname === "/api/media/delete") {
-    return options.isAdmin
-      ? deleteMediaResponse(req, options.mediaDir, options.videoExtensions)
-      : new Response("Forbidden", { status: 403 });
+    return deleteMediaResponse(req, options.mediaDir, options.videoExtensions);
   }
   if (pathname === "/api/audio-tracks" && req.method === "DELETE") {
-    return options.isAdmin
-      ? deleteAudioTrackResponse(req, { ...options, invalidateSubtitles: invalidateSubtitleTracks })
-      : new Response("Forbidden", { status: 403 });
+    return deleteAudioTrackResponse(req, {
+      ...options,
+      invalidateSubtitles: invalidateSubtitleTracks,
+    });
   }
   if (pathname === "/api/media/prune-tracks" && req.method === "POST") {
-    return options.isAdmin
-      ? pruneTracksResponse(req, options)
-      : new Response("Forbidden", { status: 403 });
+    return pruneTracksResponse(req, options);
   }
   if (pathname === "/api/media/scans" && (req.method === "GET" || req.method === "POST")) {
-    return options.isAdmin
-      ? mediaScanResponse(req, options)
-      : new Response("Forbidden", { status: 403 });
+    return mediaScanResponse(req, options);
   }
   if (pathname === "/api/media/uploads" || pathname.startsWith("/api/media/uploads/")) {
-    return options.isAdmin
-      ? mediaUploadResponse(req, pathname, options)
-      : new Response("Forbidden", { status: 403 });
+    return mediaUploadResponse(req, pathname, options);
   }
   if (pathname === "/api/subtitles" && req.method === "POST") {
-    return options.isAdmin
-      ? subtitleUploadResponse(req, options.mediaRoot, options.videoExtensions)
-      : new Response("Forbidden", { status: 403 });
+    return subtitleUploadResponse(req, options.mediaRoot, options.videoExtensions);
   }
   if (pathname === "/api/transcodes" || pathname.startsWith("/api/transcodes/")) {
-    return options.isAdmin
-      ? transcodeResponse(req, pathname, options)
-      : new Response("Forbidden", { status: 403 });
+    return transcodeResponse(req, pathname, options);
   }
-  return null;
+  return new Response("Method not allowed", { status: 405 });
 }

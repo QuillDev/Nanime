@@ -29,17 +29,20 @@ export function usePlayerProgress(
       return;
     }
     lastSavedAtRef.current = Date.now();
-    savePlayback({
+    const progress = {
       rel: entry.rel,
       position,
       duration,
       completed,
-      ...(anilistTarget === null ? {} : {
+    };
+    savePlayback(anilistTarget === null
+      ? progress
+      : {
+        ...progress,
         anilistMediaId: anilistTarget.mediaId,
         episode: anilistTarget.episode,
         totalEpisodes: anilistTarget.totalEpisodes,
-      }),
-    });
+      });
   }, [anilistTarget, entry.rel, savePlayback]);
   const handleLoadedMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     const video = event.currentTarget;

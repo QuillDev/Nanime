@@ -1,12 +1,12 @@
 import { useCallback, useState } from "react";
 import { CircleX, Download } from "lucide-react";
-import { formatDuration, formatSize } from "../api.ts";
+import { formatDuration, formatSize } from "../format.ts";
 import { useTorrents } from "../hooks/useTorrents.ts";
 import type { TorrentStatus } from "../types.ts";
 import { AdminPanel } from "./AdminPanel.tsx";
 import { CancelTorrentDialog } from "./CancelTorrentDialog.tsx";
 
-const STATE_LABELS: Readonly<Record<string, string>> = {
+const STATE_LABELS = new Map(Object.entries({
   allocating: "Allocating",
   checkingDL: "Checking",
   checkingResumeData: "Checking",
@@ -25,10 +25,10 @@ const STATE_LABELS: Readonly<Record<string, string>> = {
   stalledDL: "Stalled",
   stalledUP: "Complete",
   uploading: "Seeding",
-};
+} as const));
 
 function statusLabel(torrent: TorrentStatus): string {
-  return torrent.progress >= 1 ? "Complete" : STATE_LABELS[torrent.state] ?? torrent.state;
+  return torrent.progress >= 1 ? "Complete" : STATE_LABELS.get(torrent.state) ?? torrent.state;
 }
 
 function etaLabel(eta: number): string {

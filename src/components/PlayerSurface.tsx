@@ -16,8 +16,8 @@ const EMPTY_SUBTITLES: readonly SubtitleTrack[] = [];
 const DEFAULT_SUBTITLE_APPEARANCE: SubtitleAppearance = { size: "medium" };
 const SUBTITLE_APPEARANCE_KEY = "nanime-subtitle-appearance-v1";
 function parseSubtitleAppearance(value: unknown): SubtitleAppearance {
-  if (typeof value === "object" && value !== null) {
-    const size = Reflect.get(value, "size");
+  if (typeof value === "object" && value !== null && "size" in value) {
+    const { size } = value;
     if (size === "small" || size === "medium" || size === "large") {
       return { size };
     }
@@ -64,13 +64,7 @@ function usePlaybackEvents(
   progress: PlaybackHandlers,
   controls: VideoControls,
   onPlay: () => void,
-): {
-  readonly handlePlay: () => void;
-  readonly handleLoadedMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
-  readonly handleTimeUpdate: (event: SyntheticEvent<HTMLVideoElement>) => void;
-  readonly handlePause: (event: SyntheticEvent<HTMLVideoElement>) => void;
-  readonly handleEnded: (event: SyntheticEvent<HTMLVideoElement>) => void;
-} {
+) {
   const handlePlay = useCallback(() => {
     controls.handlePlay();
     onPlay();
@@ -94,11 +88,7 @@ function usePlaybackEvents(
   return { handlePlay, handleLoadedMetadata, handleTimeUpdate, handlePause, handleEnded };
 }
 
-function useControlVisibility(): {
-  readonly visible: boolean;
-  readonly handleActivity: () => void;
-  readonly handleHide: () => void;
-} {
+function useControlVisibility() {
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleActivity = useCallback(() => {
@@ -125,16 +115,7 @@ function useControlVisibility(): {
   return { visible, handleActivity, handleHide };
 }
 
-function useSubtitleDisplay(tracks: readonly SubtitleTrack[] | undefined): {
-  readonly appearance: SubtitleAppearance;
-  readonly cueText: string;
-  readonly selectedTrack: number | null;
-  readonly settingsOpen: boolean;
-  readonly handleAppearance: (appearance: SubtitleAppearance) => void;
-  readonly handleCueText: React.Dispatch<React.SetStateAction<string>>;
-  readonly handleTrack: React.Dispatch<React.SetStateAction<number | null | undefined>>;
-  readonly handleToggleSettings: () => void;
-} {
+function useSubtitleDisplay(tracks: readonly SubtitleTrack[] | undefined) {
   const [trackSelection, setTrackSelection] = useState<number | null | undefined>(undefined);
   const [cueText, setCueText] = useState("");
   const [appearance, setAppearance] = useState<SubtitleAppearance>(loadSubtitleAppearance);

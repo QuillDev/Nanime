@@ -1,6 +1,5 @@
-import type { Dirent } from "node:fs";
-import { readdir, realpath, stat } from "node:fs/promises";
-import { dirname, extname, join, relative, resolve, sep } from "node:path";
+import { realpath } from "node:fs/promises";
+import { extname, join, relative, resolve, sep } from "node:path";
 import type { Server } from "bun";
 import {
   aniListErrorResponse,
@@ -18,6 +17,7 @@ import {
 } from "./subtitles.ts";
 import { torrentsResponse } from "./torrents.ts";
 import { mediaAdminResponse } from "./mediaAdmin.ts";
+import { listMedia } from "./mediaLibrary.ts";
 import {
   authenticatedUser,
   aniListPublicAuthResponse,
@@ -49,55 +49,17 @@ const VIDEO_EXTS = new Set<string>([
   ".wmv", ".flv", ".mpg", ".mpeg", ".ogv", ".3gp",
 ]);
 const DIRECT_PLAY = new Set<string>([".mp4", ".m4v", ".webm", ".mov", ".ogv"]);
-const MIME: Readonly<Record<string, string>> = {
+const MIME = new Map(Object.entries({
   ".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm",
   ".mov": "video/quicktime", ".mkv": "video/x-matroska", ".avi": "video/x-msvideo",
   ".ts": "video/mp2t", ".m2ts": "video/mp2t", ".wmv": "video/x-ms-wmv",
   ".flv": "video/x-flv", ".mpg": "video/mpeg", ".mpeg": "video/mpeg",
   ".ogv": "video/ogg", ".3gp": "video/3gpp",
-};
-
-interface MediaEntry {
-  readonly rel: string;
-  readonly name: string;
-  readonly folder: string;
-  readonly size: number;
-  readonly direct: boolean;
-}
+} as const));
 
 const durationCache = new Map<string, number>();
 const thumbnailCache = new Map<string, Promise<ArrayBuffer | null>>();
 let activeThumbnailJobs = 0;
-
-async function walk(dir: string, acc: MediaEntry[]): Promise<void> {
-  const items: readonly Dirent[] = await readdir(dir, {
-    withFileTypes: true,
-  }).catch((): Dirent[] => []);
-
-  for (const item of items) {
-    const abs = join(dir, item.name);
-    if (item.isDirectory() && !item.name.startsWith(".nanime-")) {
-      await walk(abs, acc);
-    } else if (item.isFile() && VIDEO_EXTS.has(extname(item.name).toLowerCase())) {
-      const { size } = await stat(abs).catch(() => ({ size: 0 }));
-      const rel = relative(MEDIA_DIR, abs);
-      const folder = dirname(rel);
-      acc.push({
-        rel,
-        name: item.name,
-        folder: folder === "." ? "" : folder,
-        size,
-        direct: DIRECT_PLAY.has(extname(item.name).toLowerCase()),
-      });
-    }
-  }
-}
-
-async function listMedia(): Promise<readonly MediaEntry[]> {
-  const acc: MediaEntry[] = [];
-  await walk(MEDIA_DIR, acc);
-  return acc;
-}
 
 async function safePath(rel: string | null): Promise<string | null> {
   if (rel === null || rel === "") {
@@ -114,7 +76,7 @@ async function safePath(rel: string | null): Promise<string | null> {
 }
 
 function contentType(abs: string): string {
-  return MIME[extname(abs).toLowerCase()] ?? "application/octet-stream";
+  return MIME.get(extname(abs).toLowerCase()) ?? "application/octet-stream";
 }
 
 async function probeDuration(abs: string): Promise<number> {
@@ -314,10 +276,10 @@ interface RouteContext {
   readonly user: AuthUser;
 }
 
-async function authenticatedRoute(context: RouteContext): Promise<Response> {
-  const { pathname, url, req, user } = context;
+async function libraryRoute(context: RouteContext): Promise<Response | null> {
+  const { pathname, req, user } = context;
   if (pathname === "/api/list" && req.method === "GET") {
-    return Response.json(await listMedia());
+    return Response.json(await listMedia(MEDIA_DIR, VIDEO_EXTS, DIRECT_PLAY));
   }
   if (pathname === "/api/metadata" && req.method === "GET") {
     return metadataResponse();
@@ -341,6 +303,11 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
   if (pathname === "/api/progress/dismiss" && req.method === "POST") {
     return dismissPlaybackProgress(req, user.id);
   }
+  return null;
+}
+
+async function administrationRoute(context: RouteContext): Promise<Response | null> {
+  const { pathname, url, req, user } = context;
   const aniListUser = await aniListUserResponse(pathname, req, user);
   if (aniListUser !== null) {
     return aniListUser;
@@ -374,19 +341,36 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
   if (mediaAdmin !== null) {
     return await mediaAdmin;
   }
+  return null;
+}
+
+function mediaRequest(pathname: string, method: string): boolean {
   if (pathname === "/api/subtitles") {
-    return await handleMedia(pathname, url, req);
+    return true;
   }
-  if (pathname === "/api/audio-tracks" && req.method === "GET") {
-    return await handleMedia(pathname, url, req);
+  if (pathname === "/api/audio-tracks" && method === "GET") {
+    return true;
   }
-  if ((req.method === "GET" || req.method === "HEAD") && (
+  return (method === "GET" || method === "HEAD") && (
     pathname === "/stream" ||
     pathname === "/thumbnail" ||
     pathname === "/subtitle" ||
     pathname === "/hls/index" ||
     pathname === "/hls/seg"
-  )) {
+  );
+}
+
+async function authenticatedRoute(context: RouteContext): Promise<Response> {
+  const library = await libraryRoute(context);
+  if (library !== null) {
+    return library;
+  }
+  const administration = await administrationRoute(context);
+  if (administration !== null) {
+    return administration;
+  }
+  const { pathname, url, req } = context;
+  if (mediaRequest(pathname, req.method)) {
     return await handleMedia(pathname, url, req);
   }
   if (pathname.startsWith("/api/")) {

@@ -101,12 +101,7 @@ type LinkTarget =
   | { readonly type: "show" }
   | { readonly type: "season"; readonly season: SeasonGroup };
 
-function useLibraryNavigation(): {
-  readonly linkTarget: LinkTarget | null;
-  readonly handleShowLink: () => void;
-  readonly handleSeasonLink: (season: SeasonGroup) => void;
-  readonly handleLinkClose: () => void;
-} {
+function useLibraryNavigation() {
   const [linkTarget, setLinkTarget] = useState<LinkTarget | null>(null);
   const handleShowLink = useCallback(() => setLinkTarget({ type: "show" }), []);
   const handleSeasonLink = useCallback((season: SeasonGroup) => {

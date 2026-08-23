@@ -1,5 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
+import type { TorrentStatus } from "../shared/types.ts";
+import { jsonObject } from "./json.ts";
 import { searchNyaaResponse } from "./nyaa.ts";
 
 const QBITTORRENT_USERNAME = process.env["QBITTORRENT_USERNAME"] ?? "";
@@ -28,18 +30,6 @@ function configuredQbittorrentUrl(value: string): string {
 const QBITTORRENT_URL = configuredQbittorrentUrl(process.env["QBITTORRENT_URL"] ?? "");
 if ((QBITTORRENT_USERNAME === "") !== (QBITTORRENT_PASSWORD === "")) {
   throw new Error("Set both QBITTORRENT_USERNAME and QBITTORRENT_PASSWORD, or neither");
-}
-
-interface TorrentStatus {
-  readonly hash: string;
-  readonly name: string;
-  readonly progress: number;
-  readonly downloadSpeed: number;
-  readonly eta: number;
-  readonly completed: number;
-  readonly size: number;
-  readonly state: string;
-  readonly addedOn: number;
 }
 
 function qBittorrentHeaders(cookie?: string): Headers {
@@ -105,10 +95,10 @@ export async function detachTorrentsForFiles(files: readonly string[]): Promise<
     return false;
   }
   const hashes = payload.flatMap((value): readonly string[] => {
-    if (typeof value !== "object" || value === null) {
+    const item = jsonObject(value);
+    if (item === null) {
       return [];
     }
-    const item = value as Record<string, unknown>;
     if (typeof item["hash"] !== "string" || typeof item["content_path"] !== "string") {
       return [];
     }
@@ -157,10 +147,10 @@ function validMagnetLink(value: string): boolean {
 }
 
 function torrentStatus(value: unknown): TorrentStatus | null {
-  if (typeof value !== "object" || value === null) {
+  const item = jsonObject(value);
+  if (item === null) {
     return null;
   }
-  const item = value as Record<string, unknown>;
   const valid = typeof item["hash"] === "string" &&
     typeof item["name"] === "string" &&
     typeof item["progress"] === "number" &&

@@ -1,6 +1,6 @@
 import type { AniListMedia, MediaEntry, TvmazeEpisode } from "../types.ts";
 
-export interface EpisodeMetadata {
+interface EpisodeMetadata {
   readonly title: string;
   readonly thumbnail: string | null;
   readonly summary: string | null;

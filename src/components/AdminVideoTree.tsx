@@ -1,6 +1,6 @@
 import { useCallback, type ChangeEvent } from "react";
 import { Check, ChevronDown, Minus } from "lucide-react";
-import { formatSize } from "../api.ts";
+import { formatSize } from "../format.ts";
 import { mediaTitle } from "../lib/anilist.ts";
 import { seasonMetadata, seasonNumber, showMetadataKey, type SeasonGroup, type ShowGroup } from "../lib/library.ts";
 import type { AniListMedia, MediaEntry, ShowMetadata } from "../types.ts";
@@ -11,7 +11,9 @@ type SelectionState = "checked" | "mixed" | "unchecked";
 
 function selectionState(entries: readonly MediaEntry[], selected: ReadonlySet<string>): SelectionState {
   const count = entries.reduce((total, entry) => total + Number(selected.has(entry.rel)), 0);
-  if (count === 0) {return "unchecked";}
+  if (count === 0) {
+    return "unchecked";
+  }
   return count === entries.length ? "checked" : "mixed";
 }
 

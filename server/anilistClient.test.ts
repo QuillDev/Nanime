@@ -39,11 +39,11 @@ test("deduplicates, caches, and opens a circuit for an AniList outage", async ()
     expect(cached.value).toBe(1);
     expect(calls).toBe(1);
 
-    let outage: unknown = null;
+    let outage: Error | null = null;
     try {
       await aniListGraphQl({ query: "query { Outage }", variables: {} });
     } catch (error) {
-      outage = error;
+      outage = error instanceof Error ? error : new Error(String(error));
     }
     expect(outage).toBeInstanceOf(AniListUpstreamError);
     const response = aniListErrorResponse(outage);

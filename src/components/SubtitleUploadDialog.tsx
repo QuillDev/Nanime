@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "./ui/dialog.tsx";
 import { Input } from "./ui/input.tsx";
+import { DialogActions } from "./DialogActions.tsx";
 
 interface SubtitleUploadDialogProps {
   readonly entry: MediaEntry;
@@ -91,23 +92,14 @@ export function SubtitleUploadDialog({
           {upload.error !== null && (
             <p className="text-sm text-destructive">{upload.error.message}</p>
           )}
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={upload.isPending}
-              className="h-10 rounded-md border border-border bg-background px-4 text-sm font-semibold hover:bg-accent disabled:text-muted-foreground"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={file === null || !Number.isFinite(offsetSeconds) || upload.isPending}
-              className="h-10 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:bg-muted disabled:text-muted-foreground"
-            >
-              {upload.isPending ? "Uploading…" : "Add subtitles"}
-            </button>
-          </div>
+          <DialogActions
+            actionLabel="Add subtitles"
+            disabled={file === null || !Number.isFinite(offsetSeconds)}
+            onCancel={onClose}
+            pending={upload.isPending}
+            pendingLabel="Uploading…"
+            tone="primary"
+          />
         </form>
       </DialogContent>
     </Dialog>

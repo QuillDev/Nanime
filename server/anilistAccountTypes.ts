@@ -1,3 +1,7 @@
+import type { AniListListEntry } from "../shared/types.ts";
+
+export type { AniListListEntry } from "../shared/types.ts";
+
 export interface OAuthConfig {
   readonly clientId: string;
   readonly clientSecret: string;
@@ -31,14 +35,6 @@ export interface ViewerData {
     readonly name: string;
     readonly avatar: { readonly large: string | null };
   };
-}
-
-export interface AniListListEntry {
-  readonly id: number;
-  readonly mediaId: number;
-  readonly status: string;
-  readonly progress: number;
-  readonly score: number;
 }
 
 export interface MediaListData {

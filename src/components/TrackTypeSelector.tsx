@@ -1,18 +1,21 @@
 import { useCallback, type ChangeEvent } from "react";
-import { Check, Minus } from "lucide-react";
-import { formatSize } from "../api.ts";
+import type { ManagedTrack } from "../trackPruning.ts";
+import { TrackSelectionContent } from "./TrackSelectionContent.tsx";
 
-interface ManagedTrack {
-  readonly index: number;
-  readonly label: string;
-  readonly sizeBytes: number | null;
-}
+export { TrackSelectionContent } from "./TrackSelectionContent.tsx";
 
 interface TrackType {
   readonly label: string;
   readonly count: number;
   readonly selected: number;
   readonly sizeBytes: number;
+}
+
+function selectionState(checked: boolean, partiallyChecked: boolean) {
+  if (checked) {
+    return "checked" as const;
+  }
+  return partiallyChecked ? "mixed" as const : "unchecked" as const;
 }
 
 function trackTypes(
@@ -48,17 +51,22 @@ function TrackTypeOption({ type, tracksByEntry, onToggleType }: {
     onToggleType(type.label, tracksByEntry);
   }, [onToggleType, tracksByEntry, type.label]);
   return (
-    <label className="flex min-w-0 cursor-pointer items-center gap-3 rounded-md border border-border bg-secondary px-3 py-2.5 text-sm">
-      <input type="checkbox" checked={checked} aria-checked={partiallyChecked ? "mixed" : checked} onChange={handleChange} className="sr-only" />
-      <span aria-hidden="true" className={`flex size-5 shrink-0 items-center justify-center rounded border ${checked || partiallyChecked ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"}`}>
-        {checked && <Check className="size-3.5 stroke-[3]" />}
-        {partiallyChecked && <Minus className="size-3.5 stroke-[3]" />}
-      </span>
-      <span className="min-w-0 flex-1 truncate font-medium">{type.label}</span>
-      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-        {type.selected === 0 ? String(type.count) : `${String(type.selected)}/${String(type.count)}`} tracks{type.sizeBytes > 0 ? ` · ≈ ${formatSize(type.sizeBytes)}` : ""}
-      </span>
-    </label>
+    <div className="relative flex min-w-0 items-center gap-3 rounded-md border border-border bg-secondary px-3 py-2.5 text-sm">
+      <input
+        type="checkbox"
+        checked={checked}
+        aria-label={`Apply ${type.label} selection to matching tracks`}
+        aria-checked={partiallyChecked ? "mixed" : checked}
+        onChange={handleChange}
+        className="absolute inset-0 z-10 size-full cursor-pointer opacity-0"
+      />
+      <TrackSelectionContent
+        label={type.label}
+        state={selectionState(checked, partiallyChecked)}
+        detail={`${type.selected === 0 ? String(type.count) : `${String(type.selected)}/${String(type.count)}`} tracks`}
+        sizeBytes={type.sizeBytes > 0 ? type.sizeBytes : null}
+      />
+    </div>
   );
 }
 

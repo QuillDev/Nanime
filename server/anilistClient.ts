@@ -14,9 +14,11 @@ interface GraphQlResponse<T> {
   readonly errors?: readonly { readonly message?: unknown }[];
 }
 
+export type GraphQlVariables = Readonly<Record<string, number | string>>;
+
 interface AniListRequestOptions {
   readonly query: string;
-  readonly variables: object;
+  readonly variables: GraphQlVariables;
   readonly token?: string;
   readonly mutation?: boolean;
   readonly cacheKey?: string;
@@ -118,11 +120,7 @@ async function request<T>(options: AniListRequestOptions): Promise<T> {
   try {
     response = await fetch(ANILIST_GRAPHQL_URL, {
       method: "POST",
-      headers: {
-        accept: "application/json",
-        ...(options.token === undefined ? {} : { authorization: `Bearer ${options.token}` }),
-        "content-type": "application/json",
-      },
+      headers: requestHeaders(options.token),
       body: JSON.stringify({ query: options.query, variables: options.variables }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
@@ -163,6 +161,17 @@ async function request<T>(options: AniListRequestOptions): Promise<T> {
     );
   }
   return payload.data;
+}
+
+function requestHeaders(token: string | undefined): Headers {
+  const headers = new Headers({
+    accept: "application/json",
+    "content-type": "application/json",
+  });
+  if (token !== undefined) {
+    headers.set("authorization", `Bearer ${token}`);
+  }
+  return headers;
 }
 
 function cached<T>(key: string): T | undefined {

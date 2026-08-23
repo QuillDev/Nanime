@@ -11,11 +11,11 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useCallback, type ChangeEvent, type MouseEvent } from "react";
-import { formatDuration } from "../api.ts";
+import { formatDuration } from "../format.ts";
 import type { AudioTrack, SubtitleTrack } from "../types.ts";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible.tsx";
 
-export type SubtitleSize = "small" | "medium" | "large";
+type SubtitleSize = "small" | "medium" | "large";
 
 export interface SubtitleAppearance {
   readonly size: SubtitleSize;

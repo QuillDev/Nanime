@@ -123,12 +123,7 @@ export function usePlayerSurfaceInteraction({
   onShowControls,
   onHideControls,
   onSeekBy,
-}: PlayerSurfaceInteractionOptions): {
-  readonly handleSurfacePointerUp: (event: PointerEvent<HTMLButtonElement>) => void;
-  readonly handleSurfaceClick: (event: MouseEvent<HTMLButtonElement>) => void;
-  readonly handlePointerMove: (event: PointerEvent<HTMLDivElement>) => void;
-  readonly handleCenterPlayback: () => void;
-} {
+}: PlayerSurfaceInteractionOptions) {
   const handleTouchTap = useTouchTaps({
     controlsVisible,
     onShowControls,

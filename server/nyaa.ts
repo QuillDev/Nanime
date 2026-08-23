@@ -1,29 +1,11 @@
+import { jsonObject } from "./json.ts";
+import type { NyaaSearchResult } from "../shared/types.ts";
+
 const NYAA_ORIGIN = "https://nyaa.si";
 const SEARCH_TIMEOUT_MS = 10_000;
 const MAX_FEED_BYTES = 2 * 1024 * 1024;
 const MAX_RESULTS = 50;
 const CATEGORIES = new Set(["1_0", "1_2", "1_3", "1_4"]);
-
-interface NyaaSearchResult {
-  readonly id: string;
-  readonly name: string;
-  readonly category: string;
-  readonly size: string;
-  readonly seeders: number;
-  readonly leechers: number;
-  readonly downloads: number;
-  readonly publishedAt: string;
-  readonly trusted: boolean;
-  readonly remake: boolean;
-  readonly detailsUrl: string;
-  readonly magnet: string;
-}
-
-function record(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null
-    ? value as Record<string, unknown>
-    : null;
-}
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" ? decodeXml(value) : null;
@@ -71,7 +53,7 @@ function magnetLink(infoHash: string, name: string): string {
 }
 
 function searchResult(value: unknown): NyaaSearchResult | null {
-  const item = record(value);
+  const item = jsonObject(value);
   if (item === null) {
     return null;
   }

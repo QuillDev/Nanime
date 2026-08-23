@@ -1,10 +1,20 @@
-export interface MediaEntry {
-  readonly rel: string;
-  readonly name: string;
-  readonly folder: string;
-  readonly size: number;
-  readonly direct: boolean;
-}
+import type {
+  AuthUser,
+  PlaybackProgress,
+  TranscodePreset,
+  TvmazeMatch,
+} from "../shared/types.ts";
+
+export type {
+  AniListListEntry,
+  AuthUser,
+  MediaEntry,
+  NyaaSearchResult,
+  PlaybackProgress,
+  TorrentStatus,
+  TranscodePreset,
+  TvmazeEpisode,
+} from "../shared/types.ts";
 
 export interface SubtitleTrack {
   readonly index: number;
@@ -30,41 +40,22 @@ export interface TrackPruneOperation {
   readonly subtitleIndices: readonly number[];
 }
 
-export interface AniListTitle {
+interface AniListTitle {
   readonly english: string | null;
   readonly romaji: string;
   readonly native: string | null;
 }
 
-export interface AniListCoverImage {
+interface AniListCoverImage {
   readonly extraLarge: string | null;
   readonly large: string | null;
   readonly color: string | null;
 }
 
-export interface AniListEpisode {
+interface AniListEpisode {
   readonly title: string;
   readonly thumbnail: string | null;
   readonly site: string;
-}
-
-export interface TvmazeEpisode {
-  readonly id: number;
-  readonly season: number;
-  readonly number: number | null;
-  readonly type: string;
-  readonly title: string;
-  readonly summary: string | null;
-  readonly airDate: string | null;
-  readonly thumbnail: string | null;
-}
-
-export interface TvmazeMatch {
-  readonly id: number;
-  readonly name: string;
-  readonly siteUrl: string;
-  readonly premiered: string | null;
-  readonly episodes: readonly TvmazeEpisode[];
 }
 
 export interface AniListMedia {
@@ -90,15 +81,6 @@ export interface AniListMedia {
 
 export type ShowMetadata = Readonly<Record<string, AniListMedia>>;
 
-export interface PlaybackProgress {
-  readonly rel: string;
-  readonly position: number;
-  readonly duration: number;
-  readonly completed: boolean;
-  readonly updatedAt: number;
-  readonly dismissedAt: number | null;
-}
-
 export interface AniListPlaybackTarget {
   readonly mediaId: number;
   readonly episode: number;
@@ -106,12 +88,6 @@ export interface AniListPlaybackTarget {
 }
 
 export type PlaybackProgressMap = Readonly<Record<string, PlaybackProgress>>;
-
-export interface AuthUser {
-  readonly id: number;
-  readonly username: string;
-  readonly isAdmin: boolean;
-}
 
 export interface AniListAuthConfig {
   readonly enabled: boolean;
@@ -137,28 +113,8 @@ export type AniListWatchStatus =
   | "PAUSED"
   | "REPEATING";
 
-export interface AniListListEntry {
-  readonly id: number;
-  readonly mediaId: number;
-  readonly status: string;
-  readonly progress: number;
-  readonly score: number;
-}
-
 export interface ProvisionedUser extends AuthUser {
   readonly passwordSet: boolean;
-}
-
-export interface TorrentStatus {
-  readonly hash: string;
-  readonly name: string;
-  readonly progress: number;
-  readonly downloadSpeed: number;
-  readonly eta: number;
-  readonly completed: number;
-  readonly size: number;
-  readonly state: string;
-  readonly addedOn: number;
 }
 
 export interface StorageStatus {
@@ -166,7 +122,6 @@ export interface StorageStatus {
   readonly availableBytes: number;
 }
 
-export type TranscodePreset = "space-saver" | "compatibility";
 export interface TranscodeJob {
   readonly id: string;
   readonly sourcePath: string;
@@ -197,19 +152,4 @@ export interface MediaScan {
   readonly scannedAt: number | null;
   readonly error: string | null;
   readonly updatedAt: number;
-}
-
-export interface NyaaSearchResult {
-  readonly id: string;
-  readonly name: string;
-  readonly category: string;
-  readonly size: string;
-  readonly seeders: number;
-  readonly leechers: number;
-  readonly downloads: number;
-  readonly publishedAt: string;
-  readonly trusted: boolean;
-  readonly remake: boolean;
-  readonly detailsUrl: string;
-  readonly magnet: string;
 }

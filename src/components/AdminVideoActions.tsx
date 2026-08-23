@@ -2,8 +2,7 @@ import { useCallback, type ChangeEvent } from "react";
 import { Captions, Languages, ScanSearch, Trash2, WandSparkles } from "lucide-react";
 import { useMediaScans, useStartMediaScans } from "../hooks/useMediaScans.ts";
 import type { MediaEntry, MediaScan, TranscodePreset } from "../types.ts";
-
-type PruneMode = "audio" | "subtitles";
+import type { PruneMode } from "../trackPruning.ts";
 
 function scanSummary(scans: readonly MediaScan[]): string {
   const counts = { complete: 0, scanning: 0, queued: 0, failed: 0 };

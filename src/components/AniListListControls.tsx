@@ -26,12 +26,7 @@ function watchStatus(value: FormDataEntryValue | null): AniListWatchStatus {
   return match?.value ?? "NONE";
 }
 
-function useListControls(media: AniListMedia): {
-  readonly connected: boolean;
-  readonly entry: ReturnType<typeof useAniListListEntry>;
-  readonly update: ReturnType<typeof useUpdateAniListListEntry>;
-  readonly handleSubmit: (event: FormEvent<HTMLFormElement>) => void;
-} {
+function useListControls(media: AniListMedia) {
   const account = useAniListAccount();
   const connected = account.data?.connected === true;
   const entry = useAniListListEntry(media.id, connected);

@@ -5,6 +5,7 @@ const boolean = t.Boolean;
 const composite = t.Composite;
 const file = t.File;
 const integer = t.Integer;
+const literal = t.Literal;
 const nullValue = t.Null;
 const number = t.Number;
 const object = t.Object;
@@ -134,13 +135,30 @@ export const storageStatusSchema = object({
   availableBytes: number(),
 });
 export const transcodeJobSchema = object({
-  id: string(), sourcePath: string(), preset: string(), status: string(),
+  id: string(),
+  sourcePath: string(),
+  preset: union([literal("space-saver"), literal("compatibility")]),
+  status: union([
+    literal("cancelled"),
+    literal("complete"),
+    literal("failed"),
+    literal("processing"),
+    literal("queued"),
+  ]),
   inputSize: number(), outputSize: nullableNumber, error: nullableString,
   progress: number(), speed: number(), startedAt: nullableNumber,
   originalDeleted: boolean(), createdAt: number(), updatedAt: number(),
 });
 export const mediaScanSchema = object({
-  sourcePath: string(), status: string(), fileSize: number(), duration: nullableNumber,
+  sourcePath: string(),
+  status: union([
+    literal("complete"),
+    literal("failed"),
+    literal("queued"),
+    literal("scanning"),
+  ]),
+  fileSize: number(),
+  duration: nullableNumber,
   formatName: nullableString, videoCodec: nullableString,
   width: nullableNumber, height: nullableNumber,
   audioBytes: number(), subtitleBytes: number(), scannedAt: nullableNumber,
@@ -168,6 +186,7 @@ export const schema = {
   composite,
   file,
   integer,
+  literal,
   nullValue,
   number,
   object,
