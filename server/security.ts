@@ -7,9 +7,25 @@ export {
   type AuthUser,
 } from "./auth.ts";
 
-const PUBLIC_ORIGIN = process.env["NANIME_PUBLIC_ORIGIN"]?.replace(/\/+$/u, "") ?? null;
 const TRUST_PROXY = process.env["NANIME_TRUST_PROXY"] === "true";
 const SECURE_COOKIES = process.env["NANIME_SECURE_COOKIES"] !== "false";
+
+function configuredPublicOrigin(value: string | undefined): string | null {
+  if (value === undefined || value === "") {
+    return null;
+  }
+  const url = new URL(value);
+  if (
+    (value !== url.origin && value !== `${url.origin}/`) ||
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    SECURE_COOKIES && url.protocol !== "https:"
+  ) {
+    throw new Error("NANIME_PUBLIC_ORIGIN must be an exact origin compatible with cookie security");
+  }
+  return url.origin;
+}
+
+const PUBLIC_ORIGIN = configuredPublicOrigin(process.env["NANIME_PUBLIC_ORIGIN"]);
 
 export function requestOriginAllowed(req: Request): boolean {
   if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") {

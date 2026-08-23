@@ -1,12 +1,33 @@
 import { readdir } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
-const QBITTORRENT_URL = (process.env["QBITTORRENT_URL"] ?? "")
-  .replace(/\/+$/u, "");
 const QBITTORRENT_USERNAME = process.env["QBITTORRENT_USERNAME"] ?? "";
 const QBITTORRENT_PASSWORD = process.env["QBITTORRENT_PASSWORD"] ?? "";
 const MAX_TORRENT_BYTES = 10 * 1024 * 1024;
 const MAX_MAGNET_LENGTH = 16_384;
+
+function configuredQbittorrentUrl(value: string): string {
+  if (value === "") {
+    return "";
+  }
+  const url = new URL(value);
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== "/" ||
+    url.search !== "" ||
+    url.hash !== ""
+  ) {
+    throw new Error("QBITTORRENT_URL must be an HTTP(S) origin without credentials or a path");
+  }
+  return url.origin;
+}
+
+const QBITTORRENT_URL = configuredQbittorrentUrl(process.env["QBITTORRENT_URL"] ?? "");
+if ((QBITTORRENT_USERNAME === "") !== (QBITTORRENT_PASSWORD === "")) {
+  throw new Error("Set both QBITTORRENT_USERNAME and QBITTORRENT_PASSWORD, or neither");
+}
 
 interface TorrentStatus {
   readonly hash: string;
