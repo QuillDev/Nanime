@@ -1,4 +1,4 @@
-import Hls from "hls.js";
+import Hls, { type ErrorData } from "hls.js";
 
 export interface HlsAttachment {
   readonly video: HTMLVideoElement;
@@ -18,13 +18,28 @@ function tryPlay(video: HTMLVideoElement): void {
   })();
 }
 
+function hlsErrorDetail(data: ErrorData): string {
+  const { response } = data;
+  return [
+    "HLS playback failed.",
+    `Type: ${data.type}`,
+    `Details: ${data.details}`,
+    `Fatal: ${String(data.fatal)}`,
+    `Message: ${data.error.message}`,
+    `HTTP status: ${response?.code === undefined ? "Unavailable" : String(response.code)}`,
+    `URL: ${response?.url ?? data.url ?? data.frag?.url ?? "Unavailable"}`,
+    `Loaded bytes: ${data.stats === undefined ? "Unavailable" : String(data.stats.loaded)}`,
+    `Retries: ${data.stats === undefined ? "Unavailable" : String(data.stats.retry)}`,
+    `Browser: ${navigator.userAgent}`,
+    `Time: ${new Date().toISOString()}`,
+  ].join("\n");
+}
+
 function bindHlsEvents(hls: Hls, options: HlsAttachment): void {
   const { video, onError, resumeAt = 0, shouldPlay = true } = options;
   let recoveredMediaError = false;
   hls.on(Hls.Events.MANIFEST_PARSED, () => {
-    if (resumeAt > 0) {
-      video.currentTime = resumeAt;
-    }
+    hls.startLoad(resumeAt);
     if (shouldPlay) {
       tryPlay(video);
     }
@@ -38,7 +53,7 @@ function bindHlsEvents(hls: Hls, options: HlsAttachment): void {
       hls.recoverMediaError();
       return;
     }
-    onError(`Playback failed: ${data.details}.`);
+    onError(hlsErrorDetail(data));
   });
 }
 
@@ -47,7 +62,11 @@ export function attachHls(options: HlsAttachment): (() => void) | undefined {
     options.onError("This browser does not support HLS video playback.");
     return undefined;
   }
-  const hls = new Hls({ enableWorker: true });
+  const hls = new Hls({
+    autoStartLoad: false,
+    enableWorker: true,
+    startPosition: options.resumeAt ?? -1,
+  });
   bindHlsEvents(hls, options);
   hls.loadSource(options.url);
   hls.attachMedia(options.video);

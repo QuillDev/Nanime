@@ -6,13 +6,11 @@ import type {
   ShowMetadata,
 } from "../types.ts";
 import {
-  groupShows,
   seasonMetadataKey,
   showMetadataKey,
   type SeasonGroup,
   type ShowGroup,
 } from "../lib/library.ts";
-import { useShowMetadata } from "../hooks/useShowMetadata.ts";
 import { AniListLinkDialog } from "./AniListLinkDialog.tsx";
 import {
   ContinueWatching,
@@ -24,10 +22,10 @@ import { ShowPage } from "./ShowPage.tsx";
 
 export { LibrarySkeleton } from "./Skeleton.tsx";
 
-const EMPTY_METADATA: ShowMetadata = {};
-
 interface LibraryProps {
   readonly entries: readonly MediaEntry[];
+  readonly shows: readonly ShowGroup[];
+  readonly metadata: ShowMetadata;
   readonly query: string;
   readonly progress: PlaybackProgressMap;
   readonly selectedShowName: string | null;
@@ -133,29 +131,29 @@ interface GroupedShows {
 }
 
 interface GroupedShowsOptions {
-  readonly entries: readonly MediaEntry[];
+  readonly shows: readonly ShowGroup[];
   readonly query: string;
   readonly selectedShowName: string | null;
-  readonly metadata: ShowMetadata;
 }
 
 function useGroupedShows(options: GroupedShowsOptions): GroupedShows {
-  const { entries, query, selectedShowName, metadata } = options;
+  const { shows, query, selectedShowName } = options;
   const deferredQuery = useDeferredValue(query);
-  const grouped = useMemo(() => groupShows(entries, metadata), [entries, metadata]);
   return useMemo(() => {
     const needle = deferredQuery.trim().toLowerCase();
     return {
-      shows: needle === "" ? grouped : grouped.filter((show) => matchesQuery(show, needle)),
-      selectedShow: grouped.find((show) => (
+      shows: needle === "" ? shows : shows.filter((show) => matchesQuery(show, needle)),
+      selectedShow: shows.find((show) => (
         selectedShowName !== null && show.sourceNames.includes(selectedShowName)
       )) ?? null,
     };
-  }, [deferredQuery, grouped, selectedShowName]);
+  }, [deferredQuery, selectedShowName, shows]);
 }
 
 export function Library({
   entries,
+  shows: allShows,
+  metadata,
   query,
   progress,
   selectedShowName,
@@ -165,15 +163,12 @@ export function Library({
   canManageMappings,
 }: LibraryProps): React.JSX.Element {
   const navigation = useLibraryNavigation();
-  const metadataQuery = useShowMetadata();
-  const metadata = metadataQuery.data ?? EMPTY_METADATA;
   const { shows, selectedShow } = useGroupedShows({
-    entries,
+    shows: allShows,
     query,
     selectedShowName,
-    metadata,
   });
-  const continueWatching = useContinueWatchingItems(entries, metadata, progress);
+  const continueWatching = useContinueWatchingItems(allShows, metadata, progress);
   const showMedia = selectedShow === null
     ? undefined
     : metadata[showMetadataKey(selectedShow.name)];

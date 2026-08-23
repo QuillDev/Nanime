@@ -8,8 +8,8 @@ import {
 } from "react";
 import { Search } from "lucide-react";
 import { mediaTitle } from "../lib/anilist.ts";
-import { groupShows, showMetadataKey, type ShowGroup } from "../lib/library.ts";
-import type { MediaEntry, ShowMetadata } from "../types.ts";
+import { showMetadataKey, type ShowGroup } from "../lib/library.ts";
+import type { ShowMetadata } from "../types.ts";
 import { Input } from "./ui/input.tsx";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible.tsx";
@@ -18,7 +18,7 @@ const SUGGESTION_LIMIT = 5;
 
 interface LibrarySearchProps {
   readonly query: string;
-  readonly entries: readonly MediaEntry[];
+  readonly shows: readonly ShowGroup[];
   readonly metadata: ShowMetadata;
   readonly onQueryChange: (event: ChangeEvent<HTMLInputElement>) => void;
   readonly onShowSelect: (show: ShowGroup) => void;
@@ -131,13 +131,12 @@ function SearchResult({
 
 export function LibrarySearch({
   query,
-  entries,
+  shows,
   metadata,
   onQueryChange,
   onShowSelect,
 }: LibrarySearchProps): React.JSX.Element {
   const [focused, setFocused] = useState(false);
-  const shows = useMemo(() => groupShows(entries, metadata), [entries, metadata]);
   const suggestions = useMemo(
     () => searchShows(shows, metadata, query),
     [shows, metadata, query],

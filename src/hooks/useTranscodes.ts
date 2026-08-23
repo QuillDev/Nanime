@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cancelTranscode, deleteTranscode, deleteTranscodeOriginal, fetchTranscodes, startTranscodes } from "../api.ts";
 import type { TranscodePreset } from "../types.ts";
+import { refreshLibraryCache } from "./refreshLibraryCache.ts";
 
 const key = ["transcodes"] as const;
 
@@ -24,7 +25,7 @@ export function useDeleteTranscode(original: boolean) {
     },
     onSuccess: () => Promise.all([
       client.invalidateQueries({ queryKey: key }),
-      client.invalidateQueries({ queryKey: ["library"] }),
+      refreshLibraryCache(client),
     ]),
   });
 }

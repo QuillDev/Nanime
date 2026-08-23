@@ -6,5 +6,6 @@ export function useLibrary(): UseQueryResult<readonly MediaEntry[], Error> {
   return useQuery({
     queryKey: ["library"],
     queryFn: ({ signal }) => fetchLibrary(signal),
+    refetchInterval: 60_000,
   });
 }

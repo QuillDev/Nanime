@@ -11,10 +11,10 @@ import { episodeMetadata } from "../lib/anilist.ts";
 import { hasMeaningfulPlaybackProgress, preloadPlayer } from "../lib/playback.ts";
 import { useDismissPlaybackProgress } from "../hooks/usePlaybackProgress.ts";
 import {
-  groupShows,
   seasonMetadata,
   seasonNumber,
   showMetadataKey,
+  type ShowGroup,
 } from "../lib/library.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
 import {
@@ -117,11 +117,11 @@ function showTitle(metadata: ShowMetadata, localName: string): string {
 }
 
 function buildContinueWatchingItems(
-  entries: readonly MediaEntry[],
+  shows: readonly ShowGroup[],
   metadata: ShowMetadata,
   progress: PlaybackProgressMap,
 ): readonly ContinueWatchingItem[] {
-  return groupShows(entries, metadata).flatMap((show) => show.seasons.flatMap((season) => {
+  return shows.flatMap((show) => show.seasons.flatMap((season) => {
     const media = seasonMetadata(metadata, season.sourceShow, season.name);
     const showMedia = metadata[showMetadataKey(show.name)];
     return season.entries.flatMap((entry) => {
@@ -150,13 +150,13 @@ function buildContinueWatchingItems(
 }
 
 export function useContinueWatchingItems(
-  entries: readonly MediaEntry[],
+  shows: readonly ShowGroup[],
   metadata: ShowMetadata,
   progress: PlaybackProgressMap,
 ): readonly ContinueWatchingItem[] {
   return useMemo(
-    () => buildContinueWatchingItems(entries, metadata, progress),
-    [entries, metadata, progress],
+    () => buildContinueWatchingItems(shows, metadata, progress),
+    [shows, metadata, progress],
   );
 }
 

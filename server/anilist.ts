@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import type { TvmazeMatch } from "../shared/types.ts";
+import type { MetadataRefreshStatus, TvmazeMatch } from "../shared/types.ts";
 import { database } from "./database.ts";
 import { aniListGraphQl } from "./anilistClient.ts";
 import { jsonObject } from "./json.ts";
@@ -70,7 +70,16 @@ const MEDIA_FIELDS = `
 `;
 
 let metadataPromise: Promise<MetadataStore> | undefined = undefined;
-const TVMAZE_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
+const METADATA_REFRESH_INTERVAL_MS = 2500;
+let refreshStatus: MetadataRefreshStatus = {
+  state: "idle",
+  total: 0,
+  completed: 0,
+  failed: 0,
+  startedAt: null,
+  completedAt: null,
+  error: null,
+};
 const listMetadata = database.query<MetadataRow, []>(
   "SELECT key, payload FROM media_metadata",
 );
@@ -158,7 +167,10 @@ function writeMetadata(store: MetadataStore): void {
   writeMetadataTransaction(store);
 }
 
-async function tvmazeEnrichment(media: AniListMedia): Promise<AniListMedia> {
+async function tvmazeEnrichment(
+  media: AniListMedia,
+  previous?: AniListMedia,
+): Promise<AniListMedia> {
   try {
     return {
       ...media,
@@ -166,31 +178,12 @@ async function tvmazeEnrichment(media: AniListMedia): Promise<AniListMedia> {
       tvmazeCheckedAt: Date.now(),
     };
   } catch {
-    return media;
-  }
-}
-
-async function refreshTvmazeMetadata(store: MetadataStore): Promise<void> {
-  const stale = Object.entries(store).filter(([key, media]) => (
-    key.startsWith("show:") &&
-    (media.tvmazeCheckedAt === undefined || Date.now() - media.tvmazeCheckedAt > TVMAZE_CACHE_MS)
-  ));
-  let changed = false;
-  for (let index = 0; index < stale.length; index += 4) {
-    const batch = stale.slice(index, index + 4);
-    const enriched = await Promise.all(batch.map(async ([key, media]) => ({
-      key,
-      media: await tvmazeEnrichment(media),
-    })));
-    for (const item of enriched) {
-      if (item.media !== store[item.key]) {
-        store[item.key] = item.media;
-        changed = true;
-      }
+    if (previous?.tvmaze === undefined) {
+      return media;
     }
-  }
-  if (changed) {
-    writeMetadata(store);
+    return previous.tvmazeCheckedAt === undefined
+      ? { ...media, tvmaze: previous.tvmaze }
+      : { ...media, tvmaze: previous.tvmaze, tvmazeCheckedAt: previous.tvmazeCheckedAt };
   }
 }
 
@@ -203,9 +196,89 @@ function cleanMedia(media: AniListMedia): AniListMedia {
 }
 
 export async function metadataResponse(): Promise<Response> {
+  return Response.json(await metadata());
+}
+
+async function fetchMedia(id: number): Promise<AniListMedia> {
+  const query = `query ($id: Int!) {
+    Media(id: $id, type: ANIME) { ${MEDIA_FIELDS} }
+  }`;
+  const data = await aniListGraphQl<MediaData>({ query, variables: { id } });
+  return cleanMedia(data.Media);
+}
+
+function updateRefreshStatus(update: Partial<MetadataRefreshStatus>): void {
+  refreshStatus = { ...refreshStatus, ...update };
+}
+
+async function refreshMetadata(): Promise<void> {
   const store = await metadata();
-  await refreshTvmazeMetadata(store);
-  return Response.json(store);
+  const entries = Object.entries(store);
+  const refreshed = new Map<number, AniListMedia>();
+  updateRefreshStatus({
+    state: "running",
+    total: entries.length,
+    completed: 0,
+    failed: 0,
+    startedAt: Date.now(),
+    completedAt: null,
+    error: null,
+  });
+  for (const [key, previous] of entries) {
+    try {
+      let media = refreshed.get(previous.id);
+      if (media === undefined) {
+        media = await fetchMedia(previous.id);
+        refreshed.set(previous.id, media);
+        await Bun.sleep(METADATA_REFRESH_INTERVAL_MS);
+      }
+      const updated = key.startsWith("show:")
+        ? await tvmazeEnrichment(media, previous)
+        : media;
+      store[key] = updated;
+      upsertMetadata.run(key, JSON.stringify(updated), Date.now());
+      updateRefreshStatus({ completed: refreshStatus.completed + 1 });
+    } catch (error) {
+      updateRefreshStatus({
+        completed: refreshStatus.completed + 1,
+        failed: refreshStatus.failed + 1,
+        error: error instanceof Error ? error.message : "Unknown metadata refresh error",
+      });
+    }
+  }
+  updateRefreshStatus({ state: "complete", completedAt: Date.now() });
+}
+
+export function metadataRefreshStatusResponse(): Response {
+  return Response.json(refreshStatus);
+}
+
+export function startMetadataRefreshResponse(): Response {
+  if (refreshStatus.state === "running") {
+    return Response.json(refreshStatus, { status: 409 });
+  }
+  updateRefreshStatus({
+    state: "running",
+    total: 0,
+    completed: 0,
+    failed: 0,
+    startedAt: Date.now(),
+    completedAt: null,
+    error: null,
+  });
+  void (async (): Promise<void> => {
+    try {
+      await refreshMetadata();
+    } catch (error) {
+      updateRefreshStatus({
+        state: "complete",
+        failed: refreshStatus.failed + 1,
+        completedAt: Date.now(),
+        error: error instanceof Error ? error.message : "Metadata refresh could not start",
+      });
+    }
+  })();
+  return Response.json(refreshStatus, { status: 202 });
 }
 
 export async function searchAniListResponse(url: URL): Promise<Response> {
@@ -243,14 +316,10 @@ export async function linkAniListResponse(req: Request): Promise<Response> {
   if (body === null) {
     return new Response("Invalid link request", { status: 400 });
   }
-  const query = `query ($id: Int!) {
-    Media(id: $id, type: ANIME) { ${MEDIA_FIELDS} }
-  }`;
-  const data = await aniListGraphQl<MediaData>({ query, variables: { id: body.id } });
-  const clean = cleanMedia(data.Media);
+  const clean = await fetchMedia(body.id);
   const media = body.key.startsWith("show:") ? await tvmazeEnrichment(clean) : clean;
   const store = await metadata();
   store[body.key] = media;
-  writeMetadata(store);
+  upsertMetadata.run(body.key, JSON.stringify(media), Date.now());
   return Response.json(media);
 }

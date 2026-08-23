@@ -8,8 +8,12 @@ import type {
 export type {
   AniListListEntry,
   AuthUser,
+  LibraryStatus,
   MediaEntry,
+  MetadataRefreshStatus,
   NyaaSearchResult,
+  NyaaSort,
+  NyaaSortOrder,
   PlaybackProgress,
   TorrentStatus,
   TranscodePreset,

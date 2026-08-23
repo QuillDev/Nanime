@@ -45,6 +45,14 @@ export const provisionedUserSchema = object({
 export const mediaEntrySchema = object({
   rel: string(), name: string(), folder: string(), size: number(), direct: boolean(),
 });
+export const libraryStatusSchema = object({
+  entryCount: number(), lastScannedAt: nullableNumber, scanning: boolean(),
+});
+export const metadataRefreshStatusSchema = object({
+  state: union([literal("complete"), literal("idle"), literal("running")]),
+  total: number(), completed: number(), failed: number(),
+  startedAt: nullableNumber, completedAt: nullableNumber, error: nullableString,
+});
 export const subtitleTrackSchema = object({
   index: number(), codec: string(), language: string(), label: string(), sizeBytes: nullableNumber,
 });

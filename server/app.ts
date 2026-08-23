@@ -10,6 +10,8 @@ import {
   authUserSchema,
   credentialsSchema,
   mediaEntrySchema,
+  libraryStatusSchema,
+  metadataRefreshStatusSchema,
   mediaScanSchema,
   nyaaSearchResultSchema,
   playbackProgressSchema,
@@ -99,10 +101,23 @@ const aniListUpdateSchema = schema.object({
   score: schema.optional(schema.number({ minimum: 0, maximum: 10 })),
 });
 const searchQuerySchema = schema.object({ q: schema.string({ minLength: 2 }) });
+const nyaaSortSchema = schema.union([
+  schema.literal("id"),
+  schema.literal("size"),
+  schema.literal("seeders"),
+  schema.literal("leechers"),
+  schema.literal("downloads"),
+]);
+const nyaaSortOrderSchema = schema.union([
+  schema.literal("asc"),
+  schema.literal("desc"),
+]);
 const nyaaSearchQuerySchema = schema.object({
   q: schema.string({ minLength: 2, maxLength: 200 }),
   category: schema.optional(schema.string()),
   trusted: schema.optional(schema.boolean()),
+  sort: schema.optional(nyaaSortSchema),
+  order: schema.optional(nyaaSortOrderSchema),
 });
 const pathQuerySchema = schema.object({ path: schema.string({ minLength: 1 }) });
 const indexedPathQuerySchema = schema.object({
@@ -156,8 +171,20 @@ export const app = new Elysia({ name: "nanime" })
   .get("/api/list", ({ request, server }) => handle(request, server), {
     response: schema.array(mediaEntrySchema),
   })
+  .get("/api/library/status", ({ request, server }) => handle(request, server), {
+    response: libraryStatusSchema,
+  })
+  .post("/api/library/refresh", ({ request, server }) => handle(request, server), {
+    response: libraryStatusSchema,
+  })
   .get("/api/metadata", ({ request, server }) => handle(request, server), {
     response: schema.record(schema.string(), aniListMediaSchema),
+  })
+  .get("/api/metadata/refresh", ({ request, server }) => handle(request, server), {
+    response: metadataRefreshStatusSchema,
+  })
+  .post("/api/metadata/refresh", ({ request, server }) => handle(request, server), {
+    response: metadataRefreshStatusSchema,
   })
   .get("/api/progress", ({ request, server }) => handle(request, server), {
     response: schema.array(playbackProgressSchema),

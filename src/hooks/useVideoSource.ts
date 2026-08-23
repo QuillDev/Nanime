@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type SyntheticEvent } from "react";
 import { hlsUrl, streamUrl } from "../api.ts";
 import type { MediaEntry } from "../types.ts";
 import type { HlsAttachment } from "../lib/hlsPlayback.ts";
@@ -57,32 +57,74 @@ function attachHls(options: HlsAttachment): () => void {
   };
 }
 
-function attachSource(
-  video: HTMLVideoElement,
-  entry: MediaEntry,
-  onError: (message: string) => void,
-): (() => void) | undefined {
+interface SourceAttachment {
+  readonly video: HTMLVideoElement;
+  readonly entry: MediaEntry;
+  readonly resumeAt: number;
+  readonly onError: (message: string) => void;
+}
+
+function attachSource(options: SourceAttachment): (() => void) | undefined {
+  const { video, entry, resumeAt, onError } = options;
   if (entry.direct) {
     video.src = streamUrl(entry.rel);
     tryPlay(video);
     return undefined;
   }
-  return attachHls({ video, url: hlsUrl(entry.rel), onError });
+  return attachHls({ video, url: hlsUrl(entry.rel), onError, resumeAt });
+}
+
+function mediaErrorName(code: number): string {
+  switch (code) {
+    case 1: {
+      return "MEDIA_ERR_ABORTED";
+    }
+    case 2: {
+      return "MEDIA_ERR_NETWORK";
+    }
+    case 3: {
+      return "MEDIA_ERR_DECODE";
+    }
+    case 4: {
+      return "MEDIA_ERR_SRC_NOT_SUPPORTED";
+    }
+    default: {
+      return "MEDIA_ERR_UNKNOWN";
+    }
+  }
+}
+
+function videoErrorDetail(video: HTMLVideoElement): string {
+  const { error } = video;
+  const code = error?.code ?? 0;
+  const name = mediaErrorName(code);
+  const message = error?.message.trim() ?? "";
+  return [
+    "Video playback failed.",
+    `MediaError: ${name} (${String(code)})${message === "" ? "" : ` — ${message}`}`,
+    `Network state: ${String(video.networkState)}`,
+    `Ready state: ${String(video.readyState)}`,
+    `Current time: ${String(video.currentTime)}`,
+    `Source: ${video.currentSrc || video.src || "Unavailable"}`,
+    `Browser: ${navigator.userAgent}`,
+    `Time: ${new Date().toISOString()}`,
+  ].join("\n");
 }
 
 interface VideoSourceState {
   readonly playbackError: string | null;
   readonly videoRef: React.RefObject<HTMLVideoElement | null>;
   readonly setVideo: (video: HTMLVideoElement | null) => (() => void) | undefined;
-  readonly handleVideoError: () => void;
+  readonly handleVideoError: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handlePlaying: () => void;
   readonly handleAudioTrack: (index: number) => void;
 }
 
-export function useVideoSource(entry: MediaEntry): VideoSourceState {
+export function useVideoSource(entry: MediaEntry, resumeAt: number): VideoSourceState {
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const detachRef = useRef<(() => void) | undefined>(undefined);
+  const initialSourceRef = useRef({ entry, resumeAt });
   const setVideo = useCallback(
     (video: HTMLVideoElement | null): (() => void) | undefined => {
       if (video === null) {
@@ -90,7 +132,8 @@ export function useVideoSource(entry: MediaEntry): VideoSourceState {
       }
       videoRef.current = video;
       try {
-        const detachSource = attachSource(video, entry, setPlaybackError);
+        const initialSource = initialSourceRef.current;
+        const detachSource = attachSource({ video, ...initialSource, onError: setPlaybackError });
         detachRef.current = detachSource;
         return () => {
           videoRef.current = null;
@@ -104,10 +147,10 @@ export function useVideoSource(entry: MediaEntry): VideoSourceState {
         return undefined;
       }
     },
-    [entry],
+    [],
   );
-  const handleVideoError = useCallback(() => {
-    setPlaybackError("This video could not be played.");
+  const handleVideoError = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    setPlaybackError(videoErrorDetail(event.currentTarget));
   }, []);
   const handlePlaying = useCallback(() => {
     setPlaybackError(null);
@@ -117,7 +160,7 @@ export function useVideoSource(entry: MediaEntry): VideoSourceState {
     if (video === null) {
       return;
     }
-    const resumeAt = video.currentTime;
+    const currentPosition = video.currentTime;
     const shouldPlay = !video.paused;
     detachRef.current?.();
     setPlaybackError(null);
@@ -125,7 +168,7 @@ export function useVideoSource(entry: MediaEntry): VideoSourceState {
       video,
       url: hlsUrl(entry.rel, index),
       onError: setPlaybackError,
-      resumeAt,
+      resumeAt: currentPosition,
       shouldPlay,
     });
   }, [entry.rel]);

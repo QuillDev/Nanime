@@ -10,7 +10,6 @@ import type {
   AuthUser,
   MediaEntry,
   MediaScan,
-  NyaaSearchResult,
   PlaybackProgress,
   ShowMetadata,
   SubtitleTrack,
@@ -277,19 +276,6 @@ export async function deleteTranscodeOriginal(id: string): Promise<TranscodeJob>
 
 export async function cancelTranscode(id: string): Promise<TranscodeJob> {
   return unwrap(await api.api.transcodes({ id }).cancel.post(), "Cancelling transcode");
-}
-
-export async function searchNyaa(
-  options: { readonly search: string; readonly category: string; readonly trusted: boolean },
-  signal: AbortSignal,
-): Promise<readonly NyaaSearchResult[]> {
-  return unwrap(
-    await api.api.torrents.search.get({
-      query: { q: options.search, category: options.category, trusted: options.trusted },
-      fetch: { signal },
-    }),
-    "Nyaa search",
-  );
 }
 
 export async function deleteMedia(paths: readonly string[]): Promise<number> {

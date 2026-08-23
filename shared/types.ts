@@ -6,6 +6,22 @@ export interface MediaEntry {
   readonly direct: boolean;
 }
 
+export interface LibraryStatus {
+  readonly entryCount: number;
+  readonly lastScannedAt: number | null;
+  readonly scanning: boolean;
+}
+
+export interface MetadataRefreshStatus {
+  readonly state: "complete" | "idle" | "running";
+  readonly total: number;
+  readonly completed: number;
+  readonly failed: number;
+  readonly startedAt: number | null;
+  readonly completedAt: number | null;
+  readonly error: string | null;
+}
+
 export interface PlaybackProgress {
   readonly rel: string;
   readonly position: number;
@@ -76,3 +92,6 @@ export interface NyaaSearchResult {
   readonly detailsUrl: string;
   readonly magnet: string;
 }
+
+export type NyaaSort = "id" | "size" | "seeders" | "leechers" | "downloads";
+export type NyaaSortOrder = "asc" | "desc";

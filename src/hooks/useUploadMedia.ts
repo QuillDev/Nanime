@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { uploadMediaFiles, type MediaUploadProgress } from "../mediaUpload.ts";
 import { storageStatusKey } from "./useStorageStatus.ts";
+import { refreshLibraryCache } from "./refreshLibraryCache.ts";
 
 interface UploadMediaVariables {
   readonly files: readonly File[];
@@ -13,7 +14,7 @@ export function useUploadMedia(): UseMutationResult<void, Error, UploadMediaVari
   return useMutation({
     mutationFn: ({ files, folder, onProgress }) => uploadMediaFiles(files, folder, onProgress),
     onSuccess: () => Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["library"] }),
+      refreshLibraryCache(queryClient),
       queryClient.invalidateQueries({ queryKey: storageStatusKey }),
     ]),
   });
