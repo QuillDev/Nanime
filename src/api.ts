@@ -26,17 +26,22 @@ export function streamUrl(rel: string): string {
   return `/stream?path=${encodeURIComponent(rel)}`;
 }
 
-export function hlsUrl(rel: string, audioTrack: number | null = null): string {
+export function hlsUrl(
+  rel: string,
+  audioTrack: number | null = null,
+  startAt = 0,
+): string {
   const audio = audioTrack === null ? "" : `&audio=${String(audioTrack)}`;
-  return `/hls/index?path=${encodeURIComponent(rel)}${audio}`;
+  const start = startAt <= 0 ? "" : `&start=${String(startAt)}`;
+  return `/hls/index?path=${encodeURIComponent(rel)}${audio}${start}`;
 }
 
 export function thumbnailUrl(rel: string): string {
   return `/thumbnail?path=${encodeURIComponent(rel)}`;
 }
 
-export function subtitleUrl(rel: string, index: number): string {
-  return `/subtitle?path=${encodeURIComponent(rel)}&index=${String(index)}`;
+export function subtitleUrl(rel: string, index: number, offset = 0): string {
+  return `/subtitle?path=${encodeURIComponent(rel)}&index=${String(index)}&offset=${String(offset)}`;
 }
 
 export function unwrap<T>(

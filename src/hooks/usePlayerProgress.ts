@@ -12,15 +12,21 @@ export interface PlaybackHandlers {
   readonly handleEnded: (event: SyntheticEvent<HTMLVideoElement>) => void;
 }
 
-export function usePlayerProgress(
-  entry: MediaEntry,
-  resumeAt: number,
-  anilistTarget: AniListPlaybackTarget | null,
-): PlaybackHandlers {
+interface PlayerProgressOptions {
+  readonly anilistTarget: AniListPlaybackTarget | null;
+  readonly entry: MediaEntry;
+  readonly knownDuration: number;
+  readonly resumeAt: number;
+  readonly timelineOffset: number;
+}
+
+export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandlers {
+  const { anilistTarget, entry, knownDuration, resumeAt, timelineOffset } = options;
   const lastSavedAtRef = useRef<number>(0);
   const { mutate: savePlayback } = useSavePlaybackProgress();
   const saveCurrentProgress = useCallback((video: HTMLVideoElement, completed: boolean) => {
-    const { currentTime: position, duration } = video;
+    const position = video.currentTime + timelineOffset;
+    const duration = Math.max(video.duration + timelineOffset, knownDuration);
     if (
       !Number.isFinite(position) ||
       !hasMeaningfulPlaybackProgress(position) ||
@@ -43,13 +49,14 @@ export function usePlayerProgress(
         episode: anilistTarget.episode,
         totalEpisodes: anilistTarget.totalEpisodes,
       });
-  }, [anilistTarget, entry.rel, savePlayback]);
+  }, [anilistTarget, entry.rel, knownDuration, savePlayback, timelineOffset]);
   const handleLoadedMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     const video = event.currentTarget;
-    if (resumeAt > 0 && resumeAt < video.duration) {
-      video.currentTime = resumeAt;
+    const localResumeAt = resumeAt - timelineOffset;
+    if (localResumeAt > 0 && localResumeAt < video.duration) {
+      video.currentTime = localResumeAt;
     }
-  }, [resumeAt]);
+  }, [resumeAt, timelineOffset]);
   const handleTimeUpdate = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     if (Date.now() - lastSavedAtRef.current >= 10_000) {
       saveCurrentProgress(event.currentTarget, false);

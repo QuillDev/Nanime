@@ -95,6 +95,11 @@ export interface AniListPlaybackTarget {
   readonly totalEpisodes: number | null;
 }
 
+export interface EpisodeDisplay {
+  readonly number: number | null;
+  readonly title: string;
+}
+
 export type PlaybackProgressMap = Readonly<Record<string, PlaybackProgress>>;
 
 export interface AniListAuthConfig {

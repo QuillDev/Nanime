@@ -1,5 +1,5 @@
 import { realpath } from "node:fs/promises";
-import { extname, join, relative, resolve, sep } from "node:path";
+import { extname, join, resolve, sep } from "node:path";
 import type { Server } from "bun";
 import {
   aniListErrorResponse,
@@ -16,8 +16,8 @@ import {
 import { dismissPlaybackProgress, playbackProgressResponse, updatePlaybackProgress } from "./playback.ts";
 import {
   audioTracksResponse,
-  hlsPlaylist,
-  hlsSegment,
+  hlsPlaylistResponse,
+  hlsSegmentResponse,
   subtitleResponse,
   subtitleTracksResponse,
 } from "./subtitles.ts";
@@ -70,7 +70,6 @@ const MIME = new Map(Object.entries({
 const durationCache = new Map<string, number>();
 const thumbnailCache = new Map<string, Promise<ArrayBuffer | null>>();
 let activeThumbnailJobs = 0;
-
 async function safePath(rel: string | null): Promise<string | null> {
   if (rel === null || rel === "") {
     return null;
@@ -222,7 +221,15 @@ async function serveStatic(pathname: string): Promise<Response> {
   return new Response("Not found", { status: 404 });
 }
 
-async function handleMedia(pathname: string, url: URL, req: Request): Promise<Response> {
+async function handleMedia(context: RouteContext): Promise<Response> {
+  const { pathname, url, req, user } = context;
+  if (pathname === "/hls/seg") {
+    return hlsSegmentResponse(
+      url.searchParams.get("session"),
+      url.searchParams.get("name"),
+      user.id,
+    );
+  }
   const abs = await safePath(url.searchParams.get("path"));
   if (abs === null || !VIDEO_EXTS.has(extname(abs).toLowerCase())) {
     return new Response("Not found", { status: 404 });
@@ -241,8 +248,9 @@ async function handleMedia(pathname: string, url: URL, req: Request): Promise<Re
   }
   if (pathname === "/subtitle") {
     const index = Number(url.searchParams.get("index") ?? "");
+    const offset = Number(url.searchParams.get("offset") ?? "0");
     return Number.isInteger(index)
-      ? subtitleResponse(abs, index)
+      ? subtitleResponse(abs, index, offset)
       : new Response("Bad request", { status: 400 });
   }
   if (pathname === "/hls/index") {
@@ -250,26 +258,22 @@ async function handleMedia(pathname: string, url: URL, req: Request): Promise<Re
     if (audioIndex === undefined) {
       return new Response("Bad request", { status: 400 });
     }
-    return hlsPlaylist(relative(MEDIA_ROOT, abs), await probeDuration(abs), audioIndex);
+    const requestedStart = Number(url.searchParams.get("start") ?? "0");
+    if (!Number.isFinite(requestedStart) || requestedStart < 0) {
+      return new Response("Bad request", { status: 400 });
+    }
+    return hlsPlaylistResponse({
+      abs,
+      audioIndex,
+      duration: await probeDuration(abs),
+      requestedStart,
+      userId: user.id,
+      hardwareAcceleration: HWACCEL,
+      vaapiDevice: VAAPI_DEVICE,
+    });
   }
-  const index = Number(url.searchParams.get("i") ?? "");
-  if (!Number.isInteger(index) || index < 0) {
-    return new Response("Bad request", { status: 400 });
-  }
-  const audioIndex = optionalAudioIndex(url);
-  return audioIndex === undefined
-    ? new Response("Bad request", { status: 400 })
-    : hlsSegment({
-        abs,
-        index,
-        audioIndex,
-        duration: await probeDuration(abs),
-        request: req,
-        hardwareAcceleration: HWACCEL,
-        vaapiDevice: VAAPI_DEVICE,
-      });
+  return new Response("Not found", { status: 404 });
 }
-
 function optionalAudioIndex(url: URL): number | null | undefined {
   const value = url.searchParams.get("audio");
   if (value === null) {
@@ -278,7 +282,6 @@ function optionalAudioIndex(url: URL): number | null | undefined {
   const index = Number(value);
   return Number.isInteger(index) && index >= 0 ? index : undefined;
 }
-
 interface RouteContext {
   readonly pathname: string;
   readonly url: URL;
@@ -422,9 +425,9 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
   if (administration !== null) {
     return administration;
   }
-  const { pathname, url, req } = context;
+  const { pathname, req } = context;
   if (mediaRequest(pathname, req.method)) {
-    return await handleMedia(pathname, url, req);
+    return await handleMedia(context);
   }
   if (pathname.startsWith("/api/")) {
     return new Response("Not found", { status: 404 });

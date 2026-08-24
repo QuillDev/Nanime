@@ -1,14 +1,20 @@
 import { useMemo } from "react";
-import type { AniListPlaybackTarget, MediaEntry, ShowMetadata } from "../types.ts";
+import type {
+  AniListPlaybackTarget,
+  EpisodeDisplay,
+  MediaEntry,
+  ShowMetadata,
+} from "../types.ts";
 import { useShowMetadata } from "./useShowMetadata.ts";
 import {
   groupShows,
   seasonMetadata,
+  seasonNumber,
   showMetadataKey,
   type SeasonGroup,
   type ShowGroup,
 } from "../lib/library.ts";
-import { episodeNumber } from "../lib/anilist.ts";
+import { episodeMetadata, episodeNumber } from "../lib/anilist.ts";
 
 export interface LibraryIndex {
   readonly shows: readonly ShowGroup[];
@@ -17,6 +23,7 @@ export interface LibraryIndex {
   readonly previousByRel: ReadonlyMap<string, MediaEntry>;
   readonly nextByRel: ReadonlyMap<string, MediaEntry>;
   readonly playbackTargetByRel: ReadonlyMap<string, AniListPlaybackTarget>;
+  readonly displayByRel: ReadonlyMap<string, EpisodeDisplay>;
 }
 
 interface MutableLibraryIndex {
@@ -24,6 +31,7 @@ interface MutableLibraryIndex {
   readonly previous: Map<string, MediaEntry>;
   readonly next: Map<string, MediaEntry>;
   readonly targets: Map<string, AniListPlaybackTarget>;
+  readonly displays: Map<string, EpisodeDisplay>;
 }
 
 const EMPTY_METADATA: ShowMetadata = {};
@@ -53,7 +61,13 @@ function indexShow(
   const ordered = show.seasons.flatMap((season) => season.entries);
   indexAdjacency(ordered, index);
   for (const season of show.seasons) {
-    indexSeasonTargets({ season, show, metadata, targets: index.targets });
+    indexSeason({
+      season,
+      show,
+      metadata,
+      targets: index.targets,
+      displays: index.displays,
+    });
   }
 }
 
@@ -62,18 +76,23 @@ interface SeasonTargetOptions {
   readonly show: ShowGroup;
   readonly metadata: ShowMetadata;
   readonly targets: Map<string, AniListPlaybackTarget>;
+  readonly displays: Map<string, EpisodeDisplay>;
 }
 
-function indexSeasonTargets(options: SeasonTargetOptions): void {
-  const { season, show, metadata, targets } = options;
+function indexSeason(options: SeasonTargetOptions): void {
+  const { season, show, metadata, targets, displays } = options;
+  const showMedia = metadata[showMetadataKey(show.name)];
   const media = seasonMetadata(metadata, season.sourceShow, season.name) ??
-    metadata[showMetadataKey(show.name)];
-  if (media === undefined || media.anilistId === null) {
-    return;
-  }
+    showMedia;
+  const number = seasonNumber(season, media);
   for (const entry of season.entries) {
     const episode = episodeNumber(entry);
-    if (episode !== null) {
+    const details = episodeMetadata(entry, media, { showMedia, season: number });
+    displays.set(entry.rel, {
+      number: episode,
+      title: details?.title ?? entry.name.replace(/\.[^.]+$/u, ""),
+    });
+    if (episode !== null && media !== undefined && media.anilistId !== null) {
       targets.set(entry.rel, {
         mediaId: media.anilistId,
         episode,
@@ -93,6 +112,7 @@ function buildLibraryIndex(
     previous: new Map<string, MediaEntry>(),
     next: new Map<string, MediaEntry>(),
     targets: new Map<string, AniListPlaybackTarget>(),
+    displays: new Map<string, EpisodeDisplay>(),
   };
   for (const show of shows) {
     indexShow(show, metadata, index);
@@ -104,6 +124,7 @@ function buildLibraryIndex(
     previousByRel: index.previous,
     nextByRel: index.next,
     playbackTargetByRel: index.targets,
+    displayByRel: index.displays,
   };
 }
 

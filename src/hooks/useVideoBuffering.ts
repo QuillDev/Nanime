@@ -6,6 +6,7 @@ interface VideoBuffering {
   readonly frameRef: RefObject<HTMLCanvasElement | null>;
   readonly handleBuffering: () => void;
   readonly handleLoadStart: () => void;
+  readonly handleProgressing: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handleReady: () => void;
   readonly handleSeeked: (event: SyntheticEvent<HTMLVideoElement>) => void;
 }
@@ -74,6 +75,7 @@ export function useVideoBuffering(
   const frameRef = useRef<HTMLCanvasElement | null>(null);
   const [buffering, setBuffering] = useState(true);
   const [frameVisible, setFrameVisible] = useState(false);
+  const previousTimeRef = useRef<number | null>(null);
   const handleBuffering = useCallback(() => {
     const video = videoRef.current;
     const canvas = frameRef.current;
@@ -97,6 +99,19 @@ export function useVideoBuffering(
     setBuffering(false);
     setFrameVisible(false);
   }, []);
+  const handleProgressing = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    const video = event.currentTarget;
+    const previousTime = previousTimeRef.current;
+    previousTimeRef.current = video.currentTime;
+    if (
+      previousTime !== null &&
+      video.currentTime > previousTime &&
+      !video.seeking
+    ) {
+      setBuffering(false);
+      setFrameVisible(false);
+    }
+  }, []);
   const handleSeeked = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     if (event.currentTarget.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
       setBuffering(false);
@@ -109,6 +124,7 @@ export function useVideoBuffering(
     frameRef,
     handleBuffering,
     handleLoadStart,
+    handleProgressing,
     handleReady,
     handleSeeked,
   };
