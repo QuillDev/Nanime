@@ -56,6 +56,7 @@ function useEpisodeNavigation(index: LibraryIndex, rel: string | null) {
     previous,
     next,
     target: rel === null ? null : index.playbackTargetByRel.get(rel) ?? null,
+    display: rel === null ? null : index.displayByRel.get(rel) ?? null,
     handlePrevious,
     handleNext,
   };
@@ -117,6 +118,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
           <Player
             key={navigation.selected.rel}
             entry={navigation.selected}
+            episodeDisplay={navigation.display}
             anilistTarget={navigation.target}
             nextAvailable={navigation.next !== null}
             previousAvailable={navigation.previous !== null}

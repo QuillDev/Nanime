@@ -136,15 +136,16 @@ const pathQuerySchema = schema.object({ path: schema.string({ minLength: 1 }) })
 const indexedPathQuerySchema = schema.object({
   path: schema.string({ minLength: 1 }),
   index: schema.integer(),
+  offset: schema.optional(schema.number({ minimum: 0 })),
 });
 const segmentQuerySchema = schema.object({
-  path: schema.string({ minLength: 1 }),
-  i: schema.integer({ minimum: 0 }),
-  audio: schema.optional(schema.integer({ minimum: 0 })),
+  session: schema.string({ minLength: 1 }),
+  name: schema.string({ pattern: "^segment-[0-9]{6}\\.ts$" }),
 });
 const hlsQuerySchema = schema.object({
   path: schema.string({ minLength: 1 }),
   audio: schema.optional(schema.integer({ minimum: 0 })),
+  start: schema.optional(schema.number({ minimum: 0 })),
 });
 const optionalTorrentFileSchema = schema.optional(schema.file());
 const optionalMagnetSchema = schema.optional(schema.string());

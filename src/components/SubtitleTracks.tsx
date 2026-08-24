@@ -30,6 +30,7 @@ interface SubtitleSourceProps {
   readonly rel: string;
   readonly track: SubtitleTrack;
   readonly onCueText: (text: string) => void;
+  readonly timelineOffset: number;
 }
 
 function SubtitleSource({
@@ -37,6 +38,7 @@ function SubtitleSource({
   rel,
   track,
   onCueText,
+  timelineOffset,
 }: SubtitleSourceProps): React.JSX.Element {
   const elementRef = useRef<HTMLTrackElement | null>(null);
 
@@ -65,7 +67,7 @@ function SubtitleSource({
     <track
       ref={elementRef}
       kind="captions"
-      src={subtitleUrl(rel, track.index)}
+      src={subtitleUrl(rel, track.index, timelineOffset)}
       srcLang={track.language}
       label={track.label}
     />
@@ -77,6 +79,7 @@ interface SubtitleTracksProps {
   readonly tracks: readonly SubtitleTrack[] | undefined;
   readonly selectedTrack: number | null;
   readonly onCueText: (text: string) => void;
+  readonly timelineOffset: number;
 }
 
 export function SubtitleTracks({
@@ -84,6 +87,7 @@ export function SubtitleTracks({
   tracks,
   selectedTrack,
   onCueText,
+  timelineOffset,
 }: SubtitleTracksProps): React.JSX.Element {
   return (
     <>
@@ -94,6 +98,7 @@ export function SubtitleTracks({
           rel={rel}
           track={track}
           onCueText={onCueText}
+          timelineOffset={timelineOffset}
         />
       ))}
     </>

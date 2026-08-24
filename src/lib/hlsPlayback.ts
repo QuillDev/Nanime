@@ -6,6 +6,7 @@ export interface HlsAttachment {
   readonly onError: (message: string) => void;
   readonly resumeAt?: number;
   readonly shouldPlay?: boolean;
+  readonly timelineOffset?: number;
 }
 
 function tryPlay(video: HTMLVideoElement): void {
@@ -36,10 +37,10 @@ function hlsErrorDetail(data: ErrorData): string {
 }
 
 function bindHlsEvents(hls: Hls, options: HlsAttachment): void {
-  const { video, onError, resumeAt = 0, shouldPlay = true } = options;
+  const { video, onError, resumeAt = 0, shouldPlay = true, timelineOffset = 0 } = options;
   let recoveredMediaError = false;
   hls.on(Hls.Events.MANIFEST_PARSED, () => {
-    hls.startLoad(resumeAt);
+    hls.startLoad(Math.max(0, resumeAt - timelineOffset));
     if (shouldPlay) {
       tryPlay(video);
     }
@@ -64,8 +65,12 @@ export function attachHls(options: HlsAttachment): (() => void) | undefined {
   }
   const hls = new Hls({
     autoStartLoad: false,
+    maxBufferLength: 30,
+    maxMaxBufferLength: 30,
     enableWorker: true,
-    startPosition: options.resumeAt ?? -1,
+    startPosition: options.resumeAt === undefined
+      ? -1
+      : Math.max(0, options.resumeAt - (options.timelineOffset ?? 0)),
   });
   bindHlsEvents(hls, options);
   hls.loadSource(options.url);

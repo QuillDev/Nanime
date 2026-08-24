@@ -6,7 +6,7 @@ import { probeStreams } from "./ffprobe.ts";
 import { jsonObject, type JsonObject } from "./json.ts";
 import { fileSystemErrorCode } from "./fileSystemError.ts";
 
-export { audioTracksResponse, hlsPlaylist, hlsSegment } from "./hls.ts";
+export { audioTracksResponse, hlsPlaylistResponse, hlsSegmentResponse } from "./hls.ts";
 
 export interface SubtitleTrack {
   readonly index: number;
@@ -174,17 +174,68 @@ async function convertSidecar(abs: string): Promise<string | null> {
   return await proc.exited === 0 && text.startsWith("WEBVTT") ? text : null;
 }
 
-export async function subtitleResponse(abs: string, index: number): Promise<Response> {
+function timestampSeconds(value: string): number {
+  const parts = value.split(":").map(Number);
+  const seconds = parts.pop() ?? 0;
+  const minutes = parts.pop() ?? 0;
+  const hours = parts.pop() ?? 0;
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+function webVttTimestamp(seconds: number): string {
+  const milliseconds = Math.max(0, Math.round(seconds * 1000));
+  const hours = Math.floor(milliseconds / 3_600_000);
+  const minutes = Math.floor(milliseconds % 3_600_000 / 60_000);
+  const remainder = milliseconds % 60_000 / 1000;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${remainder.toFixed(3).padStart(6, "0")}`;
+}
+
+function shiftCueBlock(block: string, offset: number): string | null {
+  const lines = block.split("\n");
+  const timingIndex = lines.findIndex((line) => line.includes(" --> "));
+  if (timingIndex === -1) {
+    return block;
+  }
+  const timing = /^(?<start>(?:\d{2}:)?\d{2}:\d{2}\.\d{3}) --> (?<end>(?:\d{2}:)?\d{2}:\d{2}\.\d{3})(?<settings>.*)$/u.exec(lines[timingIndex] ?? "");
+  if (timing?.groups === undefined) {
+    return block;
+  }
+  const end = timestampSeconds(timing.groups["end"] ?? "0:00.000");
+  if (end <= offset) {
+    return null;
+  }
+  const start = timestampSeconds(timing.groups["start"] ?? "0:00.000");
+  lines[timingIndex] = `${webVttTimestamp(start - offset)} --> ${webVttTimestamp(end - offset)}${timing.groups["settings"] ?? ""}`;
+  return lines.join("\n");
+}
+
+export function shiftWebVtt(text: string, offset: number): string {
+  if (offset <= 0) {
+    return text;
+  }
+  return text.split("\n\n")
+    .flatMap((block) => {
+      const shifted = shiftCueBlock(block, offset);
+      return shifted === null ? [] : [shifted];
+    })
+    .join("\n\n");
+}
+
+export async function subtitleResponse(abs: string, index: number, offset: number): Promise<Response> {
   const sidecars = await sidecarSubtitleTracks(abs);
   const sidecar = sidecars.find((track) => track.index === index);
   const tracks = sidecar === undefined ? await subtitleTracks(abs) : [];
   if (sidecar === undefined && !tracks.some((track) => track.index === index)) {
     return new Response("Subtitle track not found", { status: 404 });
   }
-  const key = `${abs}:${String(index)}`;
-  const pending = subtitleCache.get(key) ?? (
-    sidecar === undefined ? convertSubtitle(abs, index) : convertSidecar(sidecar.path)
-  );
+  const safeOffset = Number.isFinite(offset) && offset >= 0 ? offset : 0;
+  const key = `${abs}:${String(index)}:${String(safeOffset)}`;
+  const pending = subtitleCache.get(key) ?? (async (): Promise<string | null> => {
+    const text = await (
+      sidecar === undefined ? convertSubtitle(abs, index) : convertSidecar(sidecar.path)
+    );
+    return text === null ? null : shiftWebVtt(text, safeOffset);
+  })();
   subtitleCache.set(key, pending);
   const text = await pending;
   if (text === null) {

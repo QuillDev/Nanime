@@ -1,5 +1,10 @@
 import { useCallback } from "react";
-import type { AniListPlaybackTarget, MediaEntry, PlaybackProgress } from "../types.ts";
+import type {
+  AniListPlaybackTarget,
+  EpisodeDisplay,
+  MediaEntry,
+  PlaybackProgress,
+} from "../types.ts";
 import { usePlayerProgress } from "../hooks/usePlayerProgress.ts";
 import { useVideoSource } from "../hooks/useVideoSource.ts";
 import { hasMeaningfulPlaybackProgress } from "../lib/playback.ts";
@@ -17,6 +22,7 @@ import {
 
 interface PlayerProps {
   readonly entry: MediaEntry;
+  readonly episodeDisplay: EpisodeDisplay | null;
   readonly nextAvailable: boolean;
   readonly previousAvailable: boolean;
   readonly initialProgress: PlaybackProgress | undefined;
@@ -28,6 +34,7 @@ interface PlayerProps {
 
 export function Player({
   entry,
+  episodeDisplay,
   nextAvailable,
   previousAvailable,
   initialProgress,
@@ -47,8 +54,16 @@ export function Player({
     handleVideoError,
     handlePlaying,
     handleAudioTrack,
+    handleTimelineSeek,
+    timelineOffset,
   } = useVideoSource(entry, resumeAt);
-  const progress = usePlayerProgress(entry, resumeAt, anilistTarget);
+  const progress = usePlayerProgress({
+    anilistTarget,
+    entry,
+    knownDuration: initialProgress?.duration ?? 0,
+    resumeAt,
+    timelineOffset,
+  });
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -74,11 +89,15 @@ export function Player({
         <CopyableErrorBoundary title="The player encountered an error" onRecover={onClose}>
           <PlayerSurface
             entry={entry}
+            episodeDisplay={episodeDisplay}
+            timelineOffset={timelineOffset}
+            knownDuration={initialProgress?.duration ?? 0}
             videoRef={videoRef}
             setVideo={setVideo}
             handleVideoError={handleVideoError}
             handlePlaying={handlePlaying}
             onAudioTrack={handleAudioTrack}
+            onTimelineSeek={handleTimelineSeek}
             progress={progress}
             previousAvailable={previousAvailable}
             nextAvailable={nextAvailable}

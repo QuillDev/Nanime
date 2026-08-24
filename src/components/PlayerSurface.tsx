@@ -1,59 +1,25 @@
-import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useCallback, useRef, type SyntheticEvent } from "react";
 import type { PlaybackHandlers } from "../hooks/usePlayerProgress.ts";
 import { usePlayerVideo } from "../hooks/usePlayerVideo.ts";
-import { usePlayerSurfaceInteraction } from "../hooks/usePlayerSurfaceInteraction.ts";
+import {
+  subtitleClass,
+  useControlVisibility,
+  usePlayerSurfaceInteraction,
+  useSubtitleDisplay,
+} from "../hooks/usePlayerPresentation.ts";
 import { useAudioSelection, useSubtitleTracks } from "../hooks/useSubtitleTracks.ts";
 import type { VideoControls } from "../hooks/useVideoControls.ts";
-import type { MediaEntry, SubtitleTrack } from "../types.ts";
+import type { EpisodeDisplay, MediaEntry, SubtitleTrack } from "../types.ts";
+import { PlayerControls } from "./PlayerControls.tsx";
 import {
-  PlayerControls,
-  type SubtitleAppearance,
-} from "./PlayerControls.tsx";
-import { PlayerErrors, PlayerPlaybackOverlay } from "./PlayerPlaybackOverlay.tsx";
+  PlayerDiagnostics,
+  PlayerErrors,
+  PlayerNowPlaying,
+  PlayerPlaybackOverlay,
+} from "./PlayerPlaybackOverlay.tsx";
 import { SubtitleTracks } from "./SubtitleTracks.tsx";
 
 const EMPTY_SUBTITLES: readonly SubtitleTrack[] = [];
-const DEFAULT_SUBTITLE_APPEARANCE: SubtitleAppearance = { size: "medium" };
-const SUBTITLE_APPEARANCE_KEY = "nanime-subtitle-appearance-v1";
-function parseSubtitleAppearance(value: unknown): SubtitleAppearance {
-  if (typeof value === "object" && value !== null && "size" in value) {
-    const { size } = value;
-    if (size === "small" || size === "medium" || size === "large") {
-      return { size };
-    }
-  }
-  return DEFAULT_SUBTITLE_APPEARANCE;
-}
-function loadSubtitleAppearance(): SubtitleAppearance {
-  try {
-    const stored = localStorage.getItem(SUBTITLE_APPEARANCE_KEY);
-    if (stored === null) {
-      return DEFAULT_SUBTITLE_APPEARANCE;
-    }
-    return parseSubtitleAppearance(JSON.parse(stored));
-  } catch {
-    return DEFAULT_SUBTITLE_APPEARANCE;
-  }
-}
-function subtitleClass(appearance: SubtitleAppearance): string {
-  return `player-subtitle player-subtitle-${appearance.size} max-w-[90%] whitespace-pre-line text-center font-semibold leading-snug text-white`;
-}
-function subtitlePreference(track: SubtitleTrack): number {
-  const english = /^(?:en|eng)$/iu.test(track.language) ? 100 : 0;
-  const signsOnly = /signs?|songs?/iu.test(track.label) ? -50 : 0;
-  const closedCaptions = /\bcc\b|\[cc\]/iu.test(track.label) ? -10 : 0;
-  const plainEnglish = /^english$/iu.test(track.label.trim()) ? 20 : 0;
-  return english + signsOnly + closedCaptions + plainEnglish;
-}
-function preferredSubtitleIndex(
-  tracks: readonly SubtitleTrack[] | undefined,
-): number | null {
-  return (tracks ?? EMPTY_SUBTITLES).reduce<SubtitleTrack | null>((preferred, track) => (
-    preferred === null || subtitlePreference(track) > subtitlePreference(preferred)
-      ? track
-      : preferred
-  ), null)?.index ?? null;
-}
 
 function usePlaybackEvents(
   progress: PlaybackHandlers,
@@ -68,10 +34,6 @@ function usePlaybackEvents(
     progress.handleLoadedMetadata(event);
     controls.handleDurationChange(event);
   }, [controls, progress]);
-  const handleTimeUpdate = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    progress.handleTimeUpdate(event);
-    controls.handleTimeUpdate(event);
-  }, [controls, progress]);
   const handlePause = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     progress.handlePause(event);
     controls.handlePause();
@@ -80,69 +42,14 @@ function usePlaybackEvents(
     progress.handleEnded(event);
     controls.handlePause();
   }, [controls, progress]);
-  return { handlePlay, handleLoadedMetadata, handleTimeUpdate, handlePause, handleEnded };
-}
-
-function useControlVisibility() {
-  const [visible, setVisible] = useState(true);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleActivity = useCallback(() => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-    }
-    setVisible(true);
-    timerRef.current = setTimeout(() => {
-      setVisible(false);
-    }, 2500);
-  }, []);
-  const handleHide = useCallback(() => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setVisible(false);
-  }, []);
-  useEffect(() => () => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-    }
-  }, []);
-  return { visible, handleActivity, handleHide };
-}
-
-function useSubtitleDisplay(tracks: readonly SubtitleTrack[] | undefined) {
-  const [trackSelection, setTrackSelection] = useState<number | null | undefined>(undefined);
-  const [cueText, setCueText] = useState("");
-  const [appearance, setAppearance] = useState<SubtitleAppearance>(loadSubtitleAppearance);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const selectedTrack = trackSelection === undefined
-    ? preferredSubtitleIndex(tracks)
-    : trackSelection;
-  const handleAppearance = useCallback((nextAppearance: SubtitleAppearance) => {
-    setAppearance(nextAppearance);
-    try {
-      localStorage.setItem(SUBTITLE_APPEARANCE_KEY, JSON.stringify(nextAppearance));
-    } catch {
-      // Browser privacy settings may disable storage; the in-memory setting still works.
-    }
-  }, []);
-  const handleToggleSettings = useCallback(() => {
-    setSettingsOpen((open) => !open);
-  }, []);
-  return {
-    appearance,
-    cueText,
-    selectedTrack,
-    settingsOpen,
-    handleAppearance,
-    handleCueText: setCueText,
-    handleTrack: setTrackSelection,
-    handleToggleSettings,
-  };
+  return { handlePlay, handleLoadedMetadata, handlePause, handleEnded };
 }
 
 interface PlayerSurfaceProps {
   readonly entry: MediaEntry;
+  readonly episodeDisplay: EpisodeDisplay | null;
+  readonly timelineOffset: number;
+  readonly knownDuration: number;
   readonly videoRef: React.RefObject<HTMLVideoElement | null>;
   readonly setVideo: (video: HTMLVideoElement | null) => (() => void) | undefined;
   readonly handleVideoError: (event: SyntheticEvent<HTMLVideoElement>) => void;
@@ -151,20 +58,14 @@ interface PlayerSurfaceProps {
   readonly previousAvailable: boolean; readonly nextAvailable: boolean;
   readonly onPrevious: () => void; readonly onNext: () => void;
   readonly onAudioTrack: (index: number) => void;
+  readonly onTimelineSeek: (position: number) => boolean;
 }
 
 export function PlayerSurface({
-  entry,
-  videoRef,
-  setVideo,
-  handleVideoError,
-  handlePlaying,
-  progress,
-  previousAvailable,
-  nextAvailable,
-  onPrevious,
-  onNext,
-  onAudioTrack,
+  entry, episodeDisplay, timelineOffset, knownDuration, videoRef,
+  setVideo, handleVideoError, handlePlaying, progress,
+  previousAvailable, nextAvailable, onPrevious, onNext,
+  onAudioTrack, onTimelineSeek,
 }: PlayerSurfaceProps): React.JSX.Element {
   const subtitles = useSubtitleTracks(entry.rel);
   const audio = useAudioSelection(entry.rel, onAudioTrack);
@@ -179,7 +80,16 @@ export function PlayerSurface({
     handleReady,
     handlePlayerPlaying,
     handlePlayerSeeked,
-  } = usePlayerVideo({ videoRef, playerRef, progress, onPlaying: handlePlaying });
+    handlePlayerTimeUpdate,
+  } = usePlayerVideo({
+    videoRef,
+    playerRef,
+    progress,
+    onPlaying: handlePlaying,
+    timelineOffset,
+    knownDuration,
+    onTimelineSeek,
+  });
   const visibility = useControlVisibility();
   const playbackEvents = usePlaybackEvents(progress, controls, visibility.handleActivity);
   const display = useSubtitleDisplay(subtitles.data);
@@ -207,20 +117,20 @@ export function PlayerSurface({
             onLoadedData={handleReady}
             onCanPlay={handleReady}
             onWaiting={handleBuffering}
-            onStalled={handleBuffering}
             onSeeking={handleBuffering}
             onPlaying={handlePlayerPlaying}
             onPlay={playbackEvents.handlePlay}
             onLoadedMetadata={playbackEvents.handleLoadedMetadata}
+            onProgress={controls.handleProgress}
             onDurationChange={controls.handleDurationChange}
-            onTimeUpdate={playbackEvents.handleTimeUpdate}
+            onTimeUpdate={handlePlayerTimeUpdate}
             onPause={playbackEvents.handlePause}
             onSeeked={handlePlayerSeeked}
             onEnded={playbackEvents.handleEnded}
             className="h-full w-full bg-black object-contain"
           >
             <track kind="captions" />
-            <SubtitleTracks rel={entry.rel} tracks={subtitles.data} selectedTrack={display.selectedTrack} onCueText={display.handleCueText} />
+            <SubtitleTracks rel={entry.rel} tracks={subtitles.data} selectedTrack={display.selectedTrack} timelineOffset={timelineOffset} onCueText={display.handleCueText} />
           </video>
           <canvas
             ref={frameRef}
@@ -235,6 +145,16 @@ export function PlayerSurface({
             onSurfaceClick={interaction.handleSurfaceClick}
             onCenterPlayback={interaction.handleCenterPlayback}
           />
+          <PlayerDiagnostics
+            buffering={buffering}
+            controlsVisible={controlsVisible}
+            frameVisible={frameVisible}
+            playbackMode={entry.direct ? "direct" : "hls"}
+            videoRef={videoRef}
+          />
+          {controlsVisible && (
+            <PlayerNowPlaying display={episodeDisplay} fallbackTitle={entry.name} />
+          )}
           {display.cueText !== "" && (
             <div
               className="player-subtitle-position pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3"
@@ -246,6 +166,7 @@ export function PlayerSurface({
         </div>
         <div className={controlsVisible ? "absolute inset-x-0 bottom-0 z-30 visible" : "invisible absolute inset-x-0 bottom-0 z-30"}>
           <PlayerControls
+            bufferedUntil={controls.bufferedUntil}
             currentTime={controls.currentTime}
             duration={controls.duration}
             muted={controls.muted}

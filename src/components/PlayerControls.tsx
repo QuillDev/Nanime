@@ -22,6 +22,7 @@ export interface SubtitleAppearance {
 }
 
 interface PlayerControlsProps {
+  readonly bufferedUntil: number;
   readonly currentTime: number;
   readonly duration: number;
   readonly muted: boolean;
@@ -189,6 +190,37 @@ function TimeDisplay({ currentTime, duration }: {
   );
 }
 
+function PlaybackTimeline({
+  bufferedUntil,
+  currentTime,
+  duration,
+  onSeek,
+}: Pick<PlayerControlsProps, "bufferedUntil" | "currentTime" | "duration" | "onSeek">): React.JSX.Element {
+  const safeDuration = Math.max(duration, 0);
+  const safeTime = Math.min(Math.max(currentTime, 0), safeDuration);
+  const safeBufferedUntil = Math.min(Math.max(bufferedUntil, safeTime), safeDuration);
+  const progressMaximum = safeDuration > 0 ? safeDuration : 1;
+  const timeRemaining = Math.max(0, safeDuration - safeTime);
+  const handleSeek = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    onSeek(event.currentTarget.valueAsNumber);
+  }, [onSeek]);
+  return (
+    <div className="relative pt-5 pb-1">
+      {safeDuration > 0 && (
+        <output className="absolute right-0 top-0 text-[11px] tabular-nums text-muted-foreground">
+          -{formatDuration(timeRemaining)}
+        </output>
+      )}
+      <label className="sr-only" htmlFor="player-playback-position">Playback position</label>
+      <span className="relative block h-3">
+        <progress aria-hidden="true" max={progressMaximum} value={safeBufferedUntil} className="player-buffered-range absolute inset-x-0 top-1/2 h-1 w-full -translate-y-1/2" />
+        <progress aria-hidden="true" max={progressMaximum} value={safeTime} className="player-played-range absolute inset-x-0 top-1/2 h-1 w-full -translate-y-1/2" />
+        <input id="player-playback-position" type="range" min={0} max={safeDuration} step={0.1} value={safeTime} onChange={handleSeek} className="player-seek-range absolute inset-0 z-10 h-3 w-full cursor-pointer" />
+      </span>
+    </div>
+  );
+}
+
 function VolumeControl({
   muted,
   volume,
@@ -214,17 +246,11 @@ function VolumeControl({
 export function PlayerControls(props: PlayerControlsProps): React.JSX.Element {
   const safeDuration = Math.max(props.duration, 0);
   const safeTime = Math.min(Math.max(props.currentTime, 0), safeDuration);
-  const { onSeek } = props;
-  const handleSeek = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    onSeek(event.currentTarget.valueAsNumber);
-  }, [onSeek]);
+  const bufferedAhead = Math.max(0, props.bufferedUntil - safeTime);
   return (
     <Collapsible open={props.settingsOpen} asChild>
-    <div className="player-safe-controls relative border-t border-border bg-black px-2 pb-2 pt-1 sm:px-3">
-      <label className="block py-1">
-        <span className="sr-only">Playback position</span>
-        <input type="range" min={0} max={safeDuration} step={0.1} value={safeTime} onChange={handleSeek} className="h-2 w-full cursor-pointer accent-primary" />
-      </label>
+    <div className="player-safe-controls relative px-2 pb-2 sm:px-3">
+      <PlaybackTimeline bufferedUntil={props.bufferedUntil} currentTime={safeTime} duration={safeDuration} onSeek={props.onSeek} />
       <div className="flex items-center gap-1">
         <button type="button" className={controlClass} disabled={!props.previousAvailable} onClick={props.onPrevious} aria-label="Previous episode" title="Previous episode">
           <SkipBack className="size-5" />
@@ -237,6 +263,9 @@ export function PlayerControls(props: PlayerControlsProps): React.JSX.Element {
         <span className="hidden sm:inline">
           <TimeDisplay currentTime={safeTime} duration={safeDuration} />
         </span>
+        <output className="ml-1 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground">
+          {String(Math.round(bufferedAhead))}s buffered
+        </output>
         <span className="flex-1" />
         <VolumeControl muted={props.muted} volume={props.volume} onToggleMuted={props.onToggleMuted} onVolume={props.onVolume} />
         <button type="button" className={controlClass} onClick={props.onToggleSettings} aria-label="Playback settings" title="Playback settings">

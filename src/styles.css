@@ -108,14 +108,31 @@
   }
 
   .player-safe-controls {
+    background: linear-gradient(to top, rgb(0 0 0 / 72%) 0%, rgb(0 0 0 / 45%) 52%, transparent 100%);
     padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
     padding-left: max(0.5rem, env(safe-area-inset-left));
     padding-right: max(0.5rem, env(safe-area-inset-right));
+    padding-top: 4rem;
   }
 
   .player-safe-close {
     right: max(1rem, env(safe-area-inset-right));
     top: max(1rem, env(safe-area-inset-top));
+  }
+
+  .player-surface-interaction,
+  .player-surface-interaction:focus,
+  .player-surface-interaction:focus-visible {
+    -webkit-tap-highlight-color: transparent;
+    box-shadow: none;
+    outline: none;
+  }
+
+  .player-now-playing {
+    background: linear-gradient(to bottom, rgb(0 0 0 / 72%) 0%, rgb(0 0 0 / 45%) 52%, transparent 100%);
+    padding-bottom: 4.5rem;
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-top: max(1rem, env(safe-area-inset-top));
   }
 
   .player-subtitle {
@@ -138,6 +155,22 @@
 
   .player-subtitle-position {
     bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  @keyframes player-diagnostics-reveal {
+    from {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    to {
+      opacity: 1;
+      visibility: visible;
+    }
+  }
+
+  .player-diagnostics-reveal {
+    animation: player-diagnostics-reveal 0s 3s both;
   }
 
   [data-player-controls-visible="true"] .player-subtitle-position {
@@ -365,6 +398,69 @@
 
   .playback-progress::-moz-progress-bar {
     background-color: var(--primary);
+  }
+
+  .player-buffered-range,
+  .player-played-range {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-radius: 9999px;
+    overflow: hidden;
+  }
+
+  .player-buffered-range::-webkit-progress-bar {
+    background-color: var(--muted);
+  }
+
+  .player-buffered-range::-webkit-progress-value {
+    background-color: rgb(255 255 255 / 45%);
+  }
+
+  .player-buffered-range::-moz-progress-bar {
+    background-color: rgb(255 255 255 / 45%);
+  }
+
+  .player-played-range::-webkit-progress-bar {
+    background-color: transparent;
+  }
+
+  .player-played-range::-webkit-progress-value,
+  .player-played-range::-moz-progress-bar {
+    background-color: var(--primary);
+  }
+
+  .player-seek-range {
+    appearance: none;
+    background: transparent;
+  }
+
+  .player-seek-range::-webkit-slider-runnable-track {
+    background: transparent;
+    height: 0.25rem;
+  }
+
+  .player-seek-range::-webkit-slider-thumb {
+    appearance: none;
+    background-color: var(--primary);
+    border: 0;
+    border-radius: 9999px;
+    height: 1rem;
+    margin-top: -0.375rem;
+    width: 1rem;
+  }
+
+  .player-seek-range::-moz-range-track {
+    background: transparent;
+    height: 0.25rem;
+  }
+
+  .player-seek-range::-moz-range-thumb {
+    background-color: var(--primary);
+    border: 0;
+    border-radius: 9999px;
+    height: 1rem;
+    width: 1rem;
   }
 
   .searchable-select-results {
