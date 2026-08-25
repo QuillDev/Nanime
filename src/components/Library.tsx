@@ -24,6 +24,7 @@ import { ShowGrid } from "./ShowGrid.tsx";
 import { ShowPage } from "./ShowPage.tsx";
 import { MoviePage } from "./MoviePage.tsx";
 import { useTorrents } from "../hooks/useTorrents.ts";
+import { UnmappedShowsNotice } from "./UnmappedShowsNotice.tsx";
 
 export { LibrarySkeleton } from "./Skeleton.tsx";
 
@@ -32,6 +33,7 @@ const EMPTY_TORRENTS: readonly TorrentStatus[] = [];
 interface LibraryProps {
   readonly entries: readonly MediaEntry[];
   readonly shows: readonly ShowGroup[];
+  readonly unmappedShows: readonly ShowGroup[];
   readonly metadata: ShowMetadata;
   readonly query: string;
   readonly progress: PlaybackProgressMap;
@@ -84,7 +86,7 @@ function HomePage({
   if (shows.length === 0) {
     return (
       <p className="py-16 text-center text-muted-foreground">
-        No matches for your search.
+        {showContinueWatching ? "No mapped shows available yet." : "No matches for your search."}
       </p>
     );
   }
@@ -214,6 +216,7 @@ function useGroupedShows(options: GroupedShowsOptions): GroupedShows {
 export function Library({
   entries,
   shows: allShows,
+  unmappedShows,
   metadata,
   query,
   progress,
@@ -245,16 +248,19 @@ export function Library({
   return (
     <>
       {selectedShow === null ? (
-        <HomePage
-          entries={entries}
-          shows={shows}
-          metadata={metadata}
-          continueWatching={continueWatching}
-          showContinueWatching={query.trim() === ""}
-          onShowSelect={onShowSelect}
-          onEpisodeSelect={onSelect}
-          downloads={torrents.data ?? EMPTY_TORRENTS}
-        />
+        <>
+          {canManageMappings && <UnmappedShowsNotice shows={unmappedShows} />}
+          <HomePage
+            entries={entries}
+            shows={shows}
+            metadata={metadata}
+            continueWatching={continueWatching}
+            showContinueWatching={query.trim() === ""}
+            onShowSelect={onShowSelect}
+            onEpisodeSelect={onSelect}
+            downloads={torrents.data ?? EMPTY_TORRENTS}
+          />
+        </>
       ) : (
         <SelectedTitle
           show={selectedShow}

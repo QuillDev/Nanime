@@ -10,6 +10,7 @@ import { useShowMetadata } from "./useShowMetadata.ts";
 import {
   groupShows,
   isMovieMedia,
+  partitionShowsByMetadata,
   primaryShowMetadata,
   seasonMetadata,
   seasonNumber,
@@ -20,7 +21,10 @@ import { episodeMetadata, episodeNumber } from "../lib/anilist.ts";
 
 export interface LibraryIndex {
   readonly shows: readonly ShowGroup[];
+  readonly unmappedShows: readonly ShowGroup[];
   readonly metadata: ShowMetadata;
+  readonly metadataPending: boolean;
+  readonly metadataError: Error | null;
   readonly entriesByRel: ReadonlyMap<string, MediaEntry>;
   readonly previousByRel: ReadonlyMap<string, MediaEntry>;
   readonly nextByRel: ReadonlyMap<string, MediaEntry>;
@@ -127,11 +131,17 @@ function indexSeason(options: SeasonTargetOptions): void {
   }
 }
 
-function buildLibraryIndex(
-  entries: readonly MediaEntry[],
-  metadata: ShowMetadata,
-): LibraryIndex {
-  const shows = groupShows(entries, metadata);
+interface LibraryIndexOptions {
+  readonly entries: readonly MediaEntry[];
+  readonly metadata: ShowMetadata;
+  readonly metadataPending: boolean;
+  readonly metadataError: Error | null;
+}
+
+function buildLibraryIndex(options: LibraryIndexOptions): LibraryIndex {
+  const { entries, metadata, metadataPending, metadataError } = options;
+  const allShows = groupShows(entries, metadata);
+  const shows = partitionShowsByMetadata(allShows, metadata);
   const index = {
     entries: new Map<string, MediaEntry>(),
     previous: new Map<string, MediaEntry>(),
@@ -139,12 +149,15 @@ function buildLibraryIndex(
     targets: new Map<string, AniListPlaybackTarget>(),
     displays: new Map<string, EpisodeDisplay>(),
   };
-  for (const show of shows) {
+  for (const show of shows.mapped) {
     indexShow(show, metadata, index);
   }
   return {
-    shows,
+    shows: shows.mapped,
+    unmappedShows: shows.unmapped,
     metadata,
+    metadataPending,
+    metadataError,
     entriesByRel: index.entries,
     previousByRel: index.previous,
     nextByRel: index.next,
@@ -156,6 +169,12 @@ function buildLibraryIndex(
 export function useLibraryIndex(
   entries: readonly MediaEntry[],
 ): LibraryIndex {
-  const metadata = useShowMetadata().data ?? EMPTY_METADATA;
-  return useMemo(() => buildLibraryIndex(entries, metadata), [entries, metadata]);
+  const metadataQuery = useShowMetadata();
+  const metadata = metadataQuery.data ?? EMPTY_METADATA;
+  return useMemo(() => buildLibraryIndex({
+    entries,
+    metadata,
+    metadataPending: metadataQuery.status === "pending",
+    metadataError: metadataQuery.error,
+  }), [entries, metadata, metadataQuery.error, metadataQuery.status]);
 }
