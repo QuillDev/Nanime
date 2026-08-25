@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import { HLS_SEGMENT_SECONDS } from "../../shared/playback.ts";
 
 const CAPTURED_EVENTS = [
   "abort", "canplay", "canplaythrough", "durationchange", "emptied", "ended", "error",
@@ -6,7 +7,7 @@ const CAPTURED_EVENTS = [
   "ratechange", "seeked", "seeking", "stalled", "suspend", "timeupdate", "waiting",
 ] as const;
 export const CAPTURE_WINDOW_MS = 120_000;
-export const SEGMENT_SECONDS = 6;
+export const SEGMENT_SECONDS = HLS_SEGMENT_SECONDS;
 const FRAME_GAP_MS = 120;
 const MAX_RECORDS = 1000;
 const SAMPLE_INTERVAL_MS = 1000;

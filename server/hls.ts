@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { audioTracks, type AudioTrack } from "./audioTracks.ts";
 import { SingleFlight } from "./singleFlight.ts";
+import { HLS_SEGMENT_SECONDS } from "../shared/playback.ts";
 
 export { audioTracksResponse } from "./audioTracks.ts";
 
-const SEGMENT_SECONDS = 6;
 const SESSION_IDLE_MS = 10 * 60 * 1000;
 const PLAYLIST_WAIT_MS = 20 * 1000;
 const cacheRoot = mkdtemp(join(tmpdir(), "nanime-hls-"));
@@ -62,7 +62,7 @@ function sessionKey(options: HlsPlaylistOptions, segmentIndex: number): string {
 function videoArgs(command: TranscodeCommand): readonly string[] {
   const keyframes = [
     "-flags", "+cgop",
-    "-force_key_frames", `expr:gte(t,n_forced*${String(SEGMENT_SECONDS)})`,
+    "-force_key_frames", `expr:gte(t,n_forced*${String(HLS_SEGMENT_SECONDS)})`,
   ];
   if (command.hardwareAcceleration === "vaapi") {
     return [
@@ -108,7 +108,7 @@ export function transcodeArgs(command: TranscodeCommand): readonly string[] {
     "-output_ts_offset", String(command.start),
     "-muxdelay", "0",
     "-f", "hls",
-    "-hls_time", String(SEGMENT_SECONDS),
+    "-hls_time", String(HLS_SEGMENT_SECONDS),
     "-hls_list_size", "0",
     "-hls_playlist_type", "event",
     "-start_number", String(command.segmentIndex),
@@ -159,7 +159,7 @@ async function createSession(
       audioTrack,
       directory,
       segmentIndex,
-      start: segmentIndex * SEGMENT_SECONDS,
+      start: segmentIndex * HLS_SEGMENT_SECONDS,
     }),
   ], { stdout: "ignore", stderr: "pipe" });
   const session: HlsSession = {
@@ -179,9 +179,9 @@ async function createSession(
 }
 
 function activeSession(options: HlsPlaylistOptions): Promise<HlsSession | null> {
-  const maximumStart = Math.max(0, options.duration - SEGMENT_SECONDS);
+  const maximumStart = Math.max(0, options.duration - HLS_SEGMENT_SECONDS);
   const safeStart = Math.min(Math.max(0, options.requestedStart), maximumStart);
-  const segmentIndex = Math.floor(safeStart / SEGMENT_SECONDS);
+  const segmentIndex = Math.floor(safeStart / HLS_SEGMENT_SECONDS);
   const key = sessionKey(options, segmentIndex);
   const existing = sessionsByKey.get(key);
   if (existing !== undefined && existing.error === null) {
