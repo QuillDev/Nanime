@@ -2,6 +2,11 @@ import { useCallback, useRef, useState, type SyntheticEvent } from "react";
 import { hlsUrl, streamUrl } from "../api.ts";
 import type { MediaEntry } from "../types.ts";
 import type { HlsAttachment } from "../lib/hlsPlayback.ts";
+import { HLS_SEGMENT_SECONDS } from "../../shared/playback.ts";
+
+function hlsTimelineOffset(position: number): number {
+  return Math.floor(position / HLS_SEGMENT_SECONDS) * HLS_SEGMENT_SECONDS;
+}
 
 function tryPlay(video: HTMLVideoElement): void {
   void (async (): Promise<void> => {
@@ -74,7 +79,7 @@ function attachSource(options: SourceAttachment): (() => void) | undefined {
     tryPlay(video);
     return undefined;
   }
-  const timelineOffset = Math.floor(resumeAt / 6) * 6;
+  const timelineOffset = hlsTimelineOffset(resumeAt);
   return attachHls({
     video,
     url: hlsUrl(entry.rel, null, resumeAt),
@@ -159,7 +164,7 @@ function restartHls(options: RestartOptions): void {
   if (video === null) {
     return;
   }
-  const timelineOffset = Math.floor(position / 6) * 6;
+  const timelineOffset = hlsTimelineOffset(position);
   const shouldPlay = !video.paused;
   stopSource(source, setError);
   Object.assign(source, { selectedAudio: audioTrack, timelineOffset });
@@ -194,7 +199,7 @@ function usePlaybackErrorHandlers(setError: (error: string | null) => void) {
 export function useVideoSource(entry: MediaEntry, resumeAt: number): VideoSourceState {
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [timelineOffset, setTimelineOffset] = useState(
-    entry.direct ? 0 : Math.floor(resumeAt / 6) * 6,
+    entry.direct ? 0 : hlsTimelineOffset(resumeAt),
   );
   const sourceRef = useRef<MutableSourceState>({
     detach: undefined,

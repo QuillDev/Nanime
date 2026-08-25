@@ -15,6 +15,8 @@ test("builds one continuous HLS transcode from the resume boundary", () => {
 
   expect(args).toContain("hls");
   expect(args).toContain("independent_segments+temp_file");
+  expect(args.slice(args.indexOf("-hls_time"), args.indexOf("-hls_time") + 2))
+    .toEqual(["-hls_time", "2"]);
   expect(args.slice(args.indexOf("-hls_playlist_type"), args.indexOf("-hls_playlist_type") + 2))
     .toEqual(["-hls_playlist_type", "event"]);
   expect(args).toContain("/cache/session/segment-%06d.ts");
