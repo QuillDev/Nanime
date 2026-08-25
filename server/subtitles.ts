@@ -7,6 +7,7 @@ import { jsonObject, type JsonObject } from "./json.ts";
 import { fileSystemErrorCode } from "./fileSystemError.ts";
 
 export { audioTracksResponse, hlsPlaylistResponse, hlsSegmentResponse } from "./hls.ts";
+export { probeDuration } from "./mediaInfo.ts";
 
 export interface SubtitleTrack {
   readonly index: number;

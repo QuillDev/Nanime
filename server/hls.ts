@@ -108,6 +108,7 @@ export function transcodeArgs(command: TranscodeCommand): readonly string[] {
     "-f", "hls",
     "-hls_time", String(SEGMENT_SECONDS),
     "-hls_list_size", "0",
+    "-hls_playlist_type", "event",
     "-start_number", String(command.segmentIndex),
     "-hls_flags", "independent_segments+temp_file",
     "-hls_segment_filename", join(command.directory, "segment-%06d.ts"),

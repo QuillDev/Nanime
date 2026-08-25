@@ -61,6 +61,14 @@ export async function fetchLibrary(signal: AbortSignal): Promise<readonly MediaE
   return unwrap(await api.api.list.get({ fetch: { signal } }), "Library request");
 }
 
+export async function fetchMediaDuration(rel: string, signal: AbortSignal): Promise<number> {
+  const info = unwrap(
+    await api.api["media-info"].get({ query: { path: rel }, fetch: { signal } }),
+    "Media information request",
+  );
+  return info.duration;
+}
+
 export async function fetchSubtitleTracks(
   rel: string,
   signal: AbortSignal,

@@ -185,6 +185,10 @@ export const app = new Elysia({ name: "nanime" })
   .get("/api/list", ({ request, server }) => handle(request, server), {
     response: schema.array(mediaEntrySchema),
   })
+  .get("/api/media-info", ({ request, server }) => handle(request, server), {
+    query: pathQuerySchema,
+    response: schema.object({ duration: schema.number({ minimum: 0 }) }),
+  })
   .get("/api/library/status", ({ request, server }) => handle(request, server), {
     response: libraryStatusSchema,
   })

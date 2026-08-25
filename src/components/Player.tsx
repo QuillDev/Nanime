@@ -30,6 +30,7 @@ interface PlayerProps {
   readonly onNext: () => void;
   readonly onPrevious: () => void;
   readonly anilistTarget: AniListPlaybackTarget | null;
+  readonly knownDuration: number;
 }
 
 export function Player({
@@ -42,6 +43,7 @@ export function Player({
   onNext,
   onPrevious,
   anilistTarget,
+  knownDuration,
 }: PlayerProps): React.JSX.Element {
   const resumeAt = initialProgress?.completed === false &&
     hasMeaningfulPlaybackProgress(initialProgress.position)
@@ -60,7 +62,7 @@ export function Player({
   const progress = usePlayerProgress({
     anilistTarget,
     entry,
-    knownDuration: initialProgress?.duration ?? 0,
+    knownDuration,
     resumeAt,
     timelineOffset,
   });
@@ -91,7 +93,7 @@ export function Player({
             entry={entry}
             episodeDisplay={episodeDisplay}
             timelineOffset={timelineOffset}
-            knownDuration={initialProgress?.duration ?? 0}
+            knownDuration={knownDuration}
             videoRef={videoRef}
             setVideo={setVideo}
             handleVideoError={handleVideoError}
