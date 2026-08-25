@@ -17,6 +17,11 @@ export interface ShowGroup {
   readonly entries: readonly MediaEntry[];
 }
 
+export interface PartitionedShows {
+  readonly mapped: readonly ShowGroup[];
+  readonly unmapped: readonly ShowGroup[];
+}
+
 export function isMovieMedia(media: AniListMedia | undefined): media is AniListMedia {
   return media?.format?.toLocaleUpperCase() === "MOVIE";
 }
@@ -33,6 +38,18 @@ export function primaryShowMetadata(
   return season === undefined
     ? undefined
     : seasonMetadata(metadata, season.sourceShow, season.name);
+}
+
+export function partitionShowsByMetadata(
+  shows: readonly ShowGroup[],
+  metadata: ShowMetadata,
+): PartitionedShows {
+  const mapped: ShowGroup[] = [];
+  const unmapped: ShowGroup[] = [];
+  for (const show of shows) {
+    (primaryShowMetadata(show, metadata) === undefined ? unmapped : mapped).push(show);
+  }
+  return { mapped, unmapped };
 }
 
 const nameCollator = new Intl.Collator(undefined, {

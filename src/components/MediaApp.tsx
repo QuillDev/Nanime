@@ -90,7 +90,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
         onShowSelect={handleShowSelect}
       />
       <main className="mx-auto max-w-7xl px-6 py-6">
-        {library.status === "pending" && (
+        {(library.status === "pending" || library.status === "success" && index.metadataPending) && (
           <LibrarySkeleton />
         )}
         {library.status === "error" && (
@@ -98,10 +98,16 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
             Failed to load library: {library.error.message}
           </p>
         )}
-        {library.status === "success" && (
+        {library.status === "success" && index.metadataError !== null && (
+          <p className="py-16 text-center text-destructive">
+            Failed to load metadata: {index.metadataError.message}
+          </p>
+        )}
+        {library.status === "success" && !index.metadataPending && index.metadataError === null && (
           <Library
             entries={library.data}
             shows={index.shows}
+            unmappedShows={index.unmappedShows}
             metadata={index.metadata}
             query={route.query}
             progress={playbackProgress.data ?? EMPTY_PROGRESS}

@@ -3,6 +3,7 @@ import type { AniListMedia, MediaEntry } from "../types.ts";
 import {
   groupShows,
   isMovieMedia,
+  partitionShowsByMetadata,
   primaryShowMetadata,
   seasonMetadataKey,
   showMetadataKey,
@@ -46,6 +47,14 @@ function media(format: string, date: readonly [number, number, number]): AniList
 test("sorts library shows alphabetically with natural numeric ordering", () => {
   const groups = groupShows([entry("Show 10"), entry("Beta"), entry("Show 2"), entry("Alpha")]);
   expect(groups.map((show) => show.name)).toEqual(["Alpha", "Beta", "Show 2", "Show 10"]);
+});
+
+test("partitions mapped and unmapped local shows without changing their order", () => {
+  const groups = groupShows([entry("Mapped"), entry("Unmapped")]);
+  const metadata = { [showMetadataKey("Mapped")]: media("TV", [2024, 1, 1]) };
+  const partitioned = partitionShowsByMetadata(groups, metadata);
+  expect(partitioned.mapped.map((show) => show.name)).toEqual(["Mapped"]);
+  expect(partitioned.unmapped.map((show) => show.name)).toEqual(["Unmapped"]);
 });
 
 test("recognizes movie formats from either metadata provider casing", () => {
