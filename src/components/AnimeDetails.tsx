@@ -18,12 +18,42 @@ interface AnimeDetailsProps {
   readonly onLink?: (() => void) | undefined;
 }
 
+const YEAR_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  timeZone: "UTC",
+});
+const MONTH_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  timeZone: "UTC",
+});
+const DAY_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+function airDateFormatter(month: number | null, day: number | null): Intl.DateTimeFormat {
+  if (month === null) {
+    return YEAR_FORMATTER;
+  }
+  return day === null ? MONTH_FORMATTER : DAY_FORMATTER;
+}
+
 function MediaFacts({ media }: { readonly media: AniListMedia }): React.JSX.Element {
+  const aired = media.startDate?.year === null || media.startDate === null
+    ? null
+    : airDateFormatter(media.startDate.month, media.startDate.day).format(new Date(
+        `${String(media.startDate.year).padStart(4, "0")}-${String(media.startDate.month ?? 1).padStart(2, "0")}-${String(media.startDate.day ?? 1).padStart(2, "0")}T00:00:00Z`,
+      ));
   const facts = [
-    media.season && media.seasonYear
+    aired ?? (media.season && media.seasonYear
       ? `${media.season.toLowerCase()} ${String(media.seasonYear)}`
-      : null,
-    media.episodes === null ? null : `${String(media.episodes)} episodes`,
+      : null),
+    media.format?.toLocaleUpperCase() === "MOVIE" || media.episodes === null
+      ? null
+      : `${String(media.episodes)} episodes`,
     media.duration === null ? null : `${String(media.duration)} min`,
     media.averageScore === null ? null : `${String(media.averageScore)}% score`,
   ].filter((fact) => fact !== null);

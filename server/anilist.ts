@@ -32,7 +32,7 @@ const MEDIA_FIELDS = `
   title { english romaji native }
   description(asHtml: false)
   coverImage { extraLarge large color }
-  bannerImage episodes duration season seasonYear format status
+  bannerImage episodes duration season seasonYear startDate { year month day } format status
   genres averageScore siteUrl
   streamingEpisodes { title thumbnail site }
 `;
@@ -73,6 +73,23 @@ function nullableNumber(value: unknown): boolean {
   return typeof value === "number" || value === null;
 }
 
+function mediaDate(value: unknown): AnimeMetadata["startDate"] {
+  const date = jsonObject(value);
+  if (
+    date === null ||
+    !nullableNumber(date["year"]) ||
+    !nullableNumber(date["month"]) ||
+    !nullableNumber(date["day"])
+  ) {
+    return null;
+  }
+  return {
+    year: date["year"] as number | null,
+    month: date["month"] as number | null,
+    day: date["day"] as number | null,
+  };
+}
+
 function mediaFromUnknown(value: unknown): AnimeMetadata | null {
   const media = jsonObject(value);
   const title = jsonObject(media?.["title"]);
@@ -102,7 +119,12 @@ function mediaFromUnknown(value: unknown): AnimeMetadata | null {
   } else if (provider === "anilist") {
     anilistId = media["id"] as number;
   }
-  return { ...(value as AnimeMetadata), provider, anilistId };
+  return {
+    ...(value as AnimeMetadata),
+    provider,
+    anilistId,
+    startDate: mediaDate(media["startDate"]),
+  };
 }
 
 function metadataStore(value: unknown): MetadataStore {

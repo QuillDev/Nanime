@@ -8,6 +8,8 @@ import type {
 } from "../types.ts";
 import {
   seasonMetadataKey,
+  isMovieMedia,
+  primaryShowMetadata,
   showMetadataKey,
   type SeasonGroup,
   type ShowGroup,
@@ -20,6 +22,7 @@ import {
 } from "./ContinueWatching.tsx";
 import { ShowGrid } from "./ShowGrid.tsx";
 import { ShowPage } from "./ShowPage.tsx";
+import { MoviePage } from "./MoviePage.tsx";
 import { useTorrents } from "../hooks/useTorrents.ts";
 
 export { LibrarySkeleton } from "./Skeleton.tsx";
@@ -112,6 +115,53 @@ type LinkTarget =
   | { readonly type: "show" }
   | { readonly type: "season"; readonly season: SeasonGroup };
 
+interface SelectedTitleProps {
+  readonly show: ShowGroup;
+  readonly media: AniListMedia | undefined;
+  readonly metadata: ShowMetadata;
+  readonly progress: PlaybackProgressMap;
+  readonly onBack: () => void;
+  readonly onShowLink?: (() => void) | undefined;
+  readonly onSeasonLink?: ((season: SeasonGroup) => void) | undefined;
+  readonly onSelect: (entry: MediaEntry) => void;
+}
+
+function SelectedTitle({
+  show,
+  media,
+  metadata,
+  progress,
+  onBack,
+  onShowLink,
+  onSeasonLink,
+  onSelect,
+}: SelectedTitleProps): React.JSX.Element {
+  if (isMovieMedia(media)) {
+    return (
+      <MoviePage
+        movie={show}
+        media={media}
+        progress={progress}
+        onBack={onBack}
+        onLink={onShowLink}
+        onPlay={onSelect}
+      />
+    );
+  }
+  return (
+    <ShowPage
+      show={show}
+      media={media}
+      metadata={metadata}
+      progress={progress}
+      onBack={onBack}
+      onShowLink={onShowLink}
+      onSeasonLink={onSeasonLink}
+      onEpisodeSelect={onSelect}
+    />
+  );
+}
+
 function useLibraryNavigation() {
   const [linkTarget, setLinkTarget] = useState<LinkTarget | null>(null);
   const handleShowLink = useCallback(() => setLinkTarget({ type: "show" }), []);
@@ -183,7 +233,7 @@ export function Library({
   const continueWatching = useContinueWatchingItems(allShows, metadata, progress);
   const showMedia = selectedShow === null
     ? undefined
-    : metadata[showMetadataKey(selectedShow.name)];
+    : primaryShowMetadata(selectedShow, metadata);
   const displayShowName = showMedia === undefined || selectedShow === null
     ? selectedShow?.name ?? ""
     : displayMediaTitle(showMedia);
@@ -192,7 +242,6 @@ export function Library({
     navigation.linkTarget.season.name !== "Episodes"
     ? `${displayShowName} ${navigation.linkTarget.season.name}`
     : displayShowName;
-
   return (
     <>
       {selectedShow === null ? (
@@ -207,7 +256,7 @@ export function Library({
           downloads={torrents.data ?? EMPTY_TORRENTS}
         />
       ) : (
-        <ShowPage
+        <SelectedTitle
           show={selectedShow}
           media={showMedia}
           metadata={metadata}
@@ -215,7 +264,7 @@ export function Library({
           onBack={onShowsBack}
           onShowLink={canManageMappings ? navigation.handleShowLink : undefined}
           onSeasonLink={canManageMappings ? navigation.handleSeasonLink : undefined}
-          onEpisodeSelect={onSelect}
+          onSelect={onSelect}
         />
       )}
       {canManageMappings && navigation.linkTarget !== null && dialogKey !== null && (

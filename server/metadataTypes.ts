@@ -2,6 +2,12 @@ import type { TvmazeMatch } from "../shared/types.ts";
 
 export type MetadataProvider = "anilist" | "jikan";
 
+export interface MediaDate {
+  readonly year: number | null;
+  readonly month: number | null;
+  readonly day: number | null;
+}
+
 export interface AnimeMetadata {
   readonly provider: MetadataProvider;
   readonly id: number;
@@ -23,6 +29,7 @@ export interface AnimeMetadata {
   readonly duration: number | null;
   readonly season: string | null;
   readonly seasonYear: number | null;
+  readonly startDate: MediaDate | null;
   readonly format: string | null;
   readonly status: string | null;
   readonly genres: readonly string[];

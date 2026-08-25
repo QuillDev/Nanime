@@ -7,7 +7,12 @@ import type {
   ShowMetadata,
 } from "../types.ts";
 import aniListLogoUrl from "../assets/anilist-logo.svg";
-import { seasonMetadata, seasonNumber, type SeasonGroup } from "../lib/library.ts";
+import {
+  isMovieMedia,
+  seasonMetadata,
+  seasonNumber,
+  type SeasonGroup,
+} from "../lib/library.ts";
 import { mediaTitle } from "../lib/anilist.ts";
 import { AniListListControls } from "./AniListListControls.tsx";
 import { EpisodeGrid } from "./EpisodeGrid.tsx";
@@ -44,6 +49,7 @@ function SeasonSection({
   }, [onLink, season]);
   const title = media === undefined ? season.name : mediaTitle(media);
   const number = seasonNumber(season, media);
+  const movie = isMovieMedia(media);
   const providerName = media?.provider === "jikan" ? "MyAnimeList" : "AniList";
 
   return (
@@ -56,7 +62,7 @@ function SeasonSection({
             className="flex min-w-0 flex-1 items-center gap-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="w-7 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              S{String(number)}
+              {movie ? "Film" : `S${String(number)}`}
             </span>
             <span className="min-w-0 flex-1 truncate font-semibold">{title}</span>
           </button>

@@ -134,6 +134,7 @@ interface JikanAnimeFields {
   readonly duration: unknown;
   readonly season: unknown;
   readonly year: unknown;
+  readonly aired: unknown;
   readonly type: unknown;
   readonly status: unknown;
   readonly genres: unknown;
@@ -155,10 +156,28 @@ function animeFields(value: unknown): JikanAnimeFields | null {
     duration: media["duration"],
     season: media["season"],
     year: media["year"],
+    aired: media["aired"],
     type: media["type"],
     status: media["status"],
     genres: media["genres"],
     score: media["score"],
+  };
+}
+
+function mediaDate(value: unknown): AnimeMetadata["startDate"] {
+  const from = nullableText(jsonObject(value)?.["from"]);
+  if (from === null) {
+    return null;
+  }
+  const matched = /^(?<year>\d{4})(?:-(?<month>\d{2})(?:-(?<day>\d{2}))?)?/u.exec(from);
+  if (matched?.groups?.["year"] === undefined) {
+    return null;
+  }
+  const { month, day } = matched.groups;
+  return {
+    year: Number(matched.groups["year"]),
+    month: month === undefined ? null : Number(month),
+    day: day === undefined ? null : Number(day),
   };
 }
 
@@ -204,6 +223,7 @@ function animeFromUnknown(value: unknown): AnimeMetadata | null {
     duration: durationMinutes(media.duration),
     season: nullableText(media.season)?.toUpperCase() ?? null,
     seasonYear: nullableNumber(media.year),
+    startDate: mediaDate(media.aired),
     format: nullableText(media.type),
     status: nullableText(media.status),
     genres: names(media.genres),
