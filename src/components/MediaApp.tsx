@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, type ChangeEvent } from "react";
 import type { AuthUser, MediaEntry } from "../types.ts";
 import type { ShowGroup } from "../lib/library.ts";
-import { useLibrary } from "../hooks/useLibrary.ts";
+import { useLibrary, useMediaDuration } from "../hooks/useLibrary.ts";
 import { usePlaybackProgress } from "../hooks/usePlaybackProgress.ts";
 import {
   closeEpisode,
@@ -68,6 +68,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
   const route = useMediaRoute();
   const index = useLibraryIndex(library.data ?? EMPTY_ENTRIES);
   const navigation = useEpisodeNavigation(index, route.episodeRel);
+  const mediaDuration = useMediaDuration(navigation.selected?.rel ?? null);
   const handleQueryChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     updateSearch(event.target.value);
   }, []);
@@ -120,20 +121,25 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
         )}
       </main>
       {navigation.selected !== null && playbackProgress.status !== "pending" && (
-        <Suspense fallback={PLAYER_LOADING}>
-          <Player
-            key={navigation.selected.rel}
-            entry={navigation.selected}
-            episodeDisplay={navigation.display}
-            anilistTarget={navigation.target}
-            nextAvailable={navigation.next !== null}
-            previousAvailable={navigation.previous !== null}
-            initialProgress={playbackProgress.data?.[navigation.selected.rel]}
-            onClose={closeEpisode}
-            onNext={navigation.handleNext}
-            onPrevious={navigation.handlePrevious}
-          />
-        </Suspense>
+        mediaDuration.status === "pending" ? PLAYER_LOADING : (
+          <Suspense fallback={PLAYER_LOADING}>
+            <Player
+              key={navigation.selected.rel}
+              entry={navigation.selected}
+              episodeDisplay={navigation.display}
+              anilistTarget={navigation.target}
+              nextAvailable={navigation.next !== null}
+              previousAvailable={navigation.previous !== null}
+              initialProgress={playbackProgress.data?.[navigation.selected.rel]}
+              knownDuration={mediaDuration.status === "success"
+                ? mediaDuration.data
+                : playbackProgress.data?.[navigation.selected.rel]?.duration ?? 0}
+              onClose={closeEpisode}
+              onNext={navigation.handleNext}
+              onPrevious={navigation.handlePrevious}
+            />
+          </Suspense>
+        )
       )}
     </div>
   );

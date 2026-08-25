@@ -18,6 +18,7 @@ import {
   audioTracksResponse,
   hlsPlaylistResponse,
   hlsSegmentResponse,
+  probeDuration,
   subtitleResponse,
   subtitleTracksResponse,
 } from "./subtitles.ts";
@@ -67,7 +68,6 @@ const MIME = new Map(Object.entries({
   ".ogv": "video/ogg", ".3gp": "video/3gpp",
 } as const));
 
-const durationCache = new Map<string, number>();
 const thumbnailCache = new Map<string, Promise<ArrayBuffer | null>>();
 let activeThumbnailJobs = 0;
 async function safePath(rel: string | null): Promise<string | null> {
@@ -86,27 +86,6 @@ async function safePath(rel: string | null): Promise<string | null> {
 
 function contentType(abs: string): string {
   return MIME.get(extname(abs).toLowerCase()) ?? "application/octet-stream";
-}
-
-async function probeDuration(abs: string): Promise<number> {
-  const cached = durationCache.get(abs);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const proc = Bun.spawn(
-    [
-      "ffprobe", "-v", "error",
-      "-show_entries", "format=duration",
-      "-of", "default=noprint_wrappers=1:nokey=1",
-      abs,
-    ],
-    { stdout: "pipe", stderr: "ignore" },
-  );
-  const text = await new Response(proc.stdout).text();
-  const duration = Number(text.trim());
-  const seconds = Number.isFinite(duration) && duration > 0 ? duration : 0;
-  durationCache.set(abs, seconds);
-  return seconds;
 }
 
 function streamFile(abs: string, req: Request): Response {
@@ -290,7 +269,7 @@ interface RouteContext {
 }
 
 async function libraryRoute(context: RouteContext): Promise<Response | null> {
-  const { pathname, req, user } = context;
+  const { pathname, url, req, user } = context;
   if (pathname === "/api/list" && req.method === "GET") {
     return Response.json(await listMedia({
       mediaDir: MEDIA_DIR,
@@ -300,6 +279,13 @@ async function libraryRoute(context: RouteContext): Promise<Response | null> {
   }
   if (pathname === "/api/metadata" && req.method === "GET") {
     return metadataResponse();
+  }
+  if (pathname === "/api/media-info" && req.method === "GET") {
+    const abs = await safePath(url.searchParams.get("path"));
+    if (abs === null || !VIDEO_EXTS.has(extname(abs).toLowerCase())) {
+      return new Response("Not found", { status: 404 });
+    }
+    return Response.json({ duration: await probeDuration(abs) });
   }
   if (pathname === "/api/progress" && req.method === "GET") {
     return playbackProgressResponse(user.id);

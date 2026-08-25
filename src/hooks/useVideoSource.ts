@@ -21,9 +21,9 @@ function attachNativeHls(options: HlsAttachment): void {
   }
   video.src = url;
   const handleMetadata = (): void => {
-    if (resumeAt > timelineOffset) {
-      video.currentTime = resumeAt - timelineOffset;
-    }
+    // Native HLS engines default an unfinished playlist to its moving live edge.
+    // Always choose the requested VOD position, including the start of a new episode.
+    video.currentTime = Math.max(0, resumeAt - timelineOffset);
     if (shouldPlay) {
       tryPlay(video);
     }
