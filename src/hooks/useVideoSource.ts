@@ -20,6 +20,9 @@ function attachNativeHls(options: HlsAttachment): void {
     return;
   }
   video.src = url;
+  if (shouldPlay) {
+    tryPlay(video);
+  }
   const handleMetadata = (): void => {
     // Native HLS engines default an unfinished playlist to its moving live edge.
     // Always choose the requested VOD position, including the start of a new episode.

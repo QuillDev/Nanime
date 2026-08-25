@@ -75,6 +75,9 @@ export function attachHls(options: HlsAttachment): (() => void) | undefined {
   bindHlsEvents(hls, options);
   hls.loadSource(options.url);
   hls.attachMedia(options.video);
+  if (options.shouldPlay ?? true) {
+    tryPlay(options.video);
+  }
   return () => {
     hls.destroy();
   };
