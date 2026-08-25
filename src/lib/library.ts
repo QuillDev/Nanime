@@ -35,36 +35,6 @@ export function primaryShowMetadata(
     : seasonMetadata(metadata, season.sourceShow, season.name);
 }
 
-function airDateValue(media: AniListMedia | undefined): number | null {
-  const year = media?.startDate?.year ?? media?.seasonYear;
-  if (year === null || year === undefined) {
-    return null;
-  }
-  const month = media?.startDate?.month ?? 1;
-  const day = media?.startDate?.day ?? 1;
-  return Date.UTC(year, month - 1, day);
-}
-
-export function sortShowsByAirDate(
-  shows: readonly ShowGroup[],
-  metadata: ShowMetadata,
-): readonly ShowGroup[] {
-  return shows.toSorted((a, b) => {
-    const aDate = airDateValue(primaryShowMetadata(a, metadata));
-    const bDate = airDateValue(primaryShowMetadata(b, metadata));
-    if (aDate !== null && bDate !== null && aDate !== bDate) {
-      return bDate - aDate;
-    }
-    if (aDate === null && bDate !== null) {
-      return 1;
-    }
-    if (aDate !== null && bDate === null) {
-      return -1;
-    }
-    return nameCollator.compare(a.name, b.name);
-  });
-}
-
 const nameCollator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: "base",

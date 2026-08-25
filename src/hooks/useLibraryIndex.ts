@@ -13,7 +13,6 @@ import {
   primaryShowMetadata,
   seasonMetadata,
   seasonNumber,
-  sortShowsByAirDate,
   type SeasonGroup,
   type ShowGroup,
 } from "../lib/library.ts";
@@ -132,7 +131,7 @@ function buildLibraryIndex(
   entries: readonly MediaEntry[],
   metadata: ShowMetadata,
 ): LibraryIndex {
-  const shows = sortShowsByAirDate(groupShows(entries, metadata), metadata);
+  const shows = groupShows(entries, metadata);
   const index = {
     entries: new Map<string, MediaEntry>(),
     previous: new Map<string, MediaEntry>(),
