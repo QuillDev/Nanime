@@ -19,6 +19,7 @@ const ANIME = {
   duration: "24 min per ep",
   season: "fall",
   year: 2025,
+  aired: { from: "2025-10-04T00:00:00+00:00" },
   type: "TV",
   status: "Finished Airing",
   genres: [{ name: "Comedy" }],
@@ -55,6 +56,7 @@ test("normalizes Jikan search, details, and episode metadata", async () => {
     expect(result?.anilistId).toBeNull();
     expect(result?.duration).toBe(24);
     expect(result?.averageScore).toBe(82);
+    expect(result?.startDate).toEqual({ year: 2025, month: 10, day: 4 });
     expect(result?.description).toBe("A sample synopsis.");
 
     const linked = await fetchJikanMedia(12_345);

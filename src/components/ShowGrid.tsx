@@ -1,7 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import type { AniListMedia, ShowMetadata, TorrentStatus } from "../types.ts";
-import { showMetadataKey, type ShowGroup } from "../lib/library.ts";
+import {
+  isMovieMedia,
+  primaryShowMetadata,
+  seasonMetadata,
+  type ShowGroup,
+} from "../lib/library.ts";
 import { mediaTitle } from "../lib/anilist.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
 
@@ -10,16 +15,31 @@ interface ShowCardProps {
   readonly media: AniListMedia | undefined;
   readonly onSelect: (show: ShowGroup) => void;
   readonly downloadPercent: number | null;
+  readonly summary: string;
 }
 
 const SHOW_BATCH_SIZE = 120;
 
-function ShowCard({ show, media, onSelect, downloadPercent }: ShowCardProps): React.JSX.Element {
+function ShowCard({
+  show,
+  media,
+  onSelect,
+  downloadPercent,
+  summary,
+}: ShowCardProps): React.JSX.Element {
   const handleClick = useCallback(() => {
     onSelect(show);
   }, [onSelect, show]);
   const [preview] = show.entries;
   const cover = media?.coverImage.large ?? media?.coverImage.extraLarge;
+  const movie = isMovieMedia(media);
+  const movieFacts = [
+    "Movie",
+    media?.startDate?.year ?? media?.seasonYear,
+    media?.duration === null || media?.duration === undefined
+      ? null
+      : `${String(media.duration)} min`,
+  ].filter((fact) => fact !== null);
 
   return (
     <div>
@@ -53,8 +73,7 @@ function ShowCard({ show, media, onSelect, downloadPercent }: ShowCardProps): Re
             {media === undefined ? show.name : mediaTitle(media)}
           </span>
           <span className="mt-1 block truncate text-xs text-muted-foreground">
-            {show.seasons.length} {show.seasons.length === 1 ? "season" : "seasons"} ·{" "}
-            {show.entries.length} {show.entries.length === 1 ? "episode" : "episodes"}
+            {movie ? movieFacts.join(" · ") : summary}
           </span>
         </span>
       </button>
@@ -67,10 +86,6 @@ interface ShowGridProps {
   readonly metadata: ShowMetadata;
   readonly onSelect: (show: ShowGroup) => void;
   readonly downloads: readonly TorrentStatus[];
-}
-
-function showMedia(show: ShowGroup, metadata: ShowMetadata): AniListMedia | undefined {
-  return metadata[showMetadataKey(show.name)];
 }
 
 function showTransitionName(name: string): string {
@@ -141,13 +156,27 @@ function ShowGridItem({ show, metadata, onSelect, downloads }: {
     viewTransitionName: showTransitionName(show.name),
   }), [show.name]);
   const downloadPercent = showDownloadPercent(show, downloads);
+  const movies = show.seasons.filter((season) => (
+    isMovieMedia(seasonMetadata(metadata, season.sourceShow, season.name))
+  ));
+  const seasonCount = show.seasons.length - movies.length;
+  const episodeCount = show.entries.length - movies.reduce(
+    (total, movie) => total + movie.entries.length,
+    0,
+  );
+  const summary = [
+    seasonCount === 0 ? null : `${String(seasonCount)} ${seasonCount === 1 ? "season" : "seasons"}`,
+    episodeCount === 0 ? null : `${String(episodeCount)} ${episodeCount === 1 ? "episode" : "episodes"}`,
+    movies.length === 0 ? null : `${String(movies.length)} ${movies.length === 1 ? "movie" : "movies"}`,
+  ].filter((item) => item !== null).join(" · ");
   return (
     <li style={style}>
       <ShowCard
         show={show}
-        media={showMedia(show, metadata)}
+        media={primaryShowMetadata(show, metadata)}
         onSelect={onSelect}
         downloadPercent={downloadPercent}
+        summary={summary}
       />
     </li>
   );

@@ -5,7 +5,12 @@ import type {
   PlaybackProgressMap,
   ShowMetadata,
 } from "../types.ts";
-import type { SeasonGroup, ShowGroup } from "../lib/library.ts";
+import {
+  isMovieMedia,
+  seasonMetadata,
+  type SeasonGroup,
+  type ShowGroup,
+} from "../lib/library.ts";
 import { AnimeDetails } from "./AnimeDetails.tsx";
 import { SeasonList } from "./SeasonList.tsx";
 
@@ -31,6 +36,15 @@ export function ShowPage({
   onEpisodeSelect,
 }: ShowPageProps): React.JSX.Element {
   const [preview] = show.entries;
+  const movieCount = show.seasons.filter((season) => (
+    isMovieMedia(seasonMetadata(metadata, season.sourceShow, season.name))
+  )).length;
+  const seasonCount = show.seasons.length - movieCount;
+  const sectionTitle = movieCount > 0 ? "Seasons & movies" : "Seasons";
+  const summary = [
+    seasonCount === 0 ? null : `${String(seasonCount)} ${seasonCount === 1 ? "season" : "seasons"}`,
+    movieCount === 0 ? null : `${String(movieCount)} ${movieCount === 1 ? "movie" : "movies"}`,
+  ].filter((item) => item !== null).join(" · ");
   return (
     <section>
       <button
@@ -39,7 +53,7 @@ export function ShowPage({
         className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ArrowLeft className="size-4" />
-        All shows
+        All titles
       </button>
       <div className="grid items-start gap-8 lg:grid-cols-[18rem_minmax(0,1fr)]">
         {preview !== undefined && (
@@ -53,9 +67,9 @@ export function ShowPage({
         <div className="min-w-0">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight">Seasons</h2>
+              <h2 className="text-2xl font-bold tracking-tight">{sectionTitle}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {show.seasons.length} {show.seasons.length === 1 ? "season" : "seasons"}
+                {summary}
               </p>
             </div>
           </div>

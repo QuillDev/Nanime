@@ -62,6 +62,12 @@ interface AniListEpisode {
   readonly site: string;
 }
 
+export interface MediaDate {
+  readonly year: number | null;
+  readonly month: number | null;
+  readonly day: number | null;
+}
+
 export type MetadataProvider = "anilist" | "jikan";
 
 export interface AniListMedia {
@@ -77,6 +83,7 @@ export interface AniListMedia {
   readonly duration: number | null;
   readonly season: string | null;
   readonly seasonYear: number | null;
+  readonly startDate: MediaDate | null;
   readonly format: string | null;
   readonly status: string | null;
   readonly genres: readonly string[];

@@ -4,7 +4,8 @@ import type {
   MediaEntry,
   PlaybackProgressMap,
 } from "../types.ts";
-import { episodeMetadata, episodeNumber } from "../lib/anilist.ts";
+import { episodeMetadata, episodeNumber, mediaTitle } from "../lib/anilist.ts";
+import { isMovieMedia } from "../lib/library.ts";
 import { hasMeaningfulPlaybackProgress, preloadPlayer } from "../lib/playback.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
 
@@ -28,8 +29,12 @@ function EpisodeCard({
   const handleClick = useCallback(() => {
     onSelect(entry);
   }, [entry, onSelect]);
-  const details = episodeMetadata(entry, media, { showMedia, season: seasonNumber });
-  const number = episodeNumber(entry);
+  const movie = isMovieMedia(media);
+  const details = movie
+    ? null
+    : episodeMetadata(entry, media, { showMedia, season: seasonNumber });
+  const number = movie ? null : episodeNumber(entry);
+  const title = movie ? mediaTitle(media) : details?.title ?? entry.name;
   const episodeProgress = progress[entry.rel];
   const showProgress = episodeProgress !== undefined && (
     episodeProgress.completed || hasMeaningfulPlaybackProgress(episodeProgress.position)
@@ -78,7 +83,7 @@ function EpisodeCard({
               </span>
             )}
             <span className="line-clamp-2 font-medium" title={entry.name}>
-              {details?.title ?? entry.name}
+              {title}
             </span>
           </span>
         </span>

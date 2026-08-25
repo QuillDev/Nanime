@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type {
+  AniListMedia,
   AniListPlaybackTarget,
   EpisodeDisplay,
   MediaEntry,
@@ -8,9 +9,11 @@ import type {
 import { useShowMetadata } from "./useShowMetadata.ts";
 import {
   groupShows,
+  isMovieMedia,
+  primaryShowMetadata,
   seasonMetadata,
   seasonNumber,
-  showMetadataKey,
+  sortShowsByAirDate,
   type SeasonGroup,
   type ShowGroup,
 } from "../lib/library.ts";
@@ -79,26 +82,49 @@ interface SeasonTargetOptions {
   readonly displays: Map<string, EpisodeDisplay>;
 }
 
+interface EntryTargetOptions {
+  readonly entry: MediaEntry;
+  readonly media: AniListMedia | undefined;
+  readonly movie: boolean;
+  readonly seasonNumber: number;
+  readonly showMedia: AniListMedia | undefined;
+  readonly targets: Map<string, AniListPlaybackTarget>;
+  readonly displays: Map<string, EpisodeDisplay>;
+}
+
+function indexSeasonEntry(options: EntryTargetOptions): void {
+  const { entry, media, movie, seasonNumber: number, showMedia, targets, displays } = options;
+  const episode = episodeNumber(entry);
+  const details = movie ? undefined : episodeMetadata(entry, media, { showMedia, season: number });
+  displays.set(entry.rel, {
+    number: movie ? null : episode,
+    title: movie && media !== undefined
+      ? media.title.english ?? media.title.romaji
+      : details?.title ?? entry.name.replace(/\.[^.]+$/u, ""),
+  });
+  if (movie && media?.anilistId !== null && media?.anilistId !== undefined) {
+    targets.set(entry.rel, { mediaId: media.anilistId, episode: 1, totalEpisodes: 1 });
+  } else if (episode !== null && media?.anilistId !== null && media?.anilistId !== undefined) {
+    targets.set(entry.rel, { mediaId: media.anilistId, episode, totalEpisodes: media.episodes });
+  }
+}
+
 function indexSeason(options: SeasonTargetOptions): void {
   const { season, show, metadata, targets, displays } = options;
-  const showMedia = metadata[showMetadataKey(show.name)];
+  const showMedia = primaryShowMetadata(show, metadata);
   const media = seasonMetadata(metadata, season.sourceShow, season.name) ??
     showMedia;
   const number = seasonNumber(season, media);
   for (const entry of season.entries) {
-    const episode = episodeNumber(entry);
-    const details = episodeMetadata(entry, media, { showMedia, season: number });
-    displays.set(entry.rel, {
-      number: episode,
-      title: details?.title ?? entry.name.replace(/\.[^.]+$/u, ""),
+    indexSeasonEntry({
+      entry,
+      media,
+      movie: isMovieMedia(media),
+      seasonNumber: number,
+      showMedia,
+      targets,
+      displays,
     });
-    if (episode !== null && media !== undefined && media.anilistId !== null) {
-      targets.set(entry.rel, {
-        mediaId: media.anilistId,
-        episode,
-        totalEpisodes: media.episodes,
-      });
-    }
   }
 }
 
@@ -106,7 +132,7 @@ function buildLibraryIndex(
   entries: readonly MediaEntry[],
   metadata: ShowMetadata,
 ): LibraryIndex {
-  const shows = groupShows(entries, metadata);
+  const shows = sortShowsByAirDate(groupShows(entries, metadata), metadata);
   const index = {
     entries: new Map<string, MediaEntry>(),
     previous: new Map<string, MediaEntry>(),

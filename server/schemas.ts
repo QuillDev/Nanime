@@ -106,6 +106,11 @@ const streamingEpisodeSchema = object({
   thumbnail: nullableString,
   site: string(),
 });
+const mediaDateSchema = object({
+  year: nullableNumber,
+  month: nullableNumber,
+  day: nullableNumber,
+});
 const optionalTvmazeSchema = optional(union([tvmazeMatchSchema, nullValue()]));
 export const aniListMediaSchema = object({
   provider: union([literal("anilist"), literal("jikan")]),
@@ -120,6 +125,7 @@ export const aniListMediaSchema = object({
   duration: nullableNumber,
   season: nullableString,
   seasonYear: nullableNumber,
+  startDate: union([mediaDateSchema, nullValue()]),
   format: nullableString,
   status: nullableString,
   genres: array(string()),
