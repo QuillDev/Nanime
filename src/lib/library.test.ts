@@ -1,12 +1,11 @@
 import { expect, test } from "bun:test";
-import type { AniListMedia, MediaEntry, ShowMetadata } from "../types.ts";
+import type { AniListMedia, MediaEntry } from "../types.ts";
 import {
   groupShows,
   isMovieMedia,
   primaryShowMetadata,
   seasonMetadataKey,
   showMetadataKey,
-  sortShowsByAirDate,
 } from "./library.ts";
 
 function entry(folder: string): MediaEntry {
@@ -44,18 +43,9 @@ function media(format: string, date: readonly [number, number, number]): AniList
   };
 }
 
-test("sorts mapped library titles by newest air date and leaves undated titles last", () => {
-  const groups = groupShows([entry("Undated"), entry("Older"), entry("Newer")]);
-  const metadata: ShowMetadata = {
-    [showMetadataKey("Older")]: media("TV", [2020, 4, 1]),
-    [showMetadataKey("Newer")]: media("TV", [2024, 1, 1]),
-  };
-
-  expect(sortShowsByAirDate(groups, metadata).map((show) => show.name)).toEqual([
-    "Newer",
-    "Older",
-    "Undated",
-  ]);
+test("sorts library shows alphabetically with natural numeric ordering", () => {
+  const groups = groupShows([entry("Show 10"), entry("Beta"), entry("Show 2"), entry("Alpha")]);
+  expect(groups.map((show) => show.name)).toEqual(["Alpha", "Beta", "Show 2", "Show 10"]);
 });
 
 test("recognizes movie formats from either metadata provider casing", () => {
