@@ -7,6 +7,7 @@ import {
   primaryShowMetadata,
   seasonMetadataKey,
   showMetadataKey,
+  sortShowsByMetadataTitle,
 } from "./library.ts";
 
 function entry(folder: string): MediaEntry {
@@ -55,6 +56,24 @@ test("partitions mapped and unmapped local shows without changing their order", 
   const partitioned = partitionShowsByMetadata(groups, metadata);
   expect(partitioned.mapped.map((show) => show.name)).toEqual(["Mapped"]);
   expect(partitioned.unmapped.map((show) => show.name)).toEqual(["Unmapped"]);
+});
+
+test("sorts mapped shows by their displayed provider titles", () => {
+  const groups = groupShows([entry("Alpha Folder"), entry("Zulu Folder")]);
+  const metadata = {
+    [showMetadataKey("Alpha Folder")]: {
+      ...media("TV", [2024, 1, 1]),
+      title: { english: "Zebra", romaji: "Zebra", native: null },
+    },
+    [showMetadataKey("Zulu Folder")]: {
+      ...media("TV", [2025, 1, 1]),
+      title: { english: "Apple", romaji: "Apple", native: null },
+    },
+  };
+  expect(sortShowsByMetadataTitle(groups, metadata).map((show) => show.name)).toEqual([
+    "Zulu Folder",
+    "Alpha Folder",
+  ]);
 });
 
 test("recognizes movie formats from either metadata provider casing", () => {

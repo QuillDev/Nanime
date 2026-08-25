@@ -52,6 +52,19 @@ export function partitionShowsByMetadata(
   return { mapped, unmapped };
 }
 
+export function sortShowsByMetadataTitle(
+  shows: readonly ShowGroup[],
+  metadata: ShowMetadata,
+): readonly ShowGroup[] {
+  return shows.toSorted((left, right) => {
+    const leftMedia = primaryShowMetadata(left, metadata);
+    const rightMedia = primaryShowMetadata(right, metadata);
+    const leftTitle = leftMedia?.title.english ?? leftMedia?.title.romaji ?? left.name;
+    const rightTitle = rightMedia?.title.english ?? rightMedia?.title.romaji ?? right.name;
+    return nameCollator.compare(leftTitle, rightTitle);
+  });
+}
+
 const nameCollator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: "base",

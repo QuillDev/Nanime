@@ -14,6 +14,7 @@ import {
   primaryShowMetadata,
   seasonMetadata,
   seasonNumber,
+  sortShowsByMetadataTitle,
   type SeasonGroup,
   type ShowGroup,
 } from "../lib/library.ts";
@@ -142,6 +143,7 @@ function buildLibraryIndex(options: LibraryIndexOptions): LibraryIndex {
   const { entries, metadata, metadataPending, metadataError } = options;
   const allShows = groupShows(entries, metadata);
   const shows = partitionShowsByMetadata(allShows, metadata);
+  const mappedShows = sortShowsByMetadataTitle(shows.mapped, metadata);
   const index = {
     entries: new Map<string, MediaEntry>(),
     previous: new Map<string, MediaEntry>(),
@@ -149,11 +151,11 @@ function buildLibraryIndex(options: LibraryIndexOptions): LibraryIndex {
     targets: new Map<string, AniListPlaybackTarget>(),
     displays: new Map<string, EpisodeDisplay>(),
   };
-  for (const show of shows.mapped) {
+  for (const show of mappedShows) {
     indexShow(show, metadata, index);
   }
   return {
-    shows: shows.mapped,
+    shows: mappedShows,
     unmappedShows: shows.unmapped,
     metadata,
     metadataPending,
