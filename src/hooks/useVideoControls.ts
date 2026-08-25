@@ -83,7 +83,7 @@ function useVideoState(timelineOffset: number, knownDuration: number) {
     setState((current) => ({ ...current, paused: true }));
   }, []);
   return {
-    state,
+    state: { ...state, duration: Math.max(state.duration, knownDuration) },
     setState,
     handleDurationChange,
     handleTimeUpdate,

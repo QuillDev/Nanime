@@ -10,6 +10,10 @@ export function loadPlayer() {
   return import("./components/Player.tsx");
 }
 
+export function loadHlsPlayback() {
+  return import("./lib/hlsPlayback.ts");
+}
+
 export function loadProfileApp() {
   return import("./components/ProfileApp.tsx");
 }
@@ -33,7 +37,7 @@ export function preloadMediaApp(): void {
 }
 
 export function preloadPlayer(): void {
-  settlePreload(loadPlayer());
+  settlePreload(Promise.all([loadPlayer(), loadHlsPlayback()]));
 }
 
 export function preloadProfileApp(): void {

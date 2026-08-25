@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { audioTracks, type AudioTrack } from "./audioTracks.ts";
+import { SingleFlight } from "./singleFlight.ts";
 
 export { audioTracksResponse } from "./audioTracks.ts";
 
@@ -46,6 +47,7 @@ interface TranscodeCommand extends HlsOptions {
 
 const sessionsById = new Map<string, HlsSession>();
 const sessionsByKey = new Map<string, HlsSession>();
+const pendingSessions = new SingleFlight<string, HlsSession | null>();
 
 function sessionKey(options: HlsPlaylistOptions, segmentIndex: number): string {
   return createHash("sha256").update([
@@ -186,7 +188,7 @@ function activeSession(options: HlsPlaylistOptions): Promise<HlsSession | null> 
     existing.lastAccess = Date.now();
     return Promise.resolve(existing);
   }
-  return createSession(options, segmentIndex, key);
+  return pendingSessions.run(key, () => createSession(options, segmentIndex, key));
 }
 
 async function waitForPlaylist(session: HlsSession): Promise<string | null> {
