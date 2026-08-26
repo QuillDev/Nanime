@@ -15,6 +15,7 @@ export type {
   NyaaSort,
   NyaaSortOrder,
   PlaybackProgress,
+  TrickplayManifest,
   TorrentStatus,
   TranscodePreset,
   TvmazeEpisode,

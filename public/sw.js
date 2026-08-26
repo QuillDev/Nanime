@@ -15,6 +15,7 @@ const UNCACHED_PREFIXES = [
   "/stream",
   "/subtitle",
   "/thumbnail",
+  "/trickplay/",
   "/transcode",
 ];
 

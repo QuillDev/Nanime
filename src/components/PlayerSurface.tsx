@@ -166,6 +166,7 @@ export function PlayerSurface({
         </div>
         <div className={controlsVisible ? "absolute inset-x-0 bottom-0 z-30 visible" : "invisible absolute inset-x-0 bottom-0 z-30"}>
           <PlayerControls
+            mediaPath={entry.rel}
             bufferedUntil={controls.bufferedUntil}
             currentTime={controls.currentTime}
             duration={controls.duration}

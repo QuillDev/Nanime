@@ -181,6 +181,21 @@ export const mediaScanSchema = object({
   audioBytes: number(), subtitleBytes: number(), scannedAt: nullableNumber,
   error: nullableString, updatedAt: number(),
 });
+const trickplayPendingSchema = object({
+  status: union([literal("generating"), literal("unavailable")]),
+});
+const trickplayReadySchema = object({
+  status: literal("ready"),
+  version: string(),
+  interval: number({ minimum: 1 }),
+  width: integer({ minimum: 1 }),
+  height: integer({ minimum: 1 }),
+  columns: integer({ minimum: 1 }),
+  rows: integer({ minimum: 1 }),
+  frameCount: integer({ minimum: 1 }),
+  sheetCount: integer({ minimum: 1 }),
+});
+export const trickplayManifestSchema = union([trickplayReadySchema, trickplayPendingSchema]);
 export const nyaaSearchResultSchema = object({
   id: string(),
   name: string(),

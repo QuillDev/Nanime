@@ -21,6 +21,7 @@ import {
   subtitleTrackSchema,
   transcodeJobSchema,
   torrentStatusSchema,
+  trickplayManifestSchema,
 } from "./schemas.ts";
 
 function requestWithBody(req: Request, body: string | FormData): Request {
@@ -147,6 +148,15 @@ const hlsQuerySchema = schema.object({
   audio: schema.optional(schema.integer({ minimum: 0 })),
   start: schema.optional(schema.number({ minimum: 0 })),
 });
+const trickplaySheetQuerySchema = schema.object({
+  path: schema.string({ minLength: 1 }),
+  version: schema.string({ minLength: 1 }),
+  index: schema.integer({ minimum: 0 }),
+});
+const trickplayFrameQuerySchema = schema.object({
+  path: schema.string({ minLength: 1 }),
+  time: schema.number({ minimum: 0 }),
+});
 const optionalTorrentFileSchema = schema.optional(schema.file());
 const optionalMagnetSchema = schema.optional(schema.string());
 const mediaPathsSchema = schema.array(schema.string(), { minItems: 1, maxItems: 5000 });
@@ -188,6 +198,10 @@ export const app = new Elysia({ name: "nanime" })
   .get("/api/media-info", ({ request, server }) => handle(request, server), {
     query: pathQuerySchema,
     response: schema.object({ duration: schema.number({ minimum: 0 }) }),
+  })
+  .get("/api/trickplay", ({ request, server }) => handle(request, server), {
+    query: pathQuerySchema,
+    response: trickplayManifestSchema,
   })
   .get("/api/library/status", ({ request, server }) => handle(request, server), {
     response: libraryStatusSchema,
@@ -392,6 +406,12 @@ export const app = new Elysia({ name: "nanime" })
   })
   .get("/thumbnail", ({ request, server }) => handle(request, server), {
     query: pathQuerySchema,
+  })
+  .get("/trickplay/sheet", ({ request, server }) => handle(request, server), {
+    query: trickplaySheetQuerySchema,
+  })
+  .get("/trickplay/frame", ({ request, server }) => handle(request, server), {
+    query: trickplayFrameQuerySchema,
   })
   .get("/subtitle", ({ request, server }) => handle(request, server), {
     query: indexedPathQuerySchema,
