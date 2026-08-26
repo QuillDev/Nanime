@@ -14,6 +14,7 @@ import type {
   ProvisionedUser,
   StorageStatus,
   TranscodeJob,
+  TrickplayManifest,
   TranscodePreset,
   TorrentStatus,
 } from "./types.ts";
@@ -38,6 +39,14 @@ export function hlsUrl(
 
 export function thumbnailUrl(rel: string): string {
   return `/thumbnail?path=${encodeURIComponent(rel)}`;
+}
+
+export function trickplaySheetUrl(rel: string, version: string, index: number): string {
+  return `/trickplay/sheet?path=${encodeURIComponent(rel)}&version=${encodeURIComponent(version)}&index=${String(index)}`;
+}
+
+export function trickplayFrameUrl(rel: string, time: number): string {
+  return `/trickplay/frame?path=${encodeURIComponent(rel)}&time=${String(time)}`;
 }
 
 export function subtitleUrl(rel: string, index: number, offset = 0): string {
@@ -67,6 +76,16 @@ export async function fetchMediaDuration(rel: string, signal: AbortSignal): Prom
     "Media information request",
   );
   return info.duration;
+}
+
+export async function fetchTrickplayManifest(
+  rel: string,
+  signal: AbortSignal,
+): Promise<TrickplayManifest> {
+  return unwrap(
+    await api.api.trickplay.get({ query: { path: rel }, fetch: { signal } }),
+    "Trickplay request",
+  );
 }
 
 export async function fetchSubtitleTracks(

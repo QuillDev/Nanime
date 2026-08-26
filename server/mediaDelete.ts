@@ -2,6 +2,7 @@ import { lstat, unlink } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { forgetPlaybackProgress } from "./playback.ts";
 import { detachTorrentsForFiles } from "./torrents.ts";
+import { removeTrickplayCache } from "./trickplay.ts";
 
 const MAX_DELETE_FILES = 5000;
 
@@ -53,6 +54,7 @@ export async function deleteMediaResponse(
     return new Response("Could not safely remove the associated qBittorrent task", { status: 502 });
   }
   await Promise.all(absoluteFiles.map((file) => unlink(file)));
+  await Promise.all(absoluteFiles.map((file) => removeTrickplayCache(file)));
   forgetPlaybackProgress(typedRels);
   return Response.json({ deleted: typedRels.length });
 }

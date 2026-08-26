@@ -14,6 +14,7 @@ import { useCallback, type ChangeEvent, type MouseEvent } from "react";
 import { formatDuration } from "../format.ts";
 import type { AudioTrack, SubtitleTrack } from "../types.ts";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible.tsx";
+import { PlaybackTimeline } from "./PlaybackTimeline.tsx";
 
 type SubtitleSize = "small" | "medium" | "large";
 
@@ -22,6 +23,7 @@ export interface SubtitleAppearance {
 }
 
 interface PlayerControlsProps {
+  readonly mediaPath: string;
   readonly bufferedUntil: number;
   readonly currentTime: number;
   readonly duration: number;
@@ -36,6 +38,8 @@ interface PlayerControlsProps {
   readonly selectedTrack: number | null;
   readonly appearance: SubtitleAppearance;
   readonly settingsOpen: boolean;
+  readonly onTimelineInteractionEnd: () => void;
+  readonly onTimelineInteractionStart: () => void;
   readonly onSeek: (time: number) => void;
   readonly onSeekBy: (seconds: number) => void;
   readonly onVolume: (volume: number) => void;
@@ -190,37 +194,6 @@ function TimeDisplay({ currentTime, duration }: {
   );
 }
 
-function PlaybackTimeline({
-  bufferedUntil,
-  currentTime,
-  duration,
-  onSeek,
-}: Pick<PlayerControlsProps, "bufferedUntil" | "currentTime" | "duration" | "onSeek">): React.JSX.Element {
-  const safeDuration = Math.max(duration, 0);
-  const safeTime = Math.min(Math.max(currentTime, 0), safeDuration);
-  const safeBufferedUntil = Math.min(Math.max(bufferedUntil, safeTime), safeDuration);
-  const progressMaximum = safeDuration > 0 ? safeDuration : 1;
-  const timeRemaining = Math.max(0, safeDuration - safeTime);
-  const handleSeek = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    onSeek(event.currentTarget.valueAsNumber);
-  }, [onSeek]);
-  return (
-    <div className="relative pt-5 pb-1">
-      {safeDuration > 0 && (
-        <output className="absolute right-0 top-0 text-[11px] tabular-nums text-muted-foreground">
-          -{formatDuration(timeRemaining)}
-        </output>
-      )}
-      <label className="sr-only" htmlFor="player-playback-position">Playback position</label>
-      <span className="relative block h-3">
-        <progress aria-hidden="true" max={progressMaximum} value={safeBufferedUntil} className="player-buffered-range absolute inset-x-0 top-1/2 h-1 w-full -translate-y-1/2" />
-        <progress aria-hidden="true" max={progressMaximum} value={safeTime} className="player-played-range absolute inset-x-0 top-1/2 h-1 w-full -translate-y-1/2" />
-        <input id="player-playback-position" type="range" min={0} max={safeDuration} step={0.1} value={safeTime} onChange={handleSeek} className="player-seek-range absolute inset-0 z-10 h-3 w-full cursor-pointer" />
-      </span>
-    </div>
-  );
-}
-
 function VolumeControl({
   muted,
   volume,
@@ -250,7 +223,7 @@ export function PlayerControls(props: PlayerControlsProps): React.JSX.Element {
   return (
     <Collapsible open={props.settingsOpen} asChild>
     <div className="player-safe-controls relative px-2 pb-2 sm:px-3">
-      <PlaybackTimeline bufferedUntil={props.bufferedUntil} currentTime={safeTime} duration={safeDuration} onSeek={props.onSeek} />
+      <PlaybackTimeline bufferedUntil={props.bufferedUntil} currentTime={safeTime} duration={safeDuration} mediaPath={props.mediaPath} onInteractionEnd={props.onTimelineInteractionEnd} onInteractionStart={props.onTimelineInteractionStart} onSeek={props.onSeek} />
       <div className="flex items-center gap-1">
         <button type="button" className={controlClass} disabled={!props.previousAvailable} onClick={props.onPrevious} aria-label="Previous episode" title="Previous episode">
           <SkipBack className="size-5" />

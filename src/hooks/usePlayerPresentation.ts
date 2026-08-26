@@ -49,13 +49,24 @@ function preferredSubtitleIndex(tracks: readonly SubtitleTrack[] | undefined): n
 export function useControlVisibility() {
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const interactionHeldRef = useRef(false);
   const handleActivity = useCallback(() => {
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
     }
     setVisible(true);
-    timerRef.current = setTimeout(() => setVisible(false), 2500);
+    timerRef.current = interactionHeldRef.current
+      ? null
+      : setTimeout(() => setVisible(false), 2500);
   }, []);
+  const handleInteractionStart = useCallback(() => {
+    interactionHeldRef.current = true;
+    handleActivity();
+  }, [handleActivity]);
+  const handleInteractionEnd = useCallback(() => {
+    interactionHeldRef.current = false;
+    handleActivity();
+  }, [handleActivity]);
   const handleHide = useCallback(() => {
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
@@ -68,7 +79,13 @@ export function useControlVisibility() {
       clearTimeout(timerRef.current);
     }
   }, []);
-  return { visible, handleActivity, handleHide };
+  return {
+    visible,
+    handleActivity,
+    handleHide,
+    handleInteractionStart,
+    handleInteractionEnd,
+  };
 }
 
 export function useSubtitleDisplay(tracks: readonly SubtitleTrack[] | undefined) {

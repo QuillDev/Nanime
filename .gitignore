@@ -7,4 +7,5 @@ dist
 .media-metadata.json
 .media-playback.sqlite*
 .nanime.sqlite*
+.nanime-cache
 media

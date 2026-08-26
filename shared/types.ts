@@ -31,6 +31,24 @@ export interface PlaybackProgress {
   readonly dismissedAt: number | null;
 }
 
+export interface TrickplayReady {
+  readonly status: "ready";
+  readonly version: string;
+  readonly interval: number;
+  readonly width: number;
+  readonly height: number;
+  readonly columns: number;
+  readonly rows: number;
+  readonly frameCount: number;
+  readonly sheetCount: number;
+}
+
+export interface TrickplayPending {
+  readonly status: "generating" | "unavailable";
+}
+
+export type TrickplayManifest = TrickplayReady | TrickplayPending;
+
 export interface AuthUser {
   readonly id: number;
   readonly username: string;

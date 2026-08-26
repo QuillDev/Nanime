@@ -18,15 +18,31 @@ interface PlayerProgressOptions {
   readonly knownDuration: number;
   readonly resumeAt: number;
   readonly timelineOffset: number;
+  readonly playbackPosition: (video: HTMLVideoElement) => number;
+}
+
+function useInitialPosition(resumeAt: number, timelineOffset: number) {
+  const initializedRef = useRef(false);
+  return useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    if (initializedRef.current) {
+      return;
+    }
+    initializedRef.current = true;
+    const video = event.currentTarget;
+    const localResumeAt = resumeAt - timelineOffset;
+    if (localResumeAt > 0 && localResumeAt < video.duration) {
+      video.currentTime = localResumeAt;
+    }
+  }, [resumeAt, timelineOffset]);
 }
 
 export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandlers {
-  const { anilistTarget, entry, knownDuration, resumeAt, timelineOffset } = options;
+  const { anilistTarget, entry, knownDuration, playbackPosition, resumeAt, timelineOffset } = options;
   const lastSavedAtRef = useRef<number>(0);
   const { mutate: savePlayback } = useSavePlaybackProgress();
   const saveCurrentProgress = useCallback((video: HTMLVideoElement, completed: boolean) => {
-    const position = video.currentTime + timelineOffset;
-    const duration = Math.max(video.duration + timelineOffset, knownDuration);
+    const position = playbackPosition(video);
+    const duration = Math.max(video.duration + position - video.currentTime, knownDuration);
     if (
       !Number.isFinite(position) ||
       !hasMeaningfulPlaybackProgress(position) ||
@@ -49,14 +65,8 @@ export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandl
         episode: anilistTarget.episode,
         totalEpisodes: anilistTarget.totalEpisodes,
       });
-  }, [anilistTarget, entry.rel, knownDuration, savePlayback, timelineOffset]);
-  const handleLoadedMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    const video = event.currentTarget;
-    const localResumeAt = resumeAt - timelineOffset;
-    if (localResumeAt > 0 && localResumeAt < video.duration) {
-      video.currentTime = localResumeAt;
-    }
-  }, [resumeAt, timelineOffset]);
+  }, [anilistTarget, entry.rel, knownDuration, playbackPosition, savePlayback]);
+  const handleLoadedMetadata = useInitialPosition(resumeAt, timelineOffset);
   const handleTimeUpdate = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     if (Date.now() - lastSavedAtRef.current >= 10_000) {
       saveCurrentProgress(event.currentTarget, false);

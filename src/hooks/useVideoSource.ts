@@ -2,12 +2,13 @@ import { useCallback, useRef, useState, type SyntheticEvent } from "react";
 import { hlsUrl, streamUrl } from "../api.ts";
 import type { MediaEntry } from "../types.ts";
 import type { HlsAttachment } from "../lib/hlsPlayback.ts";
+import { planHlsSeek } from "../lib/mediaTimeline.ts";
+import { videoErrorDetail } from "../lib/videoError.ts";
 import { HLS_SEGMENT_SECONDS } from "../../shared/playback.ts";
 
 function hlsTimelineOffset(position: number): number {
   return Math.floor(position / HLS_SEGMENT_SECONDS) * HLS_SEGMENT_SECONDS;
 }
-
 function tryPlay(video: HTMLVideoElement): void {
   void (async (): Promise<void> => {
     try {
@@ -17,7 +18,6 @@ function tryPlay(video: HTMLVideoElement): void {
     }
   })();
 }
-
 function attachNativeHls(options: HlsAttachment): void {
   const { video, url, onError, resumeAt = 0, shouldPlay = true, timelineOffset = 0 } = options;
   if (video.canPlayType("application/vnd.apple.mpegurl") === "") {
@@ -38,7 +38,6 @@ function attachNativeHls(options: HlsAttachment): void {
   };
   video.addEventListener("loadedmetadata", handleMetadata, { once: true });
 }
-
 function attachHls(options: HlsAttachment): () => void {
   if (options.video.canPlayType("application/vnd.apple.mpegurl") !== "") {
     attachNativeHls(options);
@@ -71,7 +70,6 @@ interface SourceAttachment {
   readonly resumeAt: number;
   readonly onError: (message: string) => void;
 }
-
 function attachSource(options: SourceAttachment): (() => void) | undefined {
   const { video, entry, resumeAt, onError } = options;
   if (entry.direct) {
@@ -89,61 +87,25 @@ function attachSource(options: SourceAttachment): (() => void) | undefined {
   });
 }
 
-function mediaErrorName(code: number): string {
-  switch (code) {
-    case 1: {
-      return "MEDIA_ERR_ABORTED";
-    }
-    case 2: {
-      return "MEDIA_ERR_NETWORK";
-    }
-    case 3: {
-      return "MEDIA_ERR_DECODE";
-    }
-    case 4: {
-      return "MEDIA_ERR_SRC_NOT_SUPPORTED";
-    }
-    default: {
-      return "MEDIA_ERR_UNKNOWN";
-    }
-  }
-}
-
-function videoErrorDetail(video: HTMLVideoElement): string {
-  const { error } = video;
-  const code = error?.code ?? 0;
-  const name = mediaErrorName(code);
-  const message = error?.message.trim() ?? "";
-  return [
-    "Video playback failed.",
-    `MediaError: ${name} (${String(code)})${message === "" ? "" : ` — ${message}`}`,
-    `Network state: ${String(video.networkState)}`,
-    `Ready state: ${String(video.readyState)}`,
-    `Current time: ${String(video.currentTime)}`,
-    `Source: ${video.currentSrc || video.src || "Unavailable"}`,
-    `Browser: ${navigator.userAgent}`,
-    `Time: ${new Date().toISOString()}`,
-  ].join("\n");
-}
-
 interface VideoSourceState {
   readonly playbackError: string | null;
   readonly videoRef: React.RefObject<HTMLVideoElement | null>;
   readonly setVideo: (video: HTMLVideoElement | null) => (() => void) | undefined;
   readonly handleVideoError: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handlePlaying: () => void;
+  readonly handleSourceMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handleAudioTrack: (index: number) => void;
-  readonly handleTimelineSeek: (position: number) => boolean;
+  readonly handleTimelineSeek: (position: number) => void;
+  readonly playbackPosition: (video: HTMLVideoElement) => number;
   readonly timelineOffset: number;
 }
-
 interface MutableSourceState {
   detach: (() => void) | undefined;
   selectedAudio: number | null;
+  pendingPosition: number | null;
   timelineOffset: number;
   video: HTMLVideoElement | null;
 }
-
 interface RestartOptions {
   readonly audioTrack: number | null;
   readonly entry: MediaEntry;
@@ -152,12 +114,13 @@ interface RestartOptions {
   readonly setOffset: (offset: number) => void;
   readonly source: MutableSourceState;
 }
-
+interface TimelineSeekOptions extends Omit<RestartOptions, "audioTrack"> {
+  readonly direct: boolean;
+}
 function stopSource(source: MutableSourceState, setError: (error: string | null) => void): void {
   source.detach?.();
   setError(null);
 }
-
 function restartHls(options: RestartOptions): void {
   const { audioTrack, entry, position, setError, setOffset, source } = options;
   const { video } = source;
@@ -167,7 +130,7 @@ function restartHls(options: RestartOptions): void {
   const timelineOffset = hlsTimelineOffset(position);
   const shouldPlay = !video.paused;
   stopSource(source, setError);
-  Object.assign(source, { selectedAudio: audioTrack, timelineOffset });
+  Object.assign(source, { pendingPosition: position, selectedAudio: audioTrack, timelineOffset });
   setOffset(timelineOffset);
   source.detach = attachHls({
     video,
@@ -178,7 +141,41 @@ function restartHls(options: RestartOptions): void {
     timelineOffset,
   });
 }
-
+function tryLocalHlsSeek(
+  source: MutableSourceState,
+  video: HTMLVideoElement,
+  position: number,
+): boolean {
+  const plan = planHlsSeek(position, source.timelineOffset, video.seekable);
+  if (plan.kind === "restart") {
+    return false;
+  }
+  source.pendingPosition = null;
+  video.currentTime = plan.time;
+  return true;
+}
+function seekTimeline(options: TimelineSeekOptions): void {
+  const { direct, entry, position, setError, setOffset, source } = options;
+  const { video } = source;
+  if (video === null) {
+    return;
+  }
+  if (direct) {
+    video.currentTime = Math.max(0, position);
+    return;
+  }
+  if (tryLocalHlsSeek(source, video, position)) {
+    return;
+  }
+  restartHls({
+    audioTrack: source.selectedAudio,
+    entry,
+    position,
+    setError,
+    setOffset,
+    source,
+  });
+}
 function cleanupSource(
   source: MutableSourceState,
   videoRef: React.RefObject<HTMLVideoElement | null>,
@@ -188,12 +185,31 @@ function cleanupSource(
   Object.assign(source, { detach: undefined, video: null });
 }
 
-function usePlaybackErrorHandlers(setError: (error: string | null) => void) {
+function usePlaybackErrorHandlers(
+  setError: (error: string | null) => void,
+  sourceRef: React.RefObject<MutableSourceState>,
+) {
   const handleVideoError = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     setError(videoErrorDetail(event.currentTarget));
   }, [setError]);
-  const handlePlaying = useCallback(() => setError(null), [setError]);
+  const handlePlaying = useCallback(() => {
+    sourceRef.current.pendingPosition = null;
+    setError(null);
+  }, [setError, sourceRef]);
   return { handleVideoError, handlePlaying };
+}
+
+function useSourceReferences(entry: MediaEntry, resumeAt: number, timelineOffset: number) {
+  const sourceRef = useRef<MutableSourceState>({
+    detach: undefined,
+    selectedAudio: null,
+    pendingPosition: null,
+    timelineOffset,
+    video: null,
+  });
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const initialSourceRef = useRef({ entry, resumeAt });
+  return { sourceRef, videoRef, initialSourceRef };
 }
 
 export function useVideoSource(entry: MediaEntry, resumeAt: number): VideoSourceState {
@@ -201,14 +217,11 @@ export function useVideoSource(entry: MediaEntry, resumeAt: number): VideoSource
   const [timelineOffset, setTimelineOffset] = useState(
     entry.direct ? 0 : hlsTimelineOffset(resumeAt),
   );
-  const sourceRef = useRef<MutableSourceState>({
-    detach: undefined,
-    selectedAudio: null,
+  const { sourceRef, videoRef, initialSourceRef } = useSourceReferences(
+    entry,
+    resumeAt,
     timelineOffset,
-    video: null,
-  });
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const initialSourceRef = useRef({ entry, resumeAt });
+  );
   const setVideo = useCallback(
     (video: HTMLVideoElement | null): (() => void) | undefined => {
       if (video === null) {
@@ -231,9 +244,22 @@ export function useVideoSource(entry: MediaEntry, resumeAt: number): VideoSource
         return undefined;
       }
     },
-    [],
+    [initialSourceRef, sourceRef, videoRef],
   );
-  const { handleVideoError, handlePlaying } = usePlaybackErrorHandlers(setPlaybackError);
+  const { handleVideoError, handlePlaying } = usePlaybackErrorHandlers(
+    setPlaybackError,
+    sourceRef,
+  );
+  const playbackPosition = useCallback((video: HTMLVideoElement): number => (
+    sourceRef.current.pendingPosition ?? video.currentTime + sourceRef.current.timelineOffset
+  ), [sourceRef]);
+  const handleSourceMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    const source = sourceRef.current;
+    if (source.pendingPosition === null) {
+      return;
+    }
+    event.currentTarget.currentTime = Math.max(0, source.pendingPosition - source.timelineOffset);
+  }, [sourceRef]);
   const handleAudioTrack = useCallback((index: number) => {
     const { video } = sourceRef.current;
     if (video === null) {
@@ -242,39 +268,32 @@ export function useVideoSource(entry: MediaEntry, resumeAt: number): VideoSource
     restartHls({
       audioTrack: index,
       entry,
-      position: video.currentTime + sourceRef.current.timelineOffset,
+      position: playbackPosition(video),
       setError: setPlaybackError,
       setOffset: setTimelineOffset,
       source: sourceRef.current,
     });
-  }, [entry]);
-  const handleTimelineSeek = useCallback((position: number): boolean => {
-    const { video } = sourceRef.current;
-    if (entry.direct || video === null) {
-      return false;
-    }
-    const offset = sourceRef.current.timelineOffset;
-    if (position >= offset && position < offset + video.duration) {
-      return false;
-    }
-    restartHls({
-      audioTrack: sourceRef.current.selectedAudio,
+  }, [entry, playbackPosition, sourceRef]);
+  const handleTimelineSeek = useCallback((position: number): void => {
+    seekTimeline({
+      direct: entry.direct,
       entry,
       position,
       setError: setPlaybackError,
       setOffset: setTimelineOffset,
       source: sourceRef.current,
     });
-    return true;
-  }, [entry]);
+  }, [entry, sourceRef]);
   return {
     playbackError,
     videoRef,
     setVideo,
     handleVideoError,
     handlePlaying,
+    handleSourceMetadata,
     handleAudioTrack,
     handleTimelineSeek,
+    playbackPosition,
     timelineOffset,
   };
 }

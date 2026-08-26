@@ -21,6 +21,8 @@ import {
   probeDuration,
   subtitleResponse,
   subtitleTracksResponse,
+  trickplayManifestResponse,
+  trickplayMediaResponse,
 } from "./subtitles.ts";
 import { torrentsResponse } from "./torrents.ts";
 import { mediaAdminResponse } from "./mediaAdmin.ts";
@@ -83,11 +85,9 @@ async function safePath(rel: string | null): Promise<string | null> {
     ? canonical
     : null;
 }
-
 function contentType(abs: string): string {
   return MIME.get(extname(abs).toLowerCase()) ?? "application/octet-stream";
 }
-
 function streamFile(abs: string, req: Request): Response {
   const file = Bun.file(abs);
   const { size } = file;
@@ -219,6 +219,10 @@ async function handleMedia(context: RouteContext): Promise<Response> {
   if (pathname === "/thumbnail") {
     return thumbnailResponse(abs);
   }
+  const trickplay = await trickplayMediaResponse({ abs, pathname, url, duration: () => probeDuration(abs) });
+  if (trickplay !== null) {
+    return trickplay;
+  }
   if (pathname === "/api/subtitles" && req.method === "GET") {
     return subtitleTracksResponse(abs, url.searchParams.get("path") ?? "");
   }
@@ -286,6 +290,13 @@ async function libraryRoute(context: RouteContext): Promise<Response | null> {
       return new Response("Not found", { status: 404 });
     }
     return Response.json({ duration: await probeDuration(abs) });
+  }
+  if (pathname === "/api/trickplay" && req.method === "GET") {
+    const abs = await safePath(url.searchParams.get("path"));
+    if (abs === null || !VIDEO_EXTS.has(extname(abs).toLowerCase())) {
+      return new Response("Not found", { status: 404 });
+    }
+    return trickplayManifestResponse(abs, await probeDuration(abs));
   }
   if (pathname === "/api/progress" && req.method === "GET") {
     return playbackProgressResponse(user.id);
@@ -396,6 +407,8 @@ function mediaRequest(pathname: string, method: string): boolean {
   return (method === "GET" || method === "HEAD") && (
     pathname === "/stream" ||
     pathname === "/thumbnail" ||
+    pathname === "/trickplay/sheet" ||
+    pathname === "/trickplay/frame" ||
     pathname === "/subtitle" ||
     pathname === "/hls/index" ||
     pathname === "/hls/seg"
@@ -428,6 +441,7 @@ function protectedPath(pathname: string): boolean {
   return pathname.startsWith("/api/") ||
     pathname === "/stream" ||
     pathname === "/thumbnail" ||
+    pathname.startsWith("/trickplay/") ||
     pathname === "/subtitle" ||
     pathname.startsWith("/hls/");
 }

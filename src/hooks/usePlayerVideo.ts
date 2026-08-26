@@ -9,8 +9,8 @@ interface PlayerVideoOptions {
   readonly playerRef: RefObject<HTMLDivElement | null>;
   readonly progress: PlaybackHandlers;
   readonly videoRef: RefObject<HTMLVideoElement | null>;
-  readonly timelineOffset: number;
-  readonly onTimelineSeek: (position: number) => boolean;
+  readonly onTimelineSeek: (position: number) => void;
+  readonly playbackPosition: (video: HTMLVideoElement) => number;
 }
 
 export function usePlayerVideo({
@@ -18,17 +18,17 @@ export function usePlayerVideo({
   playerRef,
   progress,
   videoRef,
-  timelineOffset,
   knownDuration,
   onTimelineSeek,
+  playbackPosition,
 }: PlayerVideoOptions) {
   const buffering = useVideoBuffering(videoRef);
   const controls = useVideoControls({
     knownDuration,
     onBeforeSeek: buffering.handleBuffering,
     onTimelineSeek,
+    playbackPosition,
     playerRef,
-    timelineOffset,
     videoRef,
   });
   const handlePlayerPlaying = useCallback(() => {

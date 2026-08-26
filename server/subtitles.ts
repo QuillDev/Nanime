@@ -8,6 +8,7 @@ import { fileSystemErrorCode } from "./fileSystemError.ts";
 
 export { audioTracksResponse, hlsPlaylistResponse, hlsSegmentResponse } from "./hls.ts";
 export { probeDuration } from "./mediaInfo.ts";
+export { trickplayManifestResponse, trickplayMediaResponse } from "./trickplay.ts";
 
 export interface SubtitleTrack {
   readonly index: number;
