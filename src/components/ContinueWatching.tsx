@@ -67,7 +67,7 @@ function ContinueCard({ item, onSelect, onDismiss }: ContinueCardProps): React.J
       <details ref={menuRef} className="absolute right-2 top-2 z-20 open:z-30">
         <summary
           aria-label={`More actions for ${item.episodeTitle}`}
-          className="flex size-9 cursor-pointer list-none items-center justify-center rounded-md border border-border bg-black/90 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
+          className="flex size-9 cursor-pointer list-none items-center justify-center rounded-md text-white/80 drop-shadow-md hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
         >
           <EllipsisVertical className="size-5" />
         </summary>
