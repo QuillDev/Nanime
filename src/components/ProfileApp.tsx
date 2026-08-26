@@ -4,6 +4,7 @@ import { useLogout } from "../hooks/useAuth.ts";
 import type { AuthUser } from "../types.ts";
 import { LinkedAccounts } from "./LinkedAccounts.tsx";
 import { MediaHeader } from "./MediaHeader.tsx";
+import { PlaybackPreferences } from "./PlaybackPreferences.tsx";
 
 export function ProfileApp({ user }: { readonly user: AuthUser }): React.JSX.Element {
   const logout = useLogout();
@@ -31,6 +32,7 @@ export function ProfileApp({ user }: { readonly user: AuthUser }): React.JSX.Ele
         {logout.status === "error" && (
           <p className="mt-4 select-text text-sm text-destructive">{logout.error.message}</p>
         )}
+        <PlaybackPreferences />
         <LinkedAccounts />
       </main>
     </div>
