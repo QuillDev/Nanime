@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import type { TrickplayManifest, TrickplayReady } from "../shared/types.ts";
 
 const THUMBNAIL_WIDTH = 240;
@@ -14,10 +14,7 @@ const INTERVAL_STEP_SECONDS = 5;
 const CACHE_VERSION = 1;
 const GENERATION_RETRY_MS = 5 * 60 * 1000;
 const MAX_LIVE_FRAMES = 100;
-const CACHE_ROOT = resolve(
-  process.env["NANIME_CACHE_DIR"] ?? resolve(import.meta.dir, "..", ".nanime-cache"),
-  "trickplay",
-);
+const CACHE_ROOT = resolve(import.meta.dir, "..", ".nanime-cache", "trickplay");
 
 interface SourceIdentity {
   readonly fingerprint: string;
@@ -63,11 +60,19 @@ export function trickplayPlan(duration: number): TrickplayPlan {
 }
 
 function cacheKey(abs: string): string {
-  return createHash("sha256").update(abs).digest("hex");
+  const key = createHash("sha256").update(abs).digest("hex");
+  if (!/^[\da-f]{64}$/u.test(key)) {
+    throw new Error("Invalid trickplay cache key");
+  }
+  return key;
 }
 
 function cacheDirectory(abs: string): string {
-  return join(CACHE_ROOT, cacheKey(abs));
+  const directory = resolve(CACHE_ROOT, cacheKey(abs));
+  if (!directory.startsWith(`${CACHE_ROOT}${sep}`)) {
+    throw new Error("Invalid trickplay cache path");
+  }
+  return directory;
 }
 
 async function sourceIdentity(abs: string): Promise<SourceIdentity | null> {
