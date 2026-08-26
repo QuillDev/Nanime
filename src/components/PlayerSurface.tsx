@@ -194,6 +194,8 @@ export function PlayerSurface({
             selectedTrack={display.selectedTrack}
             appearance={display.appearance}
             settingsOpen={display.settingsOpen}
+            onTimelineInteractionEnd={visibility.handleInteractionEnd}
+            onTimelineInteractionStart={visibility.handleInteractionStart}
             onSeek={controls.handleSeek}
             onSeekBy={controls.handleSeekBy}
             onVolume={controls.handleVolume}

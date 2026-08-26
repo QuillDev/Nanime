@@ -13,6 +13,8 @@ interface PlaybackTimelineProps {
   readonly currentTime: number;
   readonly duration: number;
   readonly mediaPath: string;
+  readonly onInteractionEnd: () => void;
+  readonly onInteractionStart: () => void;
   readonly onSeek: (time: number) => void;
 }
 
@@ -27,6 +29,20 @@ interface TimelineValues {
   readonly bufferedUntil: number;
   readonly maximum: number;
   readonly timeRemaining: number;
+}
+
+interface PreviewInteractionOptions {
+  readonly duration: number;
+  readonly onInteractionEnd: () => void;
+  readonly onInteractionStart: () => void;
+  readonly onSeek: (time: number) => void;
+}
+
+function useDragPreviewState() {
+  const draggingRef = useRef(false);
+  const [dragging, setDragging] = useState(false);
+  const [preview, setPreview] = useState<PreviewPosition | null>(null);
+  return { draggingRef, dragging, setDragging, preview, setPreview };
 }
 
 function timelineValues(duration: number, currentTime: number, bufferedUntil: number): TimelineValues {
@@ -47,21 +63,21 @@ function previewPosition(event: PointerEvent<HTMLSpanElement>, duration: number)
   return { percent: fraction * 100, time: fraction * duration };
 }
 
-function usePreviewInteractions(duration: number, onSeek: (time: number) => void) {
-  const draggingRef = useRef(false);
-  const [dragging, setDragging] = useState(false);
-  const [preview, setPreview] = useState<PreviewPosition | null>(null);
+function usePreviewInteractions(options: PreviewInteractionOptions) {
+  const { duration, onInteractionEnd, onInteractionStart, onSeek } = options;
+  const { draggingRef, dragging, setDragging, preview, setPreview } = useDragPreviewState();
   const handlePointerMove = useCallback((event: PointerEvent<HTMLSpanElement>) => {
     if (event.pointerType === "mouse" || draggingRef.current) {
       setPreview(previewPosition(event, duration));
     }
-  }, [duration]);
+  }, [draggingRef, duration, setPreview]);
   const handlePointerDown = useCallback((event: PointerEvent<HTMLSpanElement>) => {
     draggingRef.current = true;
     setDragging(true);
+    onInteractionStart();
     event.currentTarget.setPointerCapture(event.pointerId);
     setPreview(previewPosition(event, duration));
-  }, [duration]);
+  }, [draggingRef, duration, onInteractionStart, setDragging, setPreview]);
   const handlePointerUp = useCallback((event: PointerEvent<HTMLSpanElement>) => {
     const target = previewPosition(event, duration);
     draggingRef.current = false;
@@ -75,7 +91,8 @@ function usePreviewInteractions(duration: number, onSeek: (time: number) => void
       setPreview(null);
     }
     onSeek(target.time);
-  }, [duration, onSeek]);
+    onInteractionEnd();
+  }, [draggingRef, duration, onInteractionEnd, onSeek, setDragging, setPreview]);
   const handlePointerCancel = useCallback((event: PointerEvent<HTMLSpanElement>) => {
     draggingRef.current = false;
     setDragging(false);
@@ -83,12 +100,13 @@ function usePreviewInteractions(duration: number, onSeek: (time: number) => void
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     setPreview(null);
-  }, []);
+    onInteractionEnd();
+  }, [draggingRef, onInteractionEnd, setDragging, setPreview]);
   const handlePointerLeave = useCallback(() => {
     if (!draggingRef.current) {
       setPreview(null);
     }
-  }, []);
+  }, [draggingRef, setPreview]);
   const handleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const time = event.currentTarget.valueAsNumber;
     if (draggingRef.current) {
@@ -96,7 +114,7 @@ function usePreviewInteractions(duration: number, onSeek: (time: number) => void
     } else {
       onSeek(time);
     }
-  }, [duration, onSeek]);
+  }, [draggingRef, duration, onSeek, setPreview]);
   return {
     preview,
     dragging,
@@ -114,10 +132,17 @@ export function PlaybackTimeline({
   currentTime,
   duration,
   mediaPath,
+  onInteractionEnd,
+  onInteractionStart,
   onSeek,
 }: PlaybackTimelineProps): React.JSX.Element {
   const values = timelineValues(duration, currentTime, bufferedUntil);
-  const preview = usePreviewInteractions(values.duration, onSeek);
+  const preview = usePreviewInteractions({
+    duration: values.duration,
+    onSeek,
+    onInteractionStart,
+    onInteractionEnd,
+  });
   const displayedTime = preview.dragging && preview.preview !== null
     ? preview.preview.time
     : values.time;

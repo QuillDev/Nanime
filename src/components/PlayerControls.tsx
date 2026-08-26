@@ -38,6 +38,8 @@ interface PlayerControlsProps {
   readonly selectedTrack: number | null;
   readonly appearance: SubtitleAppearance;
   readonly settingsOpen: boolean;
+  readonly onTimelineInteractionEnd: () => void;
+  readonly onTimelineInteractionStart: () => void;
   readonly onSeek: (time: number) => void;
   readonly onSeekBy: (seconds: number) => void;
   readonly onVolume: (volume: number) => void;
@@ -221,7 +223,7 @@ export function PlayerControls(props: PlayerControlsProps): React.JSX.Element {
   return (
     <Collapsible open={props.settingsOpen} asChild>
     <div className="player-safe-controls relative px-2 pb-2 sm:px-3">
-      <PlaybackTimeline bufferedUntil={props.bufferedUntil} currentTime={safeTime} duration={safeDuration} mediaPath={props.mediaPath} onSeek={props.onSeek} />
+      <PlaybackTimeline bufferedUntil={props.bufferedUntil} currentTime={safeTime} duration={safeDuration} mediaPath={props.mediaPath} onInteractionEnd={props.onTimelineInteractionEnd} onInteractionStart={props.onTimelineInteractionStart} onSeek={props.onSeek} />
       <div className="flex items-center gap-1">
         <button type="button" className={controlClass} disabled={!props.previousAvailable} onClick={props.onPrevious} aria-label="Previous episode" title="Previous episode">
           <SkipBack className="size-5" />
