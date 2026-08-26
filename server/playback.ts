@@ -1,8 +1,7 @@
 import { database } from "./database.ts";
 import type { PlaybackProgress } from "../shared/types.ts";
 import type { AniListPlaybackTarget } from "./anilistAccountTypes.ts";
-
-const MINIMUM_PROGRESS_SECONDS = 30;
+import { isPlaybackComplete } from "../shared/playback.ts";
 
 interface PlaybackRow {
   readonly rel: string;
@@ -120,16 +119,11 @@ export async function updatePlaybackProgress(
   }
 
   const position = body.duration > 0 ? Math.min(body.position, body.duration) : body.position;
-  const isMeaningful = position > MINIMUM_PROGRESS_SECONDS;
-  const nearEnd = isMeaningful &&
-    body.duration > 0 &&
-    position >= Math.max(body.duration * 0.9, body.duration - 120);
-  const wasCompleted = getProgress.get(userId, body.rel)?.completed === 1;
   const progress: PlaybackProgress = {
     rel: body.rel,
     position,
     duration: body.duration,
-    completed: wasCompleted || isMeaningful && (body.completed || nearEnd),
+    completed: isPlaybackComplete(position, body.duration, body.completed),
     updatedAt: Date.now(),
     dismissedAt: null,
   };

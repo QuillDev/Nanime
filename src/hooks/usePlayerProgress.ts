@@ -2,6 +2,7 @@ import { useCallback, useRef, type SyntheticEvent } from "react";
 import type { AniListPlaybackTarget, MediaEntry } from "../types.ts";
 import { useSavePlaybackProgress } from "./usePlaybackProgress.ts";
 import { hasMeaningfulPlaybackProgress } from "../lib/playback.ts";
+import { resolvedPlaybackDuration } from "../../shared/playback.ts";
 
 export interface PlaybackHandlers {
   readonly saveCurrentProgress: (video: HTMLVideoElement, completed: boolean) => void;
@@ -42,7 +43,12 @@ export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandl
   const { mutate: savePlayback } = useSavePlaybackProgress();
   const saveCurrentProgress = useCallback((video: HTMLVideoElement, completed: boolean) => {
     const position = playbackPosition(video);
-    const duration = Math.max(video.duration + position - video.currentTime, knownDuration);
+    const duration = resolvedPlaybackDuration({
+      mediaDuration: video.duration,
+      localPosition: video.currentTime,
+      absolutePosition: position,
+      knownDuration,
+    });
     if (
       !Number.isFinite(position) ||
       !hasMeaningfulPlaybackProgress(position) ||
