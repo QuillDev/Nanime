@@ -109,6 +109,13 @@ const playbackUpdateSchema = schema.object({
   totalEpisodes: optionalEpisodeCountSchema,
 });
 const playbackDismissSchema = schema.object({ rel: schema.string({ minLength: 1 }) });
+const playbackWatchedSchema = schema.object({
+  rel: schema.string({ minLength: 1 }),
+  watched: schema.boolean(),
+  anilistMediaId: schema.optional(schema.integer({ minimum: 1 })),
+  episode: schema.optional(schema.integer({ minimum: 1 })),
+  totalEpisodes: optionalEpisodeCountSchema,
+});
 const aniListUpdateSchema = schema.object({
   status: schema.optional(schema.string()),
   progress: schema.optional(schema.integer({ minimum: 0 })),
@@ -233,6 +240,9 @@ export const app = new Elysia({ name: "nanime" })
   .post("/api/progress/dismiss", ({ request, server, body }) => (
     handle(jsonRequest(request, body), server)
   ), { body: playbackDismissSchema, response: playbackProgressSchema })
+  .post("/api/progress/watched", ({ request, server, body }) => (
+    handle(jsonRequest(request, body), server)
+  ), { body: playbackWatchedSchema, response: playbackProgressSchema })
   .get("/api/anilist/search", ({ request, server }) => handle(request, server), {
     query: searchQuerySchema,
     response: schema.array(aniListMediaSchema),

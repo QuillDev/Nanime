@@ -101,6 +101,7 @@ export interface AniListPlaybackTarget {
   readonly mediaId: number;
   readonly episode: number;
   readonly totalEpisodes: number | null;
+  readonly title: string;
 }
 
 export interface EpisodeDisplay {

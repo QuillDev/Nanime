@@ -1,7 +1,10 @@
 import { useCallback, useRef, type SyntheticEvent } from "react";
-import type { AniListPlaybackTarget, MediaEntry } from "../types.ts";
+import type { AniListPlaybackTarget, MediaEntry, PlaybackProgress } from "../types.ts";
 import { useSavePlaybackProgress } from "./usePlaybackProgress.ts";
 import { hasMeaningfulPlaybackProgress } from "../lib/playback.ts";
+import { resolvedPlaybackDuration } from "../../shared/playback.ts";
+import { useSeriesCompletionPrompt } from "../components/SeriesCompletionPrompt.tsx";
+import type { PlaybackProgressUpdate } from "../playbackApi.ts";
 
 export interface PlaybackHandlers {
   readonly saveCurrentProgress: (video: HTMLVideoElement, completed: boolean) => void;
@@ -36,13 +39,33 @@ function useInitialPosition(resumeAt: number, timelineOffset: number) {
   }, [resumeAt, timelineOffset]);
 }
 
+function useProgressSaver(target: AniListPlaybackTarget | null) {
+  const promptedRef = useRef(false);
+  const promptForScore = useSeriesCompletionPrompt();
+  const { mutate } = useSavePlaybackProgress();
+  const notifyCompletion = useCallback((saved: PlaybackProgress) => {
+    if (saved.completed && target !== null && !promptedRef.current) {
+      promptedRef.current = true;
+      promptForScore(target);
+    }
+  }, [promptForScore, target]);
+  return useCallback((update: PlaybackProgressUpdate) => {
+    mutate(update, { onSuccess: notifyCompletion });
+  }, [mutate, notifyCompletion]);
+}
+
 export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandlers {
   const { anilistTarget, entry, knownDuration, playbackPosition, resumeAt, timelineOffset } = options;
   const lastSavedAtRef = useRef<number>(0);
-  const { mutate: savePlayback } = useSavePlaybackProgress();
+  const savePlayback = useProgressSaver(anilistTarget);
   const saveCurrentProgress = useCallback((video: HTMLVideoElement, completed: boolean) => {
     const position = playbackPosition(video);
-    const duration = Math.max(video.duration + position - video.currentTime, knownDuration);
+    const duration = resolvedPlaybackDuration({
+      mediaDuration: video.duration,
+      localPosition: video.currentTime,
+      absolutePosition: position,
+      knownDuration,
+    });
     if (
       !Number.isFinite(position) ||
       !hasMeaningfulPlaybackProgress(position) ||

@@ -1,8 +1,7 @@
 import { database } from "./database.ts";
 import type { PlaybackProgress } from "../shared/types.ts";
 import type { AniListPlaybackTarget } from "./anilistAccountTypes.ts";
-
-const MINIMUM_PROGRESS_SECONDS = 30;
+import { isPlaybackComplete, playbackWatchedState } from "../shared/playback.ts";
 
 interface PlaybackRow {
   readonly rel: string;
@@ -95,6 +94,62 @@ export async function dismissPlaybackProgress(req: Request, userId: number): Pro
     : Response.json(progressFromRow(progress));
 }
 
+export async function setPlaybackWatchedState(
+  req: Request,
+  userId: number,
+  options: PlaybackUpdateOptions,
+): Promise<Response> {
+  const body = (await req.json().catch(() => null)) as {
+    readonly rel?: unknown;
+    readonly watched?: unknown;
+    readonly anilistMediaId?: unknown;
+    readonly episode?: unknown;
+    readonly totalEpisodes?: unknown;
+  } | null;
+  if (
+    body === null ||
+    typeof body.rel !== "string" ||
+    body.rel === "" ||
+    typeof body.watched !== "boolean"
+  ) {
+    return new Response("Invalid watched state", { status: 400 });
+  }
+  if (!(await options.mediaExists(body.rel))) {
+    return new Response("Media not found", { status: 404 });
+  }
+  const existing = getProgress.get(userId, body.rel);
+  const progress = playbackWatchedState({
+    rel: body.rel,
+    watched: body.watched,
+    existing: existing === null ? null : progressFromRow(existing),
+    updatedAt: Date.now(),
+  });
+  upsertProgress.run(
+    userId,
+    progress.rel,
+    progress.position,
+    progress.duration,
+    progress.completed ? 1 : 0,
+    progress.updatedAt,
+  );
+  if (
+    options.sync !== undefined &&
+    Number.isInteger(body.anilistMediaId) && (body.anilistMediaId as number) > 0 &&
+    Number.isInteger(body.episode) && (body.episode as number) > 0 &&
+    (body.totalEpisodes === null ||
+      Number.isInteger(body.totalEpisodes) && (body.totalEpisodes as number) > 0)
+  ) {
+    await options.sync({
+      mediaId: body.anilistMediaId as number,
+      episode: body.episode as number,
+      totalEpisodes: body.totalEpisodes as number | null,
+      completed: body.watched,
+      allowDecrease: true,
+    }).catch(() => undefined);
+  }
+  return Response.json(progress);
+}
+
 function validNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
@@ -120,16 +175,11 @@ export async function updatePlaybackProgress(
   }
 
   const position = body.duration > 0 ? Math.min(body.position, body.duration) : body.position;
-  const isMeaningful = position > MINIMUM_PROGRESS_SECONDS;
-  const nearEnd = isMeaningful &&
-    body.duration > 0 &&
-    position >= Math.max(body.duration * 0.9, body.duration - 120);
-  const wasCompleted = getProgress.get(userId, body.rel)?.completed === 1;
   const progress: PlaybackProgress = {
     rel: body.rel,
     position,
     duration: body.duration,
-    completed: wasCompleted || isMeaningful && (body.completed || nearEnd),
+    completed: isPlaybackComplete(position, body.duration, body.completed),
     updatedAt: Date.now(),
     dismissedAt: null,
   };

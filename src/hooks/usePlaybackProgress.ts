@@ -10,13 +10,34 @@ import {
   dismissPlaybackProgress,
   fetchPlaybackProgress,
   savePlaybackProgress,
+  setPlaybackWatched,
   type PlaybackProgressUpdate,
-} from "../api.ts";
+} from "../playbackApi.ts";
 
 const playbackProgressKey = ["playback-progress"] as const;
 
 interface DismissContext {
   readonly previous: PlaybackProgressMap | undefined;
+}
+
+interface WatchedUpdate {
+  readonly rel: string;
+  readonly watched: boolean;
+  readonly anilistMediaId?: number;
+  readonly episode?: number;
+  readonly totalEpisodes?: number | null;
+}
+
+function aniListWatchedUpdate(update: WatchedUpdate) {
+  if (update.anilistMediaId === undefined || update.episode === undefined ||
+    update.totalEpisodes === undefined) {
+    return undefined;
+  }
+  return {
+    anilistMediaId: update.anilistMediaId,
+    episode: update.episode,
+    totalEpisodes: update.totalEpisodes,
+  };
 }
 
 function toProgressMap(progress: readonly PlaybackProgress[]): PlaybackProgressMap {
@@ -82,6 +103,49 @@ export function useDismissPlaybackProgress(): UseMutationResult<
       return { previous };
     },
     onError: (_error, _rel, context) => {
+      queryClient.setQueryData(playbackProgressKey, context?.previous);
+    },
+    onSuccess: (saved) => {
+      queryClient.setQueryData<PlaybackProgressMap>(playbackProgressKey, (current) => ({
+        ...current,
+        [saved.rel]: saved,
+      }));
+    },
+  });
+}
+
+export function useSetPlaybackWatched(): UseMutationResult<
+  PlaybackProgress,
+  Error,
+  WatchedUpdate,
+  DismissContext
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (update) => setPlaybackWatched(
+      update.rel,
+      update.watched,
+      aniListWatchedUpdate(update),
+    ),
+    onMutate: async ({ rel, watched }) => {
+      await queryClient.cancelQueries({ queryKey: playbackProgressKey });
+      const previous = queryClient.getQueryData<PlaybackProgressMap>(playbackProgressKey);
+      const existing = previous?.[rel];
+      const optimistic: PlaybackProgress = {
+        rel,
+        position: watched ? existing?.position ?? 0 : 0,
+        duration: existing?.duration ?? 0,
+        completed: watched,
+        updatedAt: Date.now(),
+        dismissedAt: null,
+      };
+      queryClient.setQueryData<PlaybackProgressMap>(playbackProgressKey, (current) => ({
+        ...current,
+        [rel]: optimistic,
+      }));
+      return { previous };
+    },
+    onError: (_error, _update, context) => {
       queryClient.setQueryData(playbackProgressKey, context?.previous);
     },
     onSuccess: (saved) => {

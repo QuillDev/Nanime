@@ -13,7 +13,7 @@ import {
   startMetadataRefreshResponse,
   updateMetadataAniListIdResponse,
 } from "./anilist.ts";
-import { dismissPlaybackProgress, playbackProgressResponse, updatePlaybackProgress } from "./playback.ts";
+import { dismissPlaybackProgress, playbackProgressResponse, setPlaybackWatchedState, updatePlaybackProgress } from "./playback.ts";
 import {
   audioTracksResponse,
   hlsPlaylistResponse,
@@ -44,9 +44,7 @@ import {
   type AuthUser,
 } from "./security.ts";
 
-const MEDIA_DIR = resolve(
-  Bun.env["MEDIA_DIR"] ?? resolve(import.meta.dir, "..", "media"),
-);
+const MEDIA_DIR = resolve(Bun.env["MEDIA_DIR"] ?? resolve(import.meta.dir, "..", "media"));
 const DIST_DIR = resolve(import.meta.dir, "..", "dist");
 const PORT = Number(process.env["PORT"] ?? "8096");
 const HOST = process.env["HOST"] ?? "127.0.0.1";
@@ -84,6 +82,10 @@ async function safePath(rel: string | null): Promise<string | null> {
   return canonical !== null && canonical !== MEDIA_ROOT && canonical.startsWith(MEDIA_ROOT + sep)
     ? canonical
     : null;
+}
+async function mediaExists(rel: string): Promise<boolean> {
+  const abs = await safePath(rel);
+  return abs !== null && await Bun.file(abs).exists();
 }
 function contentType(abs: string): string {
   return MIME.get(extname(abs).toLowerCase()) ?? "application/octet-stream";
@@ -306,16 +308,18 @@ async function libraryRoute(context: RouteContext): Promise<Response | null> {
       req,
       user.id,
       {
-        mediaExists: async (rel): Promise<boolean> => {
-          const abs = await safePath(rel);
-          return abs !== null && await Bun.file(abs).exists();
-        },
+        mediaExists,
         sync: (target) => syncAniListPlayback(user.id, target),
       },
     );
   }
   if (pathname === "/api/progress/dismiss" && req.method === "POST") {
     return dismissPlaybackProgress(req, user.id);
+  }
+  if (pathname === "/api/progress/watched" && req.method === "POST") {
+    return setPlaybackWatchedState(req, user.id, {
+      mediaExists, sync: (target) => syncAniListPlayback(user.id, target),
+    });
   }
   return null;
 }
@@ -491,10 +495,6 @@ export async function handle(req: Request, server: Server<undefined> | null): Pr
   }
   return securityHeaders(response);
 }
-
 export const serverOptions = {
-  port: PORT,
-  hostname: HOST,
-  idleTimeout: 0,
-  maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
+  port: PORT, hostname: HOST, idleTimeout: 0, maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
 } as const;

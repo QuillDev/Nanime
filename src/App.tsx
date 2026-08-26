@@ -13,6 +13,7 @@ import {
   loadProfileApp,
 } from "./routeModules.ts";
 import { AppShellSkeleton, SessionSkeleton } from "./components/Skeleton.tsx";
+import { SeriesCompletionProvider } from "./components/SeriesCompletionPrompt.tsx";
 
 const AdminApp = lazy(async () => {
   const module = await loadAdminApp();
@@ -62,7 +63,9 @@ export function App(): React.JSX.Element {
   }
   return (
     <Suspense fallback={ROUTE_LOADING}>
-      {authenticatedView(currentUser.data, route)}
+      <SeriesCompletionProvider>
+        {authenticatedView(currentUser.data, route)}
+      </SeriesCompletionProvider>
     </Suspense>
   );
 }

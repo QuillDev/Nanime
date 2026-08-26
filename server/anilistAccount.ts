@@ -458,7 +458,6 @@ export async function aniListEntryResponse(req: Request, url: URL, user: AuthUse
   upsertSyncProgress.run(user.id, mediaId, result.progress, result.status, Date.now());
   return Response.json(result);
 }
-
 export async function syncAniListPlayback(userId: number, target: AniListPlaybackTarget): Promise<void> {
   if (!Number.isInteger(target.mediaId) || !Number.isInteger(target.episode) || target.episode <= 0) {
     return;
@@ -480,15 +479,22 @@ export async function syncAniListPlayback(userId: number, target: AniListPlaybac
       upsertSyncProgress.run(userId, target.mediaId, remote.progress, remote.status, Date.now());
     }
   }
+  if (target.allowDecrease === true && !target.completed) {
+    if (previous === null || previous.progress !== target.episode) {
+      return;
+    }
+    const result = await saveListEntry(account.token, target.mediaId,
+      { progress: desiredProgress, status: "CURRENT" });
+    upsertSyncProgress.run(userId, target.mediaId, result.progress, result.status, Date.now());
+    return;
+  }
   const progress = Math.max(previous?.progress ?? 0, desiredProgress);
   if (previous !== null && previous.progress >= desiredProgress && (
     previous.status === "COMPLETED" || previous.status === desiredStatus
   )) {
     return;
   }
-  const result = await saveListEntry(account.token, target.mediaId, {
-    progress,
-    status: previous?.status === "COMPLETED" ? "COMPLETED" : desiredStatus,
-  });
+  const status = previous?.status === "COMPLETED" ? "COMPLETED" : desiredStatus;
+  const result = await saveListEntry(account.token, target.mediaId, { progress, status });
   upsertSyncProgress.run(userId, target.mediaId, result.progress, result.status, Date.now());
 }

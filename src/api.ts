@@ -9,7 +9,6 @@ import type {
   AuthUser,
   MediaEntry,
   MediaScan,
-  PlaybackProgress,
   SubtitleTrack,
   ProvisionedUser,
   StorageStatus,
@@ -95,38 +94,6 @@ export async function fetchSubtitleTracks(
   return unwrap(
     await api.api.subtitles.get({ query: { path: rel }, fetch: { signal } }),
     "Subtitle tracks request",
-  );
-}
-
-export async function fetchPlaybackProgress(
-  signal: AbortSignal,
-): Promise<readonly PlaybackProgress[]> {
-  return unwrap(
-    await api.api.progress.get({ fetch: { signal } }),
-    "Playback progress request",
-  );
-}
-
-export interface PlaybackProgressUpdate {
-  readonly rel: string;
-  readonly position: number;
-  readonly duration: number;
-  readonly completed: boolean;
-  readonly anilistMediaId?: number;
-  readonly episode?: number;
-  readonly totalEpisodes?: number | null;
-}
-
-export async function savePlaybackProgress(
-  update: PlaybackProgressUpdate,
-): Promise<PlaybackProgress> {
-  return unwrap(await api.api.progress.put(update), "Saving playback progress");
-}
-
-export async function dismissPlaybackProgress(rel: string): Promise<PlaybackProgress> {
-  return unwrap(
-    await api.api.progress.dismiss.post({ rel }),
-    "Dismissing Continue Watching item",
   );
 }
 

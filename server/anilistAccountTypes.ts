@@ -61,6 +61,7 @@ export interface AniListPlaybackTarget {
   readonly episode: number;
   readonly totalEpisodes: number | null;
   readonly completed: boolean;
+  readonly allowDecrease?: boolean;
 }
 
 export interface ListUpdate {
