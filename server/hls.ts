@@ -45,6 +45,11 @@ interface TranscodeCommand extends HlsOptions {
   readonly start: number;
 }
 
+interface HlsSessionPlan {
+  readonly segmentIndex: number;
+  readonly start: number;
+}
+
 const sessionsById = new Map<string, HlsSession>();
 const sessionsByKey = new Map<string, HlsSession>();
 const pendingSessions = new SingleFlight<string, HlsSession | null>();
@@ -57,6 +62,15 @@ function sessionKey(options: HlsPlaylistOptions, segmentIndex: number): string {
     String(segmentIndex),
     options.hardwareAcceleration,
   ].join("\0")).digest("hex");
+}
+
+export function hlsSessionPlan(duration: number, requestedStart: number): HlsSessionPlan {
+  const safeDuration = Number.isFinite(duration) ? Math.max(0, duration) : 0;
+  const maximumStart = Math.max(0, safeDuration - HLS_SEGMENT_SECONDS);
+  const requested = Number.isFinite(requestedStart) ? requestedStart : 0;
+  const safeStart = Math.min(Math.max(0, requested), maximumStart);
+  const segmentIndex = Math.floor(safeStart / HLS_SEGMENT_SECONDS);
+  return { segmentIndex, start: segmentIndex * HLS_SEGMENT_SECONDS };
 }
 
 function videoArgs(command: TranscodeCommand): readonly string[] {
@@ -179,9 +193,7 @@ async function createSession(
 }
 
 function activeSession(options: HlsPlaylistOptions): Promise<HlsSession | null> {
-  const maximumStart = Math.max(0, options.duration - HLS_SEGMENT_SECONDS);
-  const safeStart = Math.min(Math.max(0, options.requestedStart), maximumStart);
-  const segmentIndex = Math.floor(safeStart / HLS_SEGMENT_SECONDS);
+  const { segmentIndex } = hlsSessionPlan(options.duration, options.requestedStart);
   const key = sessionKey(options, segmentIndex);
   const existing = sessionsByKey.get(key);
   if (existing !== undefined && existing.error === null) {
@@ -234,7 +246,7 @@ export async function hlsPlaylistResponse(options: HlsPlaylistOptions): Promise<
   });
 }
 
-function safeSegmentName(value: string | null): value is string {
+export function safeSegmentName(value: string | null): value is string {
   return value !== null && /^segment-\d{6}\.ts$/u.test(value);
 }
 

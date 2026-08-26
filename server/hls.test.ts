@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { rewritePlaylist, transcodeArgs } from "./hls.ts";
+import {
+  hlsSessionPlan,
+  rewritePlaylist,
+  safeSegmentName,
+  transcodeArgs,
+} from "./hls.ts";
 
 test("builds one continuous HLS transcode from the resume boundary", () => {
   const args = transcodeArgs({
@@ -53,5 +58,30 @@ test("routes generated playlist segments through the authenticated session", () 
 
   expect(rewritePlaylist(playlist, "session id")).toContain(
     "/hls/seg?session=session%20id&name=segment-000061.ts",
+  );
+});
+
+test("aligns requested HLS starts to safe segment boundaries", () => {
+  expect(hlsSessionPlan(1420, 367)).toEqual({ segmentIndex: 183, start: 366 });
+  expect(hlsSessionPlan(1420, -20)).toEqual({ segmentIndex: 0, start: 0 });
+  expect(hlsSessionPlan(1420, 9000)).toEqual({ segmentIndex: 709, start: 1418 });
+  expect(hlsSessionPlan(1, 1)).toEqual({ segmentIndex: 0, start: 0 });
+  expect(hlsSessionPlan(Number.NaN, Number.POSITIVE_INFINITY))
+    .toEqual({ segmentIndex: 0, start: 0 });
+});
+
+test("only accepts generated segment basenames", () => {
+  expect(safeSegmentName("segment-000061.ts")).toBe(true);
+  expect(safeSegmentName("segment-61.ts")).toBe(false);
+  expect(safeSegmentName("../segment-000061.ts")).toBe(false);
+  expect(safeSegmentName("segment-000061.ts/../../secret")).toBe(false);
+  expect(safeSegmentName(null)).toBe(false);
+});
+
+test("rewrites segment paths without trusting playlist directories", () => {
+  const playlist = "#EXTM3U\n/tmp/private/segment-000061.ts\n";
+
+  expect(rewritePlaylist(playlist, "session/unsafe")).toBe(
+    "#EXTM3U\n/hls/seg?session=session%2Funsafe&name=segment-000061.ts\n",
   );
 });

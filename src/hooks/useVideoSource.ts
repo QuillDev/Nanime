@@ -2,13 +2,15 @@ import { useCallback, useRef, useState, type SyntheticEvent } from "react";
 import { hlsUrl, streamUrl } from "../api.ts";
 import type { MediaEntry } from "../types.ts";
 import type { HlsAttachment } from "../lib/hlsPlayback.ts";
-import { planHlsSeek } from "../lib/mediaTimeline.ts";
+import {
+  absolutePlaybackPosition,
+  hlsTimelineOffset,
+  planHlsSeek,
+  sourceMetadataPosition,
+} from "../lib/mediaTimeline.ts";
 import { videoErrorDetail } from "../lib/videoError.ts";
-import { HLS_SEGMENT_SECONDS } from "../../shared/playback.ts";
+import { attachNativeHls } from "../lib/nativeHlsPlayback.ts";
 
-function hlsTimelineOffset(position: number): number {
-  return Math.floor(position / HLS_SEGMENT_SECONDS) * HLS_SEGMENT_SECONDS;
-}
 function tryPlay(video: HTMLVideoElement): void {
   void (async (): Promise<void> => {
     try {
@@ -17,26 +19,6 @@ function tryPlay(video: HTMLVideoElement): void {
       // Autoplay may be blocked by the browser; the user can press play.
     }
   })();
-}
-function attachNativeHls(options: HlsAttachment): void {
-  const { video, url, onError, resumeAt = 0, shouldPlay = true, timelineOffset = 0 } = options;
-  if (video.canPlayType("application/vnd.apple.mpegurl") === "") {
-    onError("This browser does not support HLS video playback.");
-    return;
-  }
-  video.src = url;
-  if (shouldPlay) {
-    tryPlay(video);
-  }
-  const handleMetadata = (): void => {
-    // Native HLS engines default an unfinished playlist to its moving live edge.
-    // Always choose the requested VOD position, including the start of a new episode.
-    video.currentTime = Math.max(0, resumeAt - timelineOffset);
-    if (shouldPlay) {
-      tryPlay(video);
-    }
-  };
-  video.addEventListener("loadedmetadata", handleMetadata, { once: true });
 }
 function attachHls(options: HlsAttachment): () => void {
   if (options.video.canPlayType("application/vnd.apple.mpegurl") !== "") {
@@ -251,14 +233,21 @@ export function useVideoSource(entry: MediaEntry, resumeAt: number): VideoSource
     sourceRef,
   );
   const playbackPosition = useCallback((video: HTMLVideoElement): number => (
-    sourceRef.current.pendingPosition ?? video.currentTime + sourceRef.current.timelineOffset
+    absolutePlaybackPosition(
+      video.currentTime,
+      sourceRef.current.timelineOffset,
+      sourceRef.current.pendingPosition,
+    )
   ), [sourceRef]);
   const handleSourceMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     const source = sourceRef.current;
     if (source.pendingPosition === null) {
       return;
     }
-    event.currentTarget.currentTime = Math.max(0, source.pendingPosition - source.timelineOffset);
+    const position = sourceMetadataPosition(source.pendingPosition, source.timelineOffset);
+    if (position !== null) {
+      event.currentTarget.currentTime = position;
+    }
   }, [sourceRef]);
   const handleAudioTrack = useCallback((index: number) => {
     const { video } = sourceRef.current;

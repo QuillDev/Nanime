@@ -6,6 +6,7 @@ import {
   type SyntheticEvent,
 } from "react";
 import { usePlayerFullscreen } from "./usePlayerFullscreen.ts";
+import { absoluteBufferedEnd, boundedSeekPosition } from "../lib/mediaTimeline.ts";
 
 interface VideoControlState {
   readonly bufferedUntil: number;
@@ -42,18 +43,6 @@ function finiteDuration(video: HTMLVideoElement): number {
   return Number.isFinite(video.duration) ? video.duration : 0;
 }
 
-function bufferedUntil(video: HTMLVideoElement, position: number): number {
-  const { buffered, currentTime } = video;
-  const timelineOffset = position - currentTime;
-  let index = 0;
-  while (index < buffered.length) {
-    if (buffered.start(index) <= currentTime && buffered.end(index) >= currentTime) {
-      return buffered.end(index) + timelineOffset;
-    }
-    index += 1;
-  }
-  return currentTime + timelineOffset;
-}
 function useVideoState(
   playbackPosition: (video: HTMLVideoElement) => number,
   knownDuration: number,
@@ -64,7 +53,7 @@ function useVideoState(
     const position = playbackPosition(video);
     setState((current) => ({
       ...current,
-      bufferedUntil: bufferedUntil(video, position),
+      bufferedUntil: absoluteBufferedEnd(video.buffered, video.currentTime, position),
       currentTime: position,
       duration: Math.max(finiteDuration(video) + position - video.currentTime, knownDuration),
     }));
@@ -74,14 +63,17 @@ function useVideoState(
     const position = playbackPosition(video);
     setState((current) => ({
       ...current,
-      bufferedUntil: bufferedUntil(video, position),
+      bufferedUntil: absoluteBufferedEnd(video.buffered, video.currentTime, position),
       currentTime: position,
     }));
   }, [playbackPosition]);
   const handleProgress = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     const video = event.currentTarget;
     const position = playbackPosition(video);
-    setState((current) => ({ ...current, bufferedUntil: bufferedUntil(video, position) }));
+    setState((current) => ({
+      ...current,
+      bufferedUntil: absoluteBufferedEnd(video.buffered, video.currentTime, position),
+    }));
   }, [playbackPosition]);
   const handlePlay = useCallback(() => {
     setState((current) => ({ ...current, paused: false }));
@@ -169,8 +161,11 @@ export function useVideoControls(options: VideoControlsOptions): VideoControls {
   const handleSeekBy = useCallback((seconds: number) => {
     const video = videoRef.current;
     if (video !== null) {
-      const requestedTime = Math.max(playbackPosition(video) + seconds, 0);
-      handleSeek(Math.min(requestedTime, playback.state.duration));
+      handleSeek(boundedSeekPosition(
+        playbackPosition(video),
+        seconds,
+        playback.state.duration,
+      ));
     }
   }, [handleSeek, playback.state.duration, playbackPosition, videoRef]);
   useKeyboardSeeking(handleSeekBy);
