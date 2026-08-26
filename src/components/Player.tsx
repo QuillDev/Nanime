@@ -55,9 +55,11 @@ export function Player({
     setVideo,
     handleVideoError,
     handlePlaying,
+    handleSourceMetadata,
     handleAudioTrack,
     handleTimelineSeek,
     timelineOffset,
+    playbackPosition,
   } = useVideoSource(entry, resumeAt);
   const progress = usePlayerProgress({
     anilistTarget,
@@ -65,6 +67,7 @@ export function Player({
     knownDuration,
     resumeAt,
     timelineOffset,
+    playbackPosition,
   });
 
   const handleOpenChange = useCallback(
@@ -98,8 +101,10 @@ export function Player({
             setVideo={setVideo}
             handleVideoError={handleVideoError}
             handlePlaying={handlePlaying}
+            handleSourceMetadata={handleSourceMetadata}
             onAudioTrack={handleAudioTrack}
             onTimelineSeek={handleTimelineSeek}
+            playbackPosition={playbackPosition}
             progress={progress}
             previousAvailable={previousAvailable}
             nextAvailable={nextAvailable}

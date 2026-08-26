@@ -47,8 +47,9 @@ function previewPosition(event: PointerEvent<HTMLSpanElement>, duration: number)
   return { percent: fraction * 100, time: fraction * duration };
 }
 
-function usePreviewInteractions(duration: number) {
+function usePreviewInteractions(duration: number, onSeek: (time: number) => void) {
   const draggingRef = useRef(false);
+  const [dragging, setDragging] = useState(false);
   const [preview, setPreview] = useState<PreviewPosition | null>(null);
   const handlePointerMove = useCallback((event: PointerEvent<HTMLSpanElement>) => {
     if (event.pointerType === "mouse" || draggingRef.current) {
@@ -57,24 +58,55 @@ function usePreviewInteractions(duration: number) {
   }, [duration]);
   const handlePointerDown = useCallback((event: PointerEvent<HTMLSpanElement>) => {
     draggingRef.current = true;
+    setDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
     setPreview(previewPosition(event, duration));
   }, [duration]);
   const handlePointerUp = useCallback((event: PointerEvent<HTMLSpanElement>) => {
+    const target = previewPosition(event, duration);
     draggingRef.current = false;
+    setDragging(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    if (event.pointerType !== "mouse") {
+    if (event.pointerType === "mouse") {
+      setPreview(target);
+    } else {
       setPreview(null);
     }
+    onSeek(target.time);
+  }, [duration, onSeek]);
+  const handlePointerCancel = useCallback((event: PointerEvent<HTMLSpanElement>) => {
+    draggingRef.current = false;
+    setDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setPreview(null);
   }, []);
   const handlePointerLeave = useCallback(() => {
     if (!draggingRef.current) {
       setPreview(null);
     }
   }, []);
-  return { preview, handlePointerMove, handlePointerDown, handlePointerUp, handlePointerLeave };
+  const handleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const time = event.currentTarget.valueAsNumber;
+    if (draggingRef.current) {
+      setPreview({ percent: duration > 0 ? time / duration * 100 : 0, time });
+    } else {
+      onSeek(time);
+    }
+  }, [duration, onSeek]);
+  return {
+    preview,
+    dragging,
+    handleChange,
+    handlePointerMove,
+    handlePointerDown,
+    handlePointerUp,
+    handlePointerCancel,
+    handlePointerLeave,
+  };
 }
 
 export function PlaybackTimeline({
@@ -85,10 +117,10 @@ export function PlaybackTimeline({
   onSeek,
 }: PlaybackTimelineProps): React.JSX.Element {
   const values = timelineValues(duration, currentTime, bufferedUntil);
-  const preview = usePreviewInteractions(values.duration);
-  const handleSeek = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    onSeek(event.currentTarget.valueAsNumber);
-  }, [onSeek]);
+  const preview = usePreviewInteractions(values.duration, onSeek);
+  const displayedTime = preview.dragging && preview.preview !== null
+    ? preview.preview.time
+    : values.time;
   return (
     <div className="relative pt-5 pb-1">
       {values.duration > 0 && (
@@ -102,15 +134,15 @@ export function PlaybackTimeline({
         onPointerDown={preview.handlePointerDown}
         onPointerMove={preview.handlePointerMove}
         onPointerUp={preview.handlePointerUp}
-        onPointerCancel={preview.handlePointerUp}
+        onPointerCancel={preview.handlePointerCancel}
         onPointerLeave={preview.handlePointerLeave}
       >
         {preview.preview !== null && values.duration > 0 && (
           <TimelinePreview mediaPath={mediaPath} percent={preview.preview.percent} time={preview.preview.time} />
         )}
         <progress aria-hidden="true" max={values.maximum} value={values.bufferedUntil} className="player-buffered-range absolute inset-x-0 top-1/2 h-1 w-full -translate-y-1/2" />
-        <progress aria-hidden="true" max={values.maximum} value={values.time} className="player-played-range absolute inset-x-0 top-1/2 h-1 w-full -translate-y-1/2" />
-        <input id="player-playback-position" type="range" min={0} max={values.duration} step={0.1} value={values.time} onChange={handleSeek} className="player-seek-range absolute inset-0 z-10 h-3 w-full cursor-pointer" />
+        <progress aria-hidden="true" max={values.maximum} value={displayedTime} className="player-played-range absolute inset-x-0 top-1/2 h-1 w-full -translate-y-1/2" />
+        <input id="player-playback-position" type="range" min={0} max={values.duration} step={0.1} value={displayedTime} onChange={preview.handleChange} className="player-seek-range absolute inset-0 z-10 h-3 w-full cursor-pointer" />
       </span>
     </div>
   );

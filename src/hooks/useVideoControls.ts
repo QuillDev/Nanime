@@ -42,8 +42,9 @@ function finiteDuration(video: HTMLVideoElement): number {
   return Number.isFinite(video.duration) ? video.duration : 0;
 }
 
-function bufferedUntil(video: HTMLVideoElement, timelineOffset: number): number {
+function bufferedUntil(video: HTMLVideoElement, position: number): number {
   const { buffered, currentTime } = video;
+  const timelineOffset = position - currentTime;
   let index = 0;
   while (index < buffered.length) {
     if (buffered.start(index) <= currentTime && buffered.end(index) >= currentTime) {
@@ -53,29 +54,35 @@ function bufferedUntil(video: HTMLVideoElement, timelineOffset: number): number 
   }
   return currentTime + timelineOffset;
 }
-function useVideoState(timelineOffset: number, knownDuration: number) {
+function useVideoState(
+  playbackPosition: (video: HTMLVideoElement) => number,
+  knownDuration: number,
+) {
   const [state, setState] = useState<VideoControlState>(INITIAL_STATE);
   const handleDurationChange = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     const video = event.currentTarget;
+    const position = playbackPosition(video);
     setState((current) => ({
       ...current,
-      bufferedUntil: bufferedUntil(video, timelineOffset),
-      currentTime: video.currentTime + timelineOffset,
-      duration: Math.max(finiteDuration(video) + timelineOffset, knownDuration),
+      bufferedUntil: bufferedUntil(video, position),
+      currentTime: position,
+      duration: Math.max(finiteDuration(video) + position - video.currentTime, knownDuration),
     }));
-  }, [knownDuration, timelineOffset]);
+  }, [knownDuration, playbackPosition]);
   const handleTimeUpdate = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     const video = event.currentTarget;
+    const position = playbackPosition(video);
     setState((current) => ({
       ...current,
-      bufferedUntil: bufferedUntil(video, timelineOffset),
-      currentTime: video.currentTime + timelineOffset,
+      bufferedUntil: bufferedUntil(video, position),
+      currentTime: position,
     }));
-  }, [timelineOffset]);
+  }, [playbackPosition]);
   const handleProgress = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     const video = event.currentTarget;
-    setState((current) => ({ ...current, bufferedUntil: bufferedUntil(video, timelineOffset) }));
-  }, [timelineOffset]);
+    const position = playbackPosition(video);
+    setState((current) => ({ ...current, bufferedUntil: bufferedUntil(video, position) }));
+  }, [playbackPosition]);
   const handlePlay = useCallback(() => {
     setState((current) => ({ ...current, paused: false }));
   }, []);
@@ -125,9 +132,9 @@ function useKeyboardSeeking(onSeekBy: (seconds: number) => void): void {
 interface VideoControlsOptions {
   readonly knownDuration: number;
   readonly onBeforeSeek: () => void;
-  readonly onTimelineSeek: (position: number) => boolean;
+  readonly onTimelineSeek: (position: number) => void;
+  readonly playbackPosition: (video: HTMLVideoElement) => number;
   readonly playerRef: RefObject<HTMLDivElement | null>;
-  readonly timelineOffset: number;
   readonly videoRef: RefObject<HTMLVideoElement | null>;
 }
 
@@ -136,11 +143,11 @@ export function useVideoControls(options: VideoControlsOptions): VideoControls {
     knownDuration,
     onBeforeSeek,
     onTimelineSeek,
+    playbackPosition,
     playerRef,
-    timelineOffset,
     videoRef,
   } = options;
-  const playback = useVideoState(timelineOffset, knownDuration);
+  const playback = useVideoState(playbackPosition, knownDuration);
   const handleTogglePlayback = useCallback(() => {
     const video = videoRef.current;
     if (video === null) {
@@ -155,21 +162,17 @@ export function useVideoControls(options: VideoControlsOptions): VideoControls {
   const handleSeek = useCallback((time: number) => {
     if (videoRef.current !== null) {
       onBeforeSeek();
-      if (!onTimelineSeek(time)) {
-        videoRef.current.currentTime = Math.max(0, time - timelineOffset);
-      }
+      onTimelineSeek(time);
       playback.setState((current) => ({ ...current, currentTime: time }));
     }
-  }, [onBeforeSeek, onTimelineSeek, playback, timelineOffset, videoRef]);
+  }, [onBeforeSeek, onTimelineSeek, playback, videoRef]);
   const handleSeekBy = useCallback((seconds: number) => {
     const video = videoRef.current;
     if (video !== null) {
-      handleSeek(Math.min(
-        Math.max(video.currentTime + timelineOffset + seconds, timelineOffset),
-        playback.state.duration,
-      ));
+      const requestedTime = Math.max(playbackPosition(video) + seconds, 0);
+      handleSeek(Math.min(requestedTime, playback.state.duration));
     }
-  }, [handleSeek, playback.state.duration, timelineOffset, videoRef]);
+  }, [handleSeek, playback.state.duration, playbackPosition, videoRef]);
   useKeyboardSeeking(handleSeekBy);
   const handleVolume = useCallback((volume: number) => {
     if (videoRef.current !== null) {

@@ -21,19 +21,26 @@ import { SubtitleTracks } from "./SubtitleTracks.tsx";
 
 const EMPTY_SUBTITLES: readonly SubtitleTrack[] = [];
 
+interface PlaybackEventCallbacks {
+  readonly onPlay: () => void;
+  readonly onSourceMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
+}
+
 function usePlaybackEvents(
   progress: PlaybackHandlers,
   controls: VideoControls,
-  onPlay: () => void,
+  callbacks: PlaybackEventCallbacks,
 ) {
+  const { onPlay, onSourceMetadata } = callbacks;
   const handlePlay = useCallback(() => {
     controls.handlePlay();
     onPlay();
   }, [controls, onPlay]);
   const handleLoadedMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    onSourceMetadata(event);
     progress.handleLoadedMetadata(event);
     controls.handleDurationChange(event);
-  }, [controls, progress]);
+  }, [controls, onSourceMetadata, progress]);
   const handlePause = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     progress.handlePause(event);
     controls.handlePause();
@@ -54,18 +61,20 @@ interface PlayerSurfaceProps {
   readonly setVideo: (video: HTMLVideoElement | null) => (() => void) | undefined;
   readonly handleVideoError: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handlePlaying: () => void;
+  readonly handleSourceMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly progress: PlaybackHandlers;
   readonly previousAvailable: boolean; readonly nextAvailable: boolean;
   readonly onPrevious: () => void; readonly onNext: () => void;
   readonly onAudioTrack: (index: number) => void;
-  readonly onTimelineSeek: (position: number) => boolean;
+  readonly onTimelineSeek: (position: number) => void;
+  readonly playbackPosition: (video: HTMLVideoElement) => number;
 }
 
 export function PlayerSurface({
   entry, episodeDisplay, timelineOffset, knownDuration, videoRef,
-  setVideo, handleVideoError, handlePlaying, progress,
+  setVideo, handleVideoError, handlePlaying, handleSourceMetadata, progress,
   previousAvailable, nextAvailable, onPrevious, onNext,
-  onAudioTrack, onTimelineSeek,
+  onAudioTrack, onTimelineSeek, playbackPosition,
 }: PlayerSurfaceProps): React.JSX.Element {
   const subtitles = useSubtitleTracks(entry.rel);
   const audio = useAudioSelection(entry.rel, onAudioTrack);
@@ -86,12 +95,16 @@ export function PlayerSurface({
     playerRef,
     progress,
     onPlaying: handlePlaying,
-    timelineOffset,
     knownDuration,
     onTimelineSeek,
+    playbackPosition,
   });
   const visibility = useControlVisibility();
-  const playbackEvents = usePlaybackEvents(progress, controls, visibility.handleActivity);
+  const playbackEvents = usePlaybackEvents(
+    progress,
+    controls,
+    { onPlay: visibility.handleActivity, onSourceMetadata: handleSourceMetadata },
+  );
   const display = useSubtitleDisplay(subtitles.data);
   const controlsVisible = visibility.visible || display.settingsOpen;
   const interaction = usePlayerSurfaceInteraction({
