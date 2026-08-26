@@ -1,7 +1,7 @@
 import { database } from "./database.ts";
 import type { PlaybackProgress } from "../shared/types.ts";
 import type { AniListPlaybackTarget } from "./anilistAccountTypes.ts";
-import { isPlaybackComplete } from "../shared/playback.ts";
+import { isPlaybackComplete, playbackWatchedState } from "../shared/playback.ts";
 
 interface PlaybackRow {
   readonly rel: string;
@@ -92,6 +92,44 @@ export async function dismissPlaybackProgress(req: Request, userId: number): Pro
   return progress === null
     ? new Response("Playback progress not found", { status: 404 })
     : Response.json(progressFromRow(progress));
+}
+
+export async function setPlaybackWatchedState(
+  req: Request,
+  userId: number,
+  options: Pick<PlaybackUpdateOptions, "mediaExists">,
+): Promise<Response> {
+  const body = (await req.json().catch(() => null)) as {
+    readonly rel?: unknown;
+    readonly watched?: unknown;
+  } | null;
+  if (
+    body === null ||
+    typeof body.rel !== "string" ||
+    body.rel === "" ||
+    typeof body.watched !== "boolean"
+  ) {
+    return new Response("Invalid watched state", { status: 400 });
+  }
+  if (!(await options.mediaExists(body.rel))) {
+    return new Response("Media not found", { status: 404 });
+  }
+  const existing = getProgress.get(userId, body.rel);
+  const progress = playbackWatchedState({
+    rel: body.rel,
+    watched: body.watched,
+    existing: existing === null ? null : progressFromRow(existing),
+    updatedAt: Date.now(),
+  });
+  upsertProgress.run(
+    userId,
+    progress.rel,
+    progress.position,
+    progress.duration,
+    progress.completed ? 1 : 0,
+    progress.updatedAt,
+  );
+  return Response.json(progress);
 }
 
 function validNumber(value: unknown): value is number {

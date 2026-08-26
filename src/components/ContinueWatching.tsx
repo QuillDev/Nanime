@@ -2,22 +2,17 @@ import { useCallback, useMemo } from "react";
 import { Play, X } from "lucide-react";
 import type {
   MediaEntry,
-  PlaybackProgress,
   PlaybackProgressMap,
   ShowMetadata,
 } from "../types.ts";
 import { formatDuration } from "../format.ts";
-import { episodeMetadata } from "../lib/anilist.ts";
-import { hasMeaningfulPlaybackProgress, preloadPlayer } from "../lib/playback.ts";
-import { useDismissPlaybackProgress } from "../hooks/usePlaybackProgress.ts";
+import { preloadPlayer } from "../lib/playback.ts";
 import {
-  seasonMetadata,
-  seasonNumber,
-  isMovieMedia,
-  primaryShowMetadata,
-  showMetadataKey,
-  type ShowGroup,
-} from "../lib/library.ts";
+  buildContinueWatchingItems,
+  type ContinueWatchingItem,
+} from "../lib/continueWatching.ts";
+import { useDismissPlaybackProgress } from "../hooks/usePlaybackProgress.ts";
+import type { ShowGroup } from "../lib/library.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
 import {
   ContextMenu,
@@ -26,13 +21,7 @@ import {
   ContextMenuTrigger,
 } from "./ui/ContextMenu.tsx";
 
-export interface ContinueWatchingItem {
-  readonly entry: MediaEntry;
-  readonly progress: PlaybackProgress;
-  readonly showTitle: string;
-  readonly episodeTitle: string;
-  readonly thumbnail: string | null | undefined;
-}
+export type { ContinueWatchingItem } from "../lib/continueWatching.ts";
 
 interface ContinueCardProps {
   readonly item: ContinueWatchingItem;
@@ -111,49 +100,6 @@ function ContinueCard({ item, onSelect, onDismiss }: ContinueCardProps): React.J
       </ContextMenu>
     </li>
   );
-}
-
-function showTitle(metadata: ShowMetadata, localName: string): string {
-  const media = metadata[showMetadataKey(localName)];
-  return media === undefined ? localName : media.title.english ?? media.title.romaji;
-}
-
-function buildContinueWatchingItems(
-  shows: readonly ShowGroup[],
-  metadata: ShowMetadata,
-  progress: PlaybackProgressMap,
-): readonly ContinueWatchingItem[] {
-  return shows.flatMap((show) => show.seasons.flatMap((season) => {
-    const media = seasonMetadata(metadata, season.sourceShow, season.name);
-    const showMedia = primaryShowMetadata(show, metadata);
-    const movie = isMovieMedia(media);
-    return season.entries.flatMap((entry) => {
-      const saved = progress[entry.rel];
-      if (
-        saved === undefined ||
-        saved.completed ||
-        saved.dismissedAt !== null && saved.dismissedAt >= saved.updatedAt ||
-        !hasMeaningfulPlaybackProgress(saved.position)
-      ) {
-        return [];
-      }
-      const details = movie ? undefined : episodeMetadata(entry, media, {
-        showMedia,
-        season: seasonNumber(season, media),
-      });
-      return [{
-        entry,
-        progress: saved,
-        showTitle: showTitle(metadata, show.name),
-        episodeTitle: movie
-          ? media.title.english ?? media.title.romaji
-          : details?.title ?? entry.name,
-        thumbnail: movie
-          ? media.coverImage.large ?? media.coverImage.extraLarge
-          : details?.thumbnail,
-      }];
-    });
-  })).toSorted((a, b) => b.progress.updatedAt - a.progress.updatedAt).slice(0, 8);
 }
 
 export function useContinueWatchingItems(

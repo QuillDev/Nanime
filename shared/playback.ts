@@ -1,3 +1,5 @@
+import type { PlaybackProgress } from "./types.ts";
+
 export const HLS_SEGMENT_SECONDS = 2;
 export const MINIMUM_PLAYBACK_PROGRESS_SECONDS = 30;
 export const PLAYBACK_COMPLETION_RATIO = 0.9;
@@ -30,4 +32,23 @@ export function isPlaybackComplete(
       duration - PLAYBACK_COMPLETION_REMAINING_SECONDS,
     );
   return meaningful && (reportedComplete || nearEnd);
+}
+
+interface WatchedStateInput {
+  readonly existing: PlaybackProgress | null;
+  readonly rel: string;
+  readonly updatedAt: number;
+  readonly watched: boolean;
+}
+
+export function playbackWatchedState(input: WatchedStateInput): PlaybackProgress {
+  const { existing, rel, updatedAt, watched } = input;
+  return {
+    rel,
+    position: watched ? existing?.position ?? 0 : 0,
+    duration: existing?.duration ?? 0,
+    completed: watched,
+    updatedAt,
+    dismissedAt: null,
+  };
 }
