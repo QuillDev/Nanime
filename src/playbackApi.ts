@@ -36,9 +36,15 @@ export async function dismissPlaybackProgress(rel: string): Promise<PlaybackProg
 export async function setPlaybackWatched(
   rel: string,
   watched: boolean,
+  target?: AniListPlaybackUpdate,
 ): Promise<PlaybackProgress> {
   return unwrap(
-    await api.api.progress.watched.post({ rel, watched }),
+    await api.api.progress.watched.post({ rel, watched, ...target }),
     watched ? "Marking episode watched" : "Marking episode unwatched",
   );
 }
+
+type AniListPlaybackUpdate = Pick<
+  PlaybackProgressUpdate,
+  "anilistMediaId" | "episode" | "totalEpisodes"
+>;

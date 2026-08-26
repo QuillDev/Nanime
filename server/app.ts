@@ -112,6 +112,9 @@ const playbackDismissSchema = schema.object({ rel: schema.string({ minLength: 1 
 const playbackWatchedSchema = schema.object({
   rel: schema.string({ minLength: 1 }),
   watched: schema.boolean(),
+  anilistMediaId: schema.optional(schema.integer({ minimum: 1 })),
+  episode: schema.optional(schema.integer({ minimum: 1 })),
+  totalEpisodes: optionalEpisodeCountSchema,
 });
 const aniListUpdateSchema = schema.object({
   status: schema.optional(schema.string()),

@@ -97,11 +97,14 @@ export async function dismissPlaybackProgress(req: Request, userId: number): Pro
 export async function setPlaybackWatchedState(
   req: Request,
   userId: number,
-  options: Pick<PlaybackUpdateOptions, "mediaExists">,
+  options: PlaybackUpdateOptions,
 ): Promise<Response> {
   const body = (await req.json().catch(() => null)) as {
     readonly rel?: unknown;
     readonly watched?: unknown;
+    readonly anilistMediaId?: unknown;
+    readonly episode?: unknown;
+    readonly totalEpisodes?: unknown;
   } | null;
   if (
     body === null ||
@@ -129,6 +132,21 @@ export async function setPlaybackWatchedState(
     progress.completed ? 1 : 0,
     progress.updatedAt,
   );
+  if (
+    options.sync !== undefined &&
+    Number.isInteger(body.anilistMediaId) && (body.anilistMediaId as number) > 0 &&
+    Number.isInteger(body.episode) && (body.episode as number) > 0 &&
+    (body.totalEpisodes === null ||
+      Number.isInteger(body.totalEpisodes) && (body.totalEpisodes as number) > 0)
+  ) {
+    await options.sync({
+      mediaId: body.anilistMediaId as number,
+      episode: body.episode as number,
+      totalEpisodes: body.totalEpisodes as number | null,
+      completed: body.watched,
+      allowDecrease: true,
+    }).catch(() => undefined);
+  }
   return Response.json(progress);
 }
 

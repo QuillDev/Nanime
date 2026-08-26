@@ -2,6 +2,7 @@ import { Check, EllipsisVertical, EyeOff } from "lucide-react";
 import { useCallback, useRef } from "react";
 import type {
   AniListMedia,
+  AniListPlaybackTarget,
   MediaEntry,
   PlaybackProgressMap,
 } from "../types.ts";
@@ -10,25 +11,34 @@ import { isMovieMedia } from "../lib/library.ts";
 import { hasMeaningfulPlaybackProgress, preloadPlayer } from "../lib/playback.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
 import { useSetPlaybackWatched } from "../hooks/usePlaybackProgress.ts";
+import { useSeriesCompletionPrompt } from "./SeriesCompletionPrompt.tsx";
 
 interface EpisodeStatusMenuProps {
   readonly pending: boolean;
   readonly rel: string;
   readonly watched: boolean;
-  readonly onSetWatched: (rel: string, watched: boolean) => void;
+  readonly onSetWatched: EpisodeWatchedHandler;
+  readonly target: AniListPlaybackTarget | null;
 }
+
+type EpisodeWatchedHandler = (
+  rel: string,
+  watched: boolean,
+  target: AniListPlaybackTarget | null,
+) => void;
 
 function EpisodeStatusMenu({
   pending,
   rel,
   watched,
   onSetWatched,
+  target,
 }: EpisodeStatusMenuProps): React.JSX.Element {
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
   const handleSelection = useCallback(() => {
-    onSetWatched(rel, !watched);
+    onSetWatched(rel, !watched, target);
     detailsRef.current?.removeAttribute("open");
-  }, [onSetWatched, rel, watched]);
+  }, [onSetWatched, rel, target, watched]);
   return (
     <details ref={detailsRef} className="relative shrink-0 p-2 open:z-30">
       <summary
@@ -58,10 +68,31 @@ interface EpisodeCardProps {
   readonly media: AniListMedia | undefined;
   readonly progress: PlaybackProgressMap;
   readonly onSelect: (entry: MediaEntry) => void;
-  readonly onSetWatched: (rel: string, watched: boolean) => void;
+  readonly onSetWatched: EpisodeWatchedHandler;
   readonly pending: boolean;
   readonly showMedia: AniListMedia | undefined;
   readonly seasonNumber: number;
+}
+
+function episodePlaybackTarget(
+  entry: MediaEntry,
+  media: AniListMedia | undefined,
+): AniListPlaybackTarget | null {
+  if (media?.anilistId === null || media?.anilistId === undefined) {
+    return null;
+  }
+  const totalEpisodes = media.episodes;
+  const movie = isMovieMedia(media);
+  const episode = movie ? 1 : episodeNumber(entry);
+  if (episode === null) {
+    return null;
+  }
+  return {
+    mediaId: media.anilistId,
+    episode,
+    totalEpisodes: movie ? 1 : totalEpisodes,
+    title: mediaTitle(media),
+  };
 }
 
 function EpisodeCard({
@@ -82,6 +113,7 @@ function EpisodeCard({
     ? null
     : episodeMetadata(entry, media, { showMedia, season: seasonNumber });
   const number = movie ? null : episodeNumber(entry);
+  const target = episodePlaybackTarget(entry, media);
   const title = movie ? mediaTitle(media) : details?.title ?? entry.name;
   const episodeProgress = progress[entry.rel];
   const showProgress = episodeProgress !== undefined && (
@@ -141,6 +173,7 @@ function EpisodeCard({
         rel={entry.rel}
         watched={episodeProgress?.completed === true}
         onSetWatched={onSetWatched}
+        target={target}
       />
     </li>
   );
@@ -164,9 +197,29 @@ export function EpisodeGrid({
   seasonNumber,
 }: EpisodeGridProps): React.JSX.Element {
   const watchedState = useSetPlaybackWatched();
-  const handleSetWatched = useCallback((rel: string, watched: boolean) => {
-    watchedState.mutate({ rel, watched });
-  }, [watchedState]);
+  const promptForScore = useSeriesCompletionPrompt();
+  const handleSetWatched = useCallback((
+    rel: string,
+    watched: boolean,
+    target: AniListPlaybackTarget | null,
+  ) => {
+    const update = target === null
+      ? { rel, watched }
+      : {
+        rel,
+        watched,
+        anilistMediaId: target.mediaId,
+        episode: target.episode,
+        totalEpisodes: target.totalEpisodes,
+      };
+    watchedState.mutate(update, {
+      onSuccess: () => {
+        if (watched && target !== null) {
+          promptForScore(target);
+        }
+      },
+    });
+  }, [promptForScore, watchedState]);
   return (
     <div>
       {watchedState.error !== null && (

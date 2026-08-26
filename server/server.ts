@@ -44,9 +44,7 @@ import {
   type AuthUser,
 } from "./security.ts";
 
-const MEDIA_DIR = resolve(
-  Bun.env["MEDIA_DIR"] ?? resolve(import.meta.dir, "..", "media"),
-);
+const MEDIA_DIR = resolve(Bun.env["MEDIA_DIR"] ?? resolve(import.meta.dir, "..", "media"));
 const DIST_DIR = resolve(import.meta.dir, "..", "dist");
 const PORT = Number(process.env["PORT"] ?? "8096");
 const HOST = process.env["HOST"] ?? "127.0.0.1";
@@ -319,7 +317,9 @@ async function libraryRoute(context: RouteContext): Promise<Response | null> {
     return dismissPlaybackProgress(req, user.id);
   }
   if (pathname === "/api/progress/watched" && req.method === "POST") {
-    return setPlaybackWatchedState(req, user.id, { mediaExists });
+    return setPlaybackWatchedState(req, user.id, {
+      mediaExists, sync: (target) => syncAniListPlayback(user.id, target),
+    });
   }
   return null;
 }

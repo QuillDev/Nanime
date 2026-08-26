@@ -18,7 +18,7 @@ import {
   type SeasonGroup,
   type ShowGroup,
 } from "../lib/library.ts";
-import { episodeMetadata, episodeNumber } from "../lib/anilist.ts";
+import { episodeMetadata, episodeNumber, mediaTitle } from "../lib/anilist.ts";
 
 export interface LibraryIndex {
   readonly shows: readonly ShowGroup[];
@@ -107,9 +107,19 @@ function indexSeasonEntry(options: EntryTargetOptions): void {
       : details?.title ?? entry.name.replace(/\.[^.]+$/u, ""),
   });
   if (movie && media?.anilistId !== null && media?.anilistId !== undefined) {
-    targets.set(entry.rel, { mediaId: media.anilistId, episode: 1, totalEpisodes: 1 });
+    targets.set(entry.rel, {
+      mediaId: media.anilistId,
+      episode: 1,
+      totalEpisodes: 1,
+      title: mediaTitle(media),
+    });
   } else if (episode !== null && media?.anilistId !== null && media?.anilistId !== undefined) {
-    targets.set(entry.rel, { mediaId: media.anilistId, episode, totalEpisodes: media.episodes });
+    targets.set(entry.rel, {
+      mediaId: media.anilistId,
+      episode,
+      totalEpisodes: media.episodes,
+      title: mediaTitle(media),
+    });
   }
 }
 

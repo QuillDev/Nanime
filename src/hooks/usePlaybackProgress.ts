@@ -23,6 +23,21 @@ interface DismissContext {
 interface WatchedUpdate {
   readonly rel: string;
   readonly watched: boolean;
+  readonly anilistMediaId?: number;
+  readonly episode?: number;
+  readonly totalEpisodes?: number | null;
+}
+
+function aniListWatchedUpdate(update: WatchedUpdate) {
+  if (update.anilistMediaId === undefined || update.episode === undefined ||
+    update.totalEpisodes === undefined) {
+    return undefined;
+  }
+  return {
+    anilistMediaId: update.anilistMediaId,
+    episode: update.episode,
+    totalEpisodes: update.totalEpisodes,
+  };
 }
 
 function toProgressMap(progress: readonly PlaybackProgress[]): PlaybackProgressMap {
@@ -107,7 +122,11 @@ export function useSetPlaybackWatched(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ rel, watched }) => setPlaybackWatched(rel, watched),
+    mutationFn: (update) => setPlaybackWatched(
+      update.rel,
+      update.watched,
+      aniListWatchedUpdate(update),
+    ),
     onMutate: async ({ rel, watched }) => {
       await queryClient.cancelQueries({ queryKey: playbackProgressKey });
       const previous = queryClient.getQueryData<PlaybackProgressMap>(playbackProgressKey);
