@@ -33,6 +33,10 @@ function saved(entryValue: MediaEntry, updatedAt: number): PlaybackProgress {
   };
 }
 
+function completed(entryValue: MediaEntry, updatedAt: number): PlaybackProgress {
+  return { ...saved(entryValue, updatedAt), position: 1400, completed: true };
+}
+
 describe("Continue Watching selection", () => {
   test("keeps only the most recently updated episode from one series", () => {
     const first = entry("Alpha", 1);
@@ -58,5 +62,53 @@ describe("Continue Watching selection", () => {
       progress,
     );
     expect(items.map((item) => item.entry.rel)).toEqual([beta.rel, alpha.rel]);
+  });
+
+  test("continues with the next episode after the current episode completes", () => {
+    const first = entry("Alpha", 1);
+    const second = entry("Alpha", 2);
+    const progress: PlaybackProgressMap = { [first.rel]: completed(first, 200) };
+
+    const items = buildContinueWatchingItems([group("Alpha", [first, second])], {}, progress);
+
+    expect(items).toMatchObject([{
+      dismissRel: first.rel,
+      entry: { rel: second.rel },
+      kind: "next",
+      progress: { rel: second.rel, completed: false, position: 0 },
+    }]);
+  });
+
+  test("skips episodes already completed while finding what is next", () => {
+    const first = entry("Alpha", 1);
+    const second = entry("Alpha", 2);
+    const third = entry("Alpha", 3);
+    const progress: PlaybackProgressMap = {
+      [first.rel]: completed(first, 100),
+      [second.rel]: completed(second, 200),
+    };
+
+    const items = buildContinueWatchingItems(
+      [group("Alpha", [first, second, third])],
+      {},
+      progress,
+    );
+
+    expect(items.map((item) => item.entry.rel)).toEqual([third.rel]);
+  });
+
+  test("removes a series after its final episode completes", () => {
+    const first = entry("Alpha", 1);
+    const second = entry("Alpha", 2);
+    const progress: PlaybackProgressMap = {
+      [first.rel]: completed(first, 100),
+      [second.rel]: completed(second, 200),
+    };
+
+    expect(buildContinueWatchingItems(
+      [group("Alpha", [first, second])],
+      {},
+      progress,
+    )).toEqual([]);
   });
 });

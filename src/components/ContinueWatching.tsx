@@ -29,9 +29,9 @@ function ContinueCard({ item, onSelect, onDismiss }: ContinueCardProps): React.J
     onSelect(item.entry);
   }, [item, onSelect]);
   const handleDismiss = useCallback(() => {
-    onDismiss(item.entry.rel);
+    onDismiss(item.dismissRel);
     menuRef.current?.removeAttribute("open");
-  }, [item.entry.rel, onDismiss]);
+  }, [item.dismissRel, onDismiss]);
   const percent = item.progress.duration > 0
     ? Math.min(100, item.progress.position / item.progress.duration * 100)
     : 0;
@@ -60,7 +60,9 @@ function ContinueCard({ item, onSelect, onDismiss }: ContinueCardProps): React.J
           <span className="block truncate text-sm font-semibold">{item.episodeTitle}</span>
           <span className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span className="truncate">{item.showTitle}</span>
-            <span className="shrink-0">{formatDuration(remaining)} left</span>
+            <span className="shrink-0">
+              {item.kind === "next" ? "Up next" : `${formatDuration(remaining)} left`}
+            </span>
           </span>
         </span>
       </button>
