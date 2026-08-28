@@ -4,6 +4,7 @@ import { cn } from "../lib/utils.ts";
 import { copyText } from "../lib/clipboard.ts";
 import { usePlaybackDiagnostics } from "../hooks/usePlaybackDiagnostics.ts";
 import type { EpisodeDisplay } from "../types.ts";
+import { usePlaybackDiagnosticsEnabled } from "../lib/playbackDiagnosticsPreference.ts";
 
 interface PlayerPlaybackOverlayProps {
   readonly paused: boolean;
@@ -49,14 +50,15 @@ export function PlayerDiagnostics({
   playbackMode,
   videoRef,
 }: PlayerDiagnosticsProps): React.JSX.Element | null {
+  const enabled = usePlaybackDiagnosticsEnabled();
   const [status, setStatus] = useState<"failed" | "idle" | "success">("idle");
-  const createReport = usePlaybackDiagnostics(videoRef, playbackMode);
+  const createReport = usePlaybackDiagnostics(videoRef, playbackMode, enabled);
   const handleCopy = useCallback(() => {
     void (async (): Promise<void> => {
       setStatus(await copyText(createReport(buffering, frameVisible)) ? "success" : "failed");
     })();
   }, [buffering, createReport, frameVisible]);
-  if (!buffering && !controlsVisible) {
+  if (!enabled || !buffering && !controlsVisible) {
     return null;
   }
   return (

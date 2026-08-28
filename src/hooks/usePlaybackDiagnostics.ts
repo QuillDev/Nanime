@@ -81,13 +81,14 @@ function formatReport(options: ReportOptions): string {
 export function usePlaybackDiagnostics(
   videoRef: RefObject<HTMLVideoElement | null>,
   playbackMode: "direct" | "hls",
+  enabled: boolean,
 ) {
   const recordsRef = useRef<DiagnosticRecord[]>([]);
 
   useEffect(() => {
     const video = videoRef.current;
-    return video === null ? undefined : attachPlaybackDiagnostics(video, recordsRef);
-  }, [videoRef]);
+    return !enabled || video === null ? undefined : attachPlaybackDiagnostics(video, recordsRef);
+  }, [enabled, videoRef]);
 
   return useCallback((buffering: boolean, frozenFrameVisible: boolean): string => {
     const video = videoRef.current;
