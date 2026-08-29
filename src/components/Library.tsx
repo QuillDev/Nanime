@@ -16,15 +16,13 @@ import {
 } from "../lib/library.ts";
 import { AniListLinkDialog } from "./AniListLinkDialog.tsx";
 import {
-  ContinueWatching,
-  type ContinueWatchingItem,
   useContinueWatchingItems,
 } from "./ContinueWatching.tsx";
-import { ShowGrid } from "./ShowGrid.tsx";
 import { ShowPage } from "./ShowPage.tsx";
 import { MoviePage } from "./MoviePage.tsx";
 import { useTorrents } from "../hooks/useTorrents.ts";
 import { UnmappedShowsNotice } from "./UnmappedShowsNotice.tsx";
+import { LibraryHome } from "./LibraryHome.tsx";
 
 export { LibrarySkeleton } from "./Skeleton.tsx";
 
@@ -53,64 +51,6 @@ function matchesQuery(show: ShowGroup, needle: string): boolean {
 
 function displayMediaTitle(media: AniListMedia): string {
   return media.title.english ?? media.title.romaji;
-}
-
-interface HomePageProps {
-  readonly entries: readonly MediaEntry[];
-  readonly shows: readonly ShowGroup[];
-  readonly metadata: ShowMetadata;
-  readonly continueWatching: readonly ContinueWatchingItem[];
-  readonly showContinueWatching: boolean;
-  readonly onShowSelect: (show: ShowGroup) => void;
-  readonly onEpisodeSelect: (entry: MediaEntry) => void;
-  readonly downloads: readonly TorrentStatus[];
-}
-
-function HomePage({
-  entries,
-  shows,
-  metadata,
-  continueWatching,
-  showContinueWatching,
-  onShowSelect,
-  onEpisodeSelect,
-  downloads,
-}: HomePageProps): React.JSX.Element {
-  if (entries.length === 0) {
-    return (
-      <p className="py-16 text-center text-muted-foreground">
-        No videos found yet. Downloads will appear here automatically.
-      </p>
-    );
-  }
-  if (shows.length === 0) {
-    return (
-      <p className="py-16 text-center text-muted-foreground">
-        {showContinueWatching ? "No mapped shows available yet." : "No matches for your search."}
-      </p>
-    );
-  }
-  return (
-    <>
-      {showContinueWatching && (
-        <ContinueWatching items={continueWatching} onSelect={onEpisodeSelect} />
-      )}
-      <section>
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold tracking-tight">Shows</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {shows.length} {shows.length === 1 ? "show" : "shows"}
-          </p>
-        </div>
-        <ShowGrid
-          shows={shows}
-          metadata={metadata}
-          downloads={downloads}
-          onSelect={onShowSelect}
-        />
-      </section>
-    </>
-  );
 }
 
 type LinkTarget =
@@ -250,11 +190,12 @@ export function Library({
       {selectedShow === null ? (
         <>
           {canManageMappings && <UnmappedShowsNotice shows={unmappedShows} />}
-          <HomePage
+          <LibraryHome
             entries={entries}
             shows={shows}
             metadata={metadata}
             continueWatching={continueWatching}
+            progress={progress}
             showContinueWatching={query.trim() === ""}
             onShowSelect={onShowSelect}
             onEpisodeSelect={onSelect}
