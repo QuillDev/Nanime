@@ -54,6 +54,45 @@ function magnetLink(infoHash: string, name: string): string {
   return `magnet:?${params.toString()}`;
 }
 
+interface SearchIdentityInput {
+  readonly name: string | null;
+  readonly category: string | null;
+  readonly size: string | null;
+  readonly infoHash: string | null;
+  readonly detailsUrl: string | null;
+  readonly id: string | undefined;
+}
+
+function searchIdentity(values: SearchIdentityInput): {
+  readonly name: string;
+  readonly category: string;
+  readonly size: string;
+  readonly infoHash: string;
+  readonly detailsUrl: string;
+  readonly id: string;
+} | null {
+  if (values.name === null || values.category === null || values.size === null ||
+    values.infoHash === null || !/^[a-f\d]{40}$/iu.test(values.infoHash) ||
+    values.detailsUrl === null || values.id === undefined) {
+    return null;
+  }
+  return { ...values, name: values.name, category: values.category, size: values.size,
+    infoHash: values.infoHash, detailsUrl: values.detailsUrl, id: values.id };
+}
+
+function searchStats(values: {
+  readonly publishedAt: number;
+  readonly seeders: number | null;
+  readonly leechers: number | null;
+  readonly downloads: number | null;
+}): { readonly seeders: number; readonly leechers: number; readonly downloads: number } | null {
+  const { publishedAt, seeders, leechers, downloads } = values;
+  if (!Number.isFinite(publishedAt) || seeders === null || leechers === null || downloads === null) {
+    return null;
+  }
+  return { seeders, leechers, downloads };
+}
+
 function searchResult(value: unknown): NyaaSearchResult | null {
   const item = jsonObject(value);
   if (item === null) {
@@ -70,27 +109,23 @@ function searchResult(value: unknown): NyaaSearchResult | null {
   const downloads = numberValue(item["nyaa:downloads"]);
   const idMatch = detailsUrl === null ? null : /^https:\/\/nyaa\.si\/view\/(?<id>\d+)$/u.exec(detailsUrl);
   const publishedAt = published === null ? Number.NaN : Date.parse(published);
-  if (
-    name === null || category === null || size === null ||
-    infoHash === null || !/^[a-f\d]{40}$/iu.test(infoHash) ||
-    detailsUrl === null || idMatch?.groups?.["id"] === undefined ||
-    !Number.isFinite(publishedAt) || seeders === null || leechers === null || downloads === null
-  ) {
+  const id = idMatch?.groups?.["id"];
+  const identity = searchIdentity({ name, category, size, infoHash, detailsUrl, id });
+  const stats = searchStats({ publishedAt, seeders, leechers, downloads });
+  if (identity === null || stats === null) {
     return null;
   }
   return {
-    id: idMatch.groups["id"],
-    name,
-    category,
-    size,
-    seeders,
-    leechers,
-    downloads,
+    id: identity.id,
+    name: identity.name,
+    category: identity.category,
+    size: identity.size,
+    ...stats,
     publishedAt: new Date(publishedAt).toISOString(),
     trusted: item["nyaa:trusted"] === "Yes",
     remake: item["nyaa:remake"] === "Yes",
-    detailsUrl,
-    magnet: magnetLink(infoHash, name),
+    detailsUrl: identity.detailsUrl,
+    magnet: magnetLink(identity.infoHash, identity.name),
   };
 }
 
@@ -215,14 +250,8 @@ async function parseSearchPage(html: string): Promise<readonly NyaaSearchResult[
 }
 
 export async function searchNyaaResponse(url: URL): Promise<Response> {
-  const query = url.searchParams.get("q")?.trim() ?? "";
-  const requestedCategory = url.searchParams.get("category") ?? "1_0";
-  const category = CATEGORIES.has(requestedCategory) ? requestedCategory : "1_0";
-  const trusted = url.searchParams.get("trusted") === "true";
-  const requestedSort = url.searchParams.get("sort") ?? "id";
-  const sort = SORTS.has(requestedSort) ? requestedSort : "id";
-  const requestedOrder = url.searchParams.get("order") ?? "desc";
-  const order = SORT_ORDERS.has(requestedOrder) ? requestedOrder : "desc";
+  const options = nyaaSearchOptions(url);
+  const { query } = options;
   if (query.length < 2 || query.length > 200) {
     return new Response("Search must be between 2 and 200 characters", { status: 400 });
   }
@@ -230,10 +259,10 @@ export async function searchNyaaResponse(url: URL): Promise<Response> {
   const searchUrl = new URL("/", NYAA_ORIGIN);
   searchUrl.search = new URLSearchParams({
     q: query,
-    c: category,
-    f: trusted ? "2" : "0",
-    s: sort,
-    o: order,
+    c: options.category,
+    f: options.trusted ? "2" : "0",
+    s: options.sort,
+    o: options.order,
   }).toString();
 
   try {
@@ -259,4 +288,17 @@ export async function searchNyaaResponse(url: URL): Promise<Response> {
   } catch {
     return new Response("Could not search Nyaa", { status: 502 });
   }
+}
+
+function nyaaSearchOptions(url: URL) {
+  const requestedCategory = url.searchParams.get("category") ?? "1_0";
+  const requestedSort = url.searchParams.get("sort") ?? "id";
+  const requestedOrder = url.searchParams.get("order") ?? "desc";
+  return {
+    query: url.searchParams.get("q")?.trim() ?? "",
+    category: CATEGORIES.has(requestedCategory) ? requestedCategory : "1_0",
+    trusted: url.searchParams.get("trusted") === "true",
+    sort: SORTS.has(requestedSort) ? requestedSort : "id",
+    order: SORT_ORDERS.has(requestedOrder) ? requestedOrder : "desc",
+  };
 }

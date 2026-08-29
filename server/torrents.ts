@@ -210,17 +210,7 @@ async function torrentListResponse(mediaDir: string): Promise<Response> {
   return Response.json(incomplete);
 }
 
-async function addTorrentResponse(req: Request, mediaDir: string): Promise<Response> {
-  if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
-  }
-  const form = await req.formData().catch(() => null);
-  const torrentValue = form?.get("torrent");
-  const torrent = torrentValue instanceof File ? torrentValue : null;
-  const magnetValue = form?.get("magnet");
-  const magnet = typeof magnetValue === "string" ? magnetValue.trim() : "";
-  const showFolderValue = form?.get("showFolder");
-  const showFolder = typeof showFolderValue === "string" ? showFolderValue : "";
+function invalidTorrentInput(torrent: File | null, magnet: string): Response | null {
   if ((torrent === null) === (magnet === "")) {
     return new Response("Choose one .torrent file or magnet link", { status: 400 });
   }
@@ -233,11 +223,10 @@ async function addTorrentResponse(req: Request, mediaDir: string): Promise<Respo
   if (magnet !== "" && !validMagnetLink(magnet)) {
     return new Response("Enter a valid BitTorrent magnet link", { status: 400 });
   }
-  const savePath = await existingShowFolder(mediaDir, showFolder);
-  if (savePath === null) {
-    return new Response("The selected show folder no longer exists", { status: 400 });
-  }
+  return null;
+}
 
+function torrentRequestBody(torrent: File | null, magnet: string, savePath: string): FormData {
   const body = new FormData();
   if (torrent === null) {
     body.append("urls", magnet);
@@ -245,9 +234,32 @@ async function addTorrentResponse(req: Request, mediaDir: string): Promise<Respo
     body.append("torrents", torrent, torrent.name);
   }
   body.append("savepath", savePath);
+  return body;
+}
+
+async function addTorrentResponse(req: Request, mediaDir: string): Promise<Response> {
+  if (req.method !== "POST") {
+    return new Response("Method not allowed", { status: 405 });
+  }
+  const form = await req.formData().catch(() => null);
+  const torrentValue = form?.get("torrent");
+  const torrent = torrentValue instanceof File ? torrentValue : null;
+  const magnetValue = form?.get("magnet");
+  const magnet = typeof magnetValue === "string" ? magnetValue.trim() : "";
+  const showFolderValue = form?.get("showFolder");
+  const showFolder = typeof showFolderValue === "string" ? showFolderValue : "";
+  const invalid = invalidTorrentInput(torrent, magnet);
+  if (invalid !== null) {
+    return invalid;
+  }
+  const savePath = await existingShowFolder(mediaDir, showFolder);
+  if (savePath === null) {
+    return new Response("The selected show folder no longer exists", { status: 400 });
+  }
+
   const response = await qBittorrentRequest("/api/v2/torrents/add", {
     method: "POST",
-    body,
+    body: torrentRequestBody(torrent, magnet, savePath),
   });
   if (response === null) {
     return new Response("Could not reach qBittorrent", { status: 502 });

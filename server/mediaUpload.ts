@@ -25,6 +25,12 @@ interface UploadStartBody {
   readonly size?: unknown;
 }
 
+interface ValidUploadStart {
+  readonly fileName: string;
+  readonly parts: readonly string[];
+  readonly size: number;
+}
+
 interface MediaUploadOptions {
   readonly mediaRoot: string;
   readonly videoExtensions: ReadonlySet<string>;
@@ -91,6 +97,27 @@ async function removeExpiredUploads(): Promise<void> {
   )));
 }
 
+function uploadStart(
+  body: UploadStartBody | null,
+  videoExtensions: ReadonlySet<string>,
+): ValidUploadStart | null {
+  const fileName = body?.fileName;
+  const folder = body?.folder;
+  const size = body?.size;
+  const parts = typeof folder === "string" ? folderParts(folder.trim()) : null;
+  if (typeof fileName !== "string" || !safePart(fileName) || parts === null ||
+    typeof size !== "number" || !Number.isSafeInteger(size) || size <= 0 ||
+    size > MAX_UPLOAD_BYTES || !videoExtensions.has(extname(fileName).toLowerCase())) {
+    return null;
+  }
+  return { fileName, parts, size };
+}
+
+function destinationPath(directory: string, fileName: string): string | null {
+  const path = resolve(directory, fileName);
+  return path === directory || !path.startsWith(directory + sep) ? null : path;
+}
+
 async function startUpload(
   req: Request,
   options: MediaUploadOptions,
@@ -100,31 +127,19 @@ async function startUpload(
     return new Response("Too many uploads are active", { status: 503 });
   }
   const body = (await req.json().catch(() => null)) as UploadStartBody | null;
-  const fileName = body?.fileName;
-  const folder = body?.folder;
-  const size = body?.size;
-  const parts = typeof folder === "string" ? folderParts(folder.trim()) : null;
-  if (
-    typeof fileName !== "string" || !safePart(fileName) ||
-    parts === null ||
-    typeof size !== "number" || !Number.isSafeInteger(size) ||
-    size <= 0 || size > MAX_UPLOAD_BYTES ||
-    !options.videoExtensions.has(extname(fileName).toLowerCase())
-  ) {
+  const upload = uploadStart(body, options.videoExtensions);
+  if (upload === null) {
     return new Response("Choose a supported video file and destination", { status: 400 });
   }
-  const destinationDirectory = await safeDestinationDirectory(options.mediaRoot, parts);
+  const destinationDirectory = await safeDestinationDirectory(options.mediaRoot, upload.parts);
   if (destinationDirectory === null) {
     return new Response("Invalid upload destination", { status: 400 });
   }
-  const destinationPath = resolve(destinationDirectory, fileName);
-  if (
-    destinationPath === destinationDirectory ||
-    !destinationPath.startsWith(destinationDirectory + sep)
-  ) {
+  const resolvedDestination = destinationPath(destinationDirectory, upload.fileName);
+  if (resolvedDestination === null) {
     return new Response("Invalid upload destination", { status: 400 });
   }
-  if (await lstat(destinationPath).catch(() => null) !== null) {
+  if (await lstat(resolvedDestination).catch(() => null) !== null) {
     return new Response("A file with that name already exists", { status: 409 });
   }
   const temporaryDirectory = await safeDestinationDirectory(options.mediaRoot, [".nanime-uploads"]);
@@ -142,9 +157,9 @@ async function startUpload(
     id,
     userId: options.userId,
     temporaryPath,
-    destinationPath,
-    relativePath: [...parts, fileName].join("/"),
-    size,
+    destinationPath: resolvedDestination,
+    relativePath: [...upload.parts, upload.fileName].join("/"),
+    size: upload.size,
     received: 0,
     expiresAt: Date.now() + UPLOAD_LIFETIME_MS,
   });
@@ -235,19 +250,27 @@ export function mediaUploadResponse(
   if (pathname === "/api/media/uploads" && req.method === "POST") {
     return startUpload(req, options);
   }
-  const match = /^\/api\/media\/uploads\/(?<id>[0-9a-f-]+)(?<complete>\/complete)?$/u.exec(pathname);
-  const id = match?.groups?.["id"];
-  if (id === undefined) {
+  const route = uploadRoute(pathname);
+  if (route === null) {
     return new Response("Not found", { status: 404 });
   }
-  if (match?.groups?.["complete"] !== undefined && req.method === "POST") {
-    return completeUpload(id, options.userId);
+  if (route.complete && req.method === "POST") {
+    return completeUpload(route.id, options.userId);
   }
-  if (match?.groups?.["complete"] === undefined && req.method === "POST") {
-    return appendChunk(req, id, options.userId);
+  if (!route.complete && req.method === "POST") {
+    return appendChunk(req, route.id, options.userId);
   }
-  if (match?.groups?.["complete"] === undefined && req.method === "DELETE") {
-    return cancelUpload(id, options.userId);
+  if (!route.complete && req.method === "DELETE") {
+    return cancelUpload(route.id, options.userId);
   }
   return new Response("Method not allowed", { status: 405 });
+}
+
+function uploadRoute(pathname: string): { readonly id: string; readonly complete: boolean } | null {
+  const groups = /^\/api\/media\/uploads\/(?<id>[0-9a-f-]+)(?<complete>\/complete)?$/u.exec(pathname)?.groups;
+  const id = groups?.["id"];
+  if (id === undefined) {
+    return null;
+  }
+  return { id, complete: groups?.["complete"] !== undefined };
 }

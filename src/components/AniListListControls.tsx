@@ -1,5 +1,5 @@
 import { useCallback, type FormEvent } from "react";
-import type { AniListMedia, AniListWatchStatus } from "../types.ts";
+import type { AniListListEntry, AniListMedia, AniListWatchStatus } from "../types.ts";
 import {
   useAniListAccount,
   useAniListListEntry,
@@ -63,11 +63,43 @@ export function AniListListControls({
   if (entry.status === "error") {
     return <p className="mt-4 text-sm text-destructive">{entry.error.message}</p>;
   }
-  const current = entry.data;
+  return (
+    <AniListStatusForm
+      current={entry.data}
+      media={media}
+      mediaId={mediaId}
+      pending={update.isPending}
+      error={update.error}
+      onSubmit={handleSubmit}
+    />
+  );
+}
+
+interface AniListStatusFormProps {
+  readonly current: AniListListEntry | null | undefined;
+  readonly media: AniListMedia;
+  readonly mediaId: number;
+  readonly pending: boolean;
+  readonly error: Error | null;
+  readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}
+
+function listFormKey(mediaId: number, current: AniListListEntry | null | undefined): string {
+  return `${String(mediaId)}:${current?.status ?? "none"}:${String(current?.progress ?? 0)}:${String(current?.score ?? 0)}`;
+}
+
+function AniListStatusForm({
+  current,
+  media,
+  mediaId,
+  pending,
+  error,
+  onSubmit,
+}: AniListStatusFormProps): React.JSX.Element {
   return (
     <form
-      key={`${String(mediaId)}:${current?.status ?? "none"}:${String(current?.progress ?? 0)}:${String(current?.score ?? 0)}`}
-      onSubmit={handleSubmit}
+      key={listFormKey(mediaId, current)}
+      onSubmit={onSubmit}
       className="mb-4 border-b border-border pb-4"
     >
       <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs font-medium text-muted-foreground">
@@ -115,14 +147,14 @@ export function AniListListControls({
         </label>
         <button
           type="submit"
-          disabled={update.isPending}
+          disabled={pending}
           className="h-9 shrink-0 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:bg-muted disabled:text-muted-foreground"
         >
-          {update.isPending ? "Saving…" : "Save"}
+          {pending ? "Saving…" : "Save"}
         </button>
       </div>
-      {update.status === "error" && (
-        <p className="mt-2 text-xs text-destructive">{update.error.message}</p>
+      {error !== null && (
+        <p className="mt-2 text-xs text-destructive">{error.message}</p>
       )}
     </form>
   );

@@ -67,6 +67,39 @@ function MediaFacts({ media }: { readonly media: AniListMedia }): React.JSX.Elem
   );
 }
 
+function AnimeMetadata({ media, expanded }: {
+  readonly media: AniListMedia;
+  readonly expanded: boolean;
+}): React.JSX.Element {
+  const canExpand = media.genres.length > 3 || (media.description?.length ?? 0) > 240;
+  const providerName = media.provider === "jikan" ? "MyAnimeList" : "AniList";
+  return (
+    <>
+      {media.title.english !== media.title.romaji && <p className="mt-1 text-sm text-muted-foreground">{media.title.romaji}</p>}
+      <MediaFacts media={media} />
+      <CollapsibleContent><div className="mt-2 flex flex-wrap gap-2">{media.genres.slice(3).map((genre) => <Badge key={genre} variant="outline">{genre}</Badge>)}</div></CollapsibleContent>
+      {media.description !== null && <p className="anime-description mt-4 whitespace-pre-line text-sm leading-6 text-muted-foreground">{media.description}</p>}
+      {canExpand && (
+        <CollapsibleTrigger asChild>
+          <button type="button" className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {expanded ? "Show less" : "Show more"}<CollapsibleChevron className="size-4" />
+          </button>
+        </CollapsibleTrigger>
+      )}
+      <a href={media.siteUrl} target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-1.5 text-sm text-primary hover:underline">
+        View on {providerName}<ExternalLink className="size-3.5" />
+      </a>
+    </>
+  );
+}
+
+function DetailsTitle({ media, fallbackTitle }: {
+  readonly media: AniListMedia | undefined;
+  readonly fallbackTitle: string;
+}): React.JSX.Element {
+  return <h2 className="min-w-0 text-xl font-semibold">{media === undefined ? fallbackTitle : mediaTitle(media)}</h2>;
+}
+
 export function AnimeDetails({
   fallbackTitle,
   previewRel,
@@ -78,10 +111,6 @@ export function AnimeDetails({
     onLink?.();
   }, [onLink]);
   const cover = media?.coverImage.extraLarge ?? media?.coverImage.large;
-  const canExpand = media !== undefined && (
-    media.genres.length > 3 || (media.description?.length ?? 0) > 240
-  );
-  const providerName = media?.provider === "jikan" ? "MyAnimeList" : "AniList";
 
   return (
     <aside className="overflow-hidden rounded-xl border border-border bg-card">
@@ -100,48 +129,9 @@ export function AnimeDetails({
               <Link className="size-4" />
             </button>
           )}
-          <h2 className="min-w-0 text-xl font-semibold">
-            {media === undefined ? fallbackTitle : mediaTitle(media)}
-          </h2>
+          <DetailsTitle media={media} fallbackTitle={fallbackTitle} />
         </div>
-        {media !== undefined && media.title.english !== media.title.romaji && (
-          <p className="mt-1 text-sm text-muted-foreground">{media.title.romaji}</p>
-        )}
-        {media !== undefined && <MediaFacts media={media} />}
-        <CollapsibleContent>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {media?.genres.slice(3).map((genre) => (
-              <Badge key={genre} variant="outline">{genre}</Badge>
-            ))}
-          </div>
-        </CollapsibleContent>
-        {media?.description !== null && media?.description !== undefined && (
-          <p className="anime-description mt-4 whitespace-pre-line text-sm leading-6 text-muted-foreground">
-            {media.description}
-          </p>
-        )}
-        {canExpand && (
-          <CollapsibleTrigger asChild>
-            <button
-              type="button"
-              className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {expanded ? "Show less" : "Show more"}
-              <CollapsibleChevron className="size-4" />
-            </button>
-          </CollapsibleTrigger>
-        )}
-        {media !== undefined && (
-          <a
-            href={media.siteUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-4 flex items-center gap-1.5 text-sm text-primary hover:underline"
-          >
-            View on {providerName}
-            <ExternalLink className="size-3.5" />
-          </a>
-        )}
+        {media !== undefined && <AnimeMetadata media={media} expanded={expanded} />}
       </div>
       </Collapsible>
     </aside>

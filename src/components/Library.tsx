@@ -17,6 +17,7 @@ import {
 import { AniListLinkDialog } from "./AniListLinkDialog.tsx";
 import {
   useContinueWatchingItems,
+  type ContinueWatchingItem,
 } from "./ContinueWatching.tsx";
 import { ShowPage } from "./ShowPage.tsx";
 import { MoviePage } from "./MoviePage.tsx";
@@ -153,6 +154,68 @@ function useGroupedShows(options: GroupedShowsOptions): GroupedShows {
   }, [deferredQuery, selectedShowName, shows]);
 }
 
+function selectedDisplayName(show: ShowGroup | null, media: AniListMedia | undefined): string {
+  if (show === null) {
+    return "";
+  }
+  return media === undefined ? show.name : displayMediaTitle(media);
+}
+
+function suggestedMetadataSearch(target: LinkTarget | null, displayName: string): string {
+  if (target?.type === "season" && target.season.name !== "Episodes") {
+    return `${displayName} ${target.season.name}`;
+  }
+  return displayName;
+}
+
+interface LibraryViewProps extends Pick<
+  LibraryProps,
+  "canManageMappings" | "entries" | "metadata" | "onSelect" | "onShowSelect" |
+  "onShowsBack" | "progress" | "query" | "unmappedShows"
+> {
+  readonly continueWatching: readonly ContinueWatchingItem[];
+  readonly downloads: readonly TorrentStatus[];
+  readonly selectedShow: ShowGroup | null;
+  readonly showMedia: AniListMedia | undefined;
+  readonly shows: readonly ShowGroup[];
+  readonly navigation: ReturnType<typeof useLibraryNavigation>;
+}
+
+function LibraryView(props: LibraryViewProps): React.JSX.Element {
+  if (props.selectedShow !== null) {
+    return (
+      <SelectedTitle show={props.selectedShow} media={props.showMedia} metadata={props.metadata} progress={props.progress} onBack={props.onShowsBack} onShowLink={props.canManageMappings ? props.navigation.handleShowLink : undefined} onSeasonLink={props.canManageMappings ? props.navigation.handleSeasonLink : undefined} onSelect={props.onSelect} />
+    );
+  }
+  return (
+    <>
+      {props.canManageMappings && <UnmappedShowsNotice shows={props.unmappedShows} />}
+      <LibraryHome entries={props.entries} shows={props.shows} metadata={props.metadata} continueWatching={props.continueWatching} progress={props.progress} showContinueWatching={props.query.trim() === ""} onShowSelect={props.onShowSelect} onEpisodeSelect={props.onSelect} downloads={props.downloads} />
+    </>
+  );
+}
+
+function MetadataLinkDialog({
+  canManageMappings,
+  dialogKey,
+  metadata,
+  navigation,
+  suggestedSearch,
+}: {
+  readonly canManageMappings: boolean;
+  readonly dialogKey: string | null;
+  readonly metadata: ShowMetadata;
+  readonly navigation: ReturnType<typeof useLibraryNavigation>;
+  readonly suggestedSearch: string;
+}): React.JSX.Element | null {
+  if (!canManageMappings || navigation.linkTarget === null || dialogKey === null) {
+    return null;
+  }
+  return (
+    <AniListLinkDialog currentMedia={metadata[dialogKey]} initialProvider={metadata[dialogKey]?.provider ?? "anilist"} metadataKey={dialogKey} suggestedSearch={suggestedSearch} subject={navigation.linkTarget.type} onClose={navigation.handleLinkClose} />
+  );
+}
+
 export function Library({
   entries,
   shows: allShows,
@@ -177,53 +240,13 @@ export function Library({
   const showMedia = selectedShow === null
     ? undefined
     : primaryShowMetadata(selectedShow, metadata);
-  const displayShowName = showMedia === undefined || selectedShow === null
-    ? selectedShow?.name ?? ""
-    : displayMediaTitle(showMedia);
+  const displayShowName = selectedDisplayName(selectedShow, showMedia);
   const dialogKey = linkMetadataKey(selectedShow, navigation.linkTarget);
-  const suggestedSearch = navigation.linkTarget?.type === "season" &&
-    navigation.linkTarget.season.name !== "Episodes"
-    ? `${displayShowName} ${navigation.linkTarget.season.name}`
-    : displayShowName;
+  const suggestedSearch = suggestedMetadataSearch(navigation.linkTarget, displayShowName);
   return (
     <>
-      {selectedShow === null ? (
-        <>
-          {canManageMappings && <UnmappedShowsNotice shows={unmappedShows} />}
-          <LibraryHome
-            entries={entries}
-            shows={shows}
-            metadata={metadata}
-            continueWatching={continueWatching}
-            progress={progress}
-            showContinueWatching={query.trim() === ""}
-            onShowSelect={onShowSelect}
-            onEpisodeSelect={onSelect}
-            downloads={torrents.data ?? EMPTY_TORRENTS}
-          />
-        </>
-      ) : (
-        <SelectedTitle
-          show={selectedShow}
-          media={showMedia}
-          metadata={metadata}
-          progress={progress}
-          onBack={onShowsBack}
-          onShowLink={canManageMappings ? navigation.handleShowLink : undefined}
-          onSeasonLink={canManageMappings ? navigation.handleSeasonLink : undefined}
-          onSelect={onSelect}
-        />
-      )}
-      {canManageMappings && navigation.linkTarget !== null && dialogKey !== null && (
-        <AniListLinkDialog
-          currentMedia={metadata[dialogKey]}
-          initialProvider={metadata[dialogKey]?.provider ?? "anilist"}
-          metadataKey={dialogKey}
-          suggestedSearch={suggestedSearch}
-          subject={navigation.linkTarget.type}
-          onClose={navigation.handleLinkClose}
-        />
-      )}
+      <LibraryView canManageMappings={canManageMappings} entries={entries} metadata={metadata} onSelect={onSelect} onShowSelect={onShowSelect} onShowsBack={onShowsBack} progress={progress} query={query} unmappedShows={unmappedShows} continueWatching={continueWatching} downloads={torrents.data ?? EMPTY_TORRENTS} selectedShow={selectedShow} showMedia={showMedia} shows={shows} navigation={navigation} />
+      <MetadataLinkDialog canManageMappings={canManageMappings} dialogKey={dialogKey} metadata={metadata} navigation={navigation} suggestedSearch={suggestedSearch} />
     </>
   );
 }

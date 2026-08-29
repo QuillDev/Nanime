@@ -41,6 +41,7 @@
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-widen-then-assert": "error",
     "anti-slop/require-safety-comment-for-type-assertion": "off",
+    "eslint/complexity": ["error", { "max": 15 }],
     "react/react-in-jsx-scope": "off",
     "unicorn/filename-case": [
       "error",

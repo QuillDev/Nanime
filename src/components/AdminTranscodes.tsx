@@ -71,6 +71,28 @@ function progressDetail(job: TranscodeJob): string {
   return `${percent.toFixed(1)}%${speed}${eta}`;
 }
 
+function JobActions({ job, onCancel, onRemove, onRemoveOriginal, cancelPending, removePending }: {
+  readonly job: TranscodeJob;
+  readonly onCancel: () => void;
+  readonly onRemove: () => void;
+  readonly onRemoveOriginal: () => void;
+  readonly cancelPending: boolean;
+  readonly removePending: boolean;
+}): React.JSX.Element | null {
+  if (job.status === "queued" || job.status === "processing") {
+    return <button type="button" onClick={onCancel} disabled={cancelPending} className="h-9 shrink-0 rounded-md border border-destructive px-3 text-xs font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-50">{cancelPending ? "Cancelling…" : "Cancel"}</button>;
+  }
+  if (job.originalDeleted || job.status !== "complete") {
+    return null;
+  }
+  return (
+    <div className="flex shrink-0 gap-2">
+      <button type="button" onClick={onRemove} disabled={removePending} className="h-9 rounded-md border border-border px-3 text-xs hover:bg-accent">Delete optimized</button>
+      <button type="button" onClick={onRemoveOriginal} disabled={removePending} className="h-9 rounded-md bg-destructive px-3 text-xs font-semibold text-destructive-foreground">Delete original</button>
+    </div>
+  );
+}
+
 function JobRow({ job, media }: { readonly job: TranscodeJob; readonly media: SearchableSelectOption | undefined }): React.JSX.Element {
   const remove = useDeleteTranscode(false);
   const removeOriginal = useDeleteTranscode(true);
@@ -92,17 +114,7 @@ function JobRow({ job, media }: { readonly job: TranscodeJob; readonly media: Se
         )}
         {job.error !== null && <p className="mt-1 text-xs text-destructive">{job.error}</p>}
       </div>
-      {(job.status === "queued" || job.status === "processing") && (
-        <button type="button" onClick={handleCancel} disabled={cancel.isPending} className="h-9 shrink-0 rounded-md border border-destructive px-3 text-xs font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-50">
-          {cancel.isPending ? "Cancelling…" : "Cancel"}
-        </button>
-      )}
-      {!job.originalDeleted && job.status === "complete" && (
-        <div className="flex shrink-0 gap-2">
-          <button type="button" onClick={handleRemove} disabled={remove.isPending} className="h-9 rounded-md border border-border px-3 text-xs hover:bg-accent">Delete optimized</button>
-          <button type="button" onClick={handleOriginal} disabled={removeOriginal.isPending} className="h-9 rounded-md bg-destructive px-3 text-xs font-semibold text-destructive-foreground">Delete original</button>
-        </div>
-      )}
+      <JobActions job={job} onCancel={handleCancel} onRemove={handleRemove} onRemoveOriginal={handleOriginal} cancelPending={cancel.isPending} removePending={remove.isPending || removeOriginal.isPending} />
     </li>
   );
 }

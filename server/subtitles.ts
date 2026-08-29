@@ -290,6 +290,43 @@ interface SubtitleSynchronization {
   readonly offsetSeconds: number;
 }
 
+interface SubtitleUpload {
+  readonly rel: string;
+  readonly subtitle: File;
+  readonly offsetSeconds: number;
+  readonly extension: string;
+}
+
+async function subtitleUpload(req: Request): Promise<SubtitleUpload | null> {
+  const form = await req.formData().catch(() => null);
+  const rel = form?.get("path");
+  const subtitle = form?.get("subtitle");
+  const offsetValue = form?.get("offsetSeconds");
+  const offsetSeconds = typeof offsetValue === "string" ? Number(offsetValue) : Number.NaN;
+  const extension = subtitle instanceof File ? extname(subtitle.name).toLowerCase() : "";
+  if (typeof rel !== "string" || rel === "" || !(subtitle instanceof File) ||
+    !safeSubtitleName(subtitle.name) || subtitle.size <= 0 ||
+    subtitle.size > MAX_SUBTITLE_BYTES || !Number.isFinite(offsetSeconds) ||
+    Math.abs(offsetSeconds) > MAX_OFFSET_SECONDS || !SIDECAR_EXTENSIONS.has(extension)) {
+    return null;
+  }
+  return { rel, subtitle, offsetSeconds, extension };
+}
+
+async function subtitleMedia(
+  mediaRoot: string,
+  rel: string,
+  videoExtensions: ReadonlySet<string>,
+): Promise<string | null> {
+  const candidate = resolve(mediaRoot, rel);
+  if (candidate === mediaRoot || !candidate.startsWith(mediaRoot + sep)) {
+    return null;
+  }
+  const media = await realpath(candidate).catch(() => null);
+  return media !== null && media.startsWith(mediaRoot + sep) &&
+    videoExtensions.has(extname(media).toLowerCase()) ? media : null;
+}
+
 async function synchronizeSubtitle(
   synchronization: SubtitleSynchronization,
 ): Promise<boolean> {
@@ -320,35 +357,28 @@ export async function subtitleUploadResponse(
   mediaRoot: string,
   videoExtensions: ReadonlySet<string>,
 ): Promise<Response> {
-  const form = await req.formData().catch(() => null);
-  const rel = form?.get("path");
-  const subtitle = form?.get("subtitle");
-  const offsetValue = form?.get("offsetSeconds");
-  const offsetSeconds = typeof offsetValue === "string" ? Number(offsetValue) : Number.NaN;
-  const extension = subtitle instanceof File ? extname(subtitle.name).toLowerCase() : "";
-  if (
-    typeof rel !== "string" || rel === "" ||
-    !(subtitle instanceof File) || !safeSubtitleName(subtitle.name) ||
-    subtitle.size <= 0 || subtitle.size > MAX_SUBTITLE_BYTES ||
-    !Number.isFinite(offsetSeconds) || Math.abs(offsetSeconds) > MAX_OFFSET_SECONDS ||
-    !SIDECAR_EXTENSIONS.has(extension)
-  ) {
+  const upload = await subtitleUpload(req);
+  if (upload === null) {
     return new Response("Choose a valid SRT or ASS subtitle file", { status: 400 });
   }
-  const candidate = resolve(mediaRoot, rel);
-  const media = candidate !== mediaRoot && candidate.startsWith(mediaRoot + sep)
-    ? await realpath(candidate).catch(() => null)
-    : null;
-  if (
-    media === null || !media.startsWith(mediaRoot + sep) ||
-    !videoExtensions.has(extname(media).toLowerCase())
-  ) {
+  const media = await subtitleMedia(mediaRoot, upload.rel, videoExtensions);
+  if (media === null) {
     return new Response("Episode not found", { status: 404 });
   }
-  const destination = join(dirname(media), destinationName(media, subtitle.name));
-  const temporary = join(dirname(media), `.nanime-subtitle-${randomUUID()}${extension}`);
-  const synchronized = join(dirname(media), `.nanime-subtitle-${randomUUID()}${extension}`);
-  if (!(await writeTemporarySubtitle(temporary, subtitle))) {
+  const result = await saveUploadedSubtitle(media, upload);
+  if (result !== null) {
+    return result;
+  }
+  clearSubtitleCache(media);
+  invalidateMediaScan(upload.rel);
+  return Response.json({ uploaded: true });
+}
+
+async function saveUploadedSubtitle(media: string, upload: SubtitleUpload): Promise<Response | null> {
+  const destination = join(dirname(media), destinationName(media, upload.subtitle.name));
+  const temporary = join(dirname(media), `.nanime-subtitle-${randomUUID()}${upload.extension}`);
+  const synchronized = join(dirname(media), `.nanime-subtitle-${randomUUID()}${upload.extension}`);
+  if (!(await writeTemporarySubtitle(temporary, upload.subtitle))) {
     return new Response("Could not prepare subtitle upload", { status: 500 });
   }
   try {
@@ -356,17 +386,17 @@ export async function subtitleUploadResponse(
       return new Response("Subtitle file could not be read", { status: 400 });
     }
     if (
-      offsetSeconds !== 0 &&
+      upload.offsetSeconds !== 0 &&
       !(await synchronizeSubtitle({
         source: temporary,
         destination: synchronized,
-        extension,
-        offsetSeconds,
+        extension: upload.extension,
+        offsetSeconds: upload.offsetSeconds,
       }))
     ) {
       return new Response("Subtitle timing could not be adjusted", { status: 400 });
     }
-    await link(offsetSeconds === 0 ? temporary : synchronized, destination);
+    await link(upload.offsetSeconds === 0 ? temporary : synchronized, destination);
   } catch (error) {
     const code = fileSystemErrorCode(error);
     return new Response(
@@ -377,7 +407,5 @@ export async function subtitleUploadResponse(
     await unlink(temporary).catch(() => undefined);
     await unlink(synchronized).catch(() => undefined);
   }
-  clearSubtitleCache(media);
-  invalidateMediaScan(rel);
-  return Response.json({ uploaded: true });
+  return null;
 }
