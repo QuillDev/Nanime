@@ -1,12 +1,9 @@
-import { useCallback } from "react";
-import { ExternalLink, Link } from "lucide-react";
 import type {
   AniListMedia,
   MediaEntry,
   PlaybackProgressMap,
   ShowMetadata,
 } from "../types.ts";
-import aniListLogoUrl from "../assets/anilist-logo.svg";
 import {
   isMovieMedia,
   seasonMetadata,
@@ -16,6 +13,7 @@ import {
 import { mediaTitle } from "../lib/anilist.ts";
 import { AniListListControls } from "./AniListListControls.tsx";
 import { EpisodeGrid } from "./EpisodeGrid.tsx";
+import { SeasonActionsMenu } from "./SeasonActionsMenu.tsx";
 import {
   Collapsible,
   CollapsibleChevron,
@@ -44,13 +42,9 @@ function SeasonSection({
   showMedia,
   listMedia,
 }: SeasonSectionProps): React.JSX.Element {
-  const handleLink = useCallback(() => {
-    onLink?.(season);
-  }, [onLink, season]);
   const title = media === undefined ? season.name : mediaTitle(media);
   const number = seasonNumber(season, media);
   const movie = isMovieMedia(media);
-  const providerName = media?.provider === "jikan" ? "MyAnimeList" : "AniList";
 
   return (
     <Collapsible defaultOpen={defaultOpen} asChild>
@@ -67,32 +61,14 @@ function SeasonSection({
             <span className="min-w-0 flex-1 truncate font-semibold">{title}</span>
           </button>
         </CollapsibleTrigger>
-        {onLink !== undefined && (
-          <button
-            type="button"
-            onClick={handleLink}
-            aria-label={media === undefined ? `Match metadata for ${season.name}` : `Change match for ${title}`}
-            title={media === undefined ? "Match metadata" : "Change metadata match"}
-            className={`shrink-0 rounded p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${media === undefined ? "text-muted-foreground hover:text-primary" : "text-primary"}`}
-          >
-            <Link className="size-4" />
-          </button>
-        )}
-        {media !== undefined && (
-          <a
-            href={media.siteUrl}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={`View ${title} on ${providerName}`}
-            title={`View on ${providerName}`}
-            className="inline-flex shrink-0 items-center gap-1 rounded p-2 text-muted-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {media.provider === "anilist"
-              ? <img src={aniListLogoUrl} alt="" className="size-5" />
-              : <span className="flex size-5 items-center justify-center rounded bg-primary text-xs font-bold text-primary-foreground">J</span>}
-            <ExternalLink className="size-4" />
-          </a>
-        )}
+        <SeasonActionsMenu
+          media={media}
+          playbackMedia={listMedia}
+          progress={progress}
+          season={season}
+          title={title}
+          onLink={onLink}
+        />
         <CollapsibleTrigger asChild>
           <button
             type="button"
@@ -110,7 +86,7 @@ function SeasonSection({
           )}
           <EpisodeGrid
             entries={season.entries}
-            media={media}
+            media={listMedia}
             progress={progress}
             onSelect={onEpisodeSelect}
             showMedia={showMedia}

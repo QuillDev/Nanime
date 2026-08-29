@@ -20,6 +20,14 @@ export interface PlaybackProgressUpdate {
   readonly totalEpisodes?: number | null;
 }
 
+export interface PlaybackWatchedUpdate {
+  readonly rel: string;
+  readonly watched: boolean;
+  readonly anilistMediaId?: number;
+  readonly episode?: number;
+  readonly totalEpisodes?: number | null;
+}
+
 export async function savePlaybackProgress(
   update: PlaybackProgressUpdate,
 ): Promise<PlaybackProgress> {
@@ -42,6 +50,18 @@ export async function setPlaybackWatched(
     await api.api.progress.watched.post({ rel, watched, ...target }),
     watched ? "Marking episode watched" : "Marking episode unwatched",
   );
+}
+
+export async function setPlaybackWatchedBatch(
+  updates: readonly PlaybackWatchedUpdate[],
+): Promise<readonly PlaybackProgress[]> {
+  const saved: PlaybackProgress[] = [];
+  for (const update of updates) {
+    // AniList progress is a frontier, so season changes must be applied in episode order.
+    // eslint-disable-next-line no-await-in-loop, react-doctor/async-await-in-loop
+    saved.push(await setPlaybackWatched(update.rel, update.watched, update));
+  }
+  return saved;
 }
 
 type AniListPlaybackUpdate = Pick<

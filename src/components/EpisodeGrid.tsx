@@ -9,6 +9,7 @@ import type {
 import { episodeMetadata, episodeNumber, mediaTitle } from "../lib/anilist.ts";
 import { isMovieMedia } from "../lib/library.ts";
 import { hasMeaningfulPlaybackProgress, preloadPlayer } from "../lib/playback.ts";
+import { episodePlaybackTarget } from "../lib/seasonWatched.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
 import { useSetPlaybackWatched } from "../hooks/usePlaybackProgress.ts";
 import { useSeriesCompletionPrompt } from "./SeriesCompletionPrompt.tsx";
@@ -72,27 +73,6 @@ interface EpisodeCardProps {
   readonly pending: boolean;
   readonly showMedia: AniListMedia | undefined;
   readonly seasonNumber: number;
-}
-
-function episodePlaybackTarget(
-  entry: MediaEntry,
-  media: AniListMedia | undefined,
-): AniListPlaybackTarget | null {
-  if (media?.anilistId === null || media?.anilistId === undefined) {
-    return null;
-  }
-  const totalEpisodes = media.episodes;
-  const movie = isMovieMedia(media);
-  const episode = movie ? 1 : episodeNumber(entry);
-  if (episode === null) {
-    return null;
-  }
-  return {
-    mediaId: media.anilistId,
-    episode,
-    totalEpisodes: movie ? 1 : totalEpisodes,
-    title: mediaTitle(media),
-  };
 }
 
 function EpisodeCard({

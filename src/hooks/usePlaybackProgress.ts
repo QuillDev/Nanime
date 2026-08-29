@@ -11,7 +11,9 @@ import {
   fetchPlaybackProgress,
   savePlaybackProgress,
   setPlaybackWatched,
+  setPlaybackWatchedBatch,
   type PlaybackProgressUpdate,
+  type PlaybackWatchedUpdate,
 } from "../playbackApi.ts";
 
 const playbackProgressKey = ["playback-progress"] as const;
@@ -20,15 +22,7 @@ interface DismissContext {
   readonly previous: PlaybackProgressMap | undefined;
 }
 
-interface WatchedUpdate {
-  readonly rel: string;
-  readonly watched: boolean;
-  readonly anilistMediaId?: number;
-  readonly episode?: number;
-  readonly totalEpisodes?: number | null;
-}
-
-function aniListWatchedUpdate(update: WatchedUpdate) {
+function aniListWatchedUpdate(update: PlaybackWatchedUpdate) {
   if (update.anilistMediaId === undefined || update.episode === undefined ||
     update.totalEpisodes === undefined) {
     return undefined;
@@ -37,6 +31,20 @@ function aniListWatchedUpdate(update: WatchedUpdate) {
     anilistMediaId: update.anilistMediaId,
     episode: update.episode,
     totalEpisodes: update.totalEpisodes,
+  };
+}
+
+function optimisticWatchedProgress(
+  update: PlaybackWatchedUpdate,
+  existing: PlaybackProgress | undefined,
+): PlaybackProgress {
+  return {
+    rel: update.rel,
+    position: update.watched ? existing?.position ?? 0 : 0,
+    duration: existing?.duration ?? 0,
+    completed: update.watched,
+    updatedAt: Date.now(),
+    dismissedAt: null,
   };
 }
 
@@ -117,7 +125,7 @@ export function useDismissPlaybackProgress(): UseMutationResult<
 export function useSetPlaybackWatched(): UseMutationResult<
   PlaybackProgress,
   Error,
-  WatchedUpdate,
+  PlaybackWatchedUpdate,
   DismissContext
 > {
   const queryClient = useQueryClient();
@@ -131,14 +139,7 @@ export function useSetPlaybackWatched(): UseMutationResult<
       await queryClient.cancelQueries({ queryKey: playbackProgressKey });
       const previous = queryClient.getQueryData<PlaybackProgressMap>(playbackProgressKey);
       const existing = previous?.[rel];
-      const optimistic: PlaybackProgress = {
-        rel,
-        position: watched ? existing?.position ?? 0 : 0,
-        duration: existing?.duration ?? 0,
-        completed: watched,
-        updatedAt: Date.now(),
-        dismissedAt: null,
-      };
+      const optimistic = optimisticWatchedProgress({ rel, watched }, existing);
       queryClient.setQueryData<PlaybackProgressMap>(playbackProgressKey, (current) => ({
         ...current,
         [rel]: optimistic,
@@ -152,6 +153,40 @@ export function useSetPlaybackWatched(): UseMutationResult<
       queryClient.setQueryData<PlaybackProgressMap>(playbackProgressKey, (current) => ({
         ...current,
         [saved.rel]: saved,
+      }));
+    },
+  });
+}
+
+export function useSetSeasonWatched(): UseMutationResult<
+  readonly PlaybackProgress[],
+  Error,
+  readonly PlaybackWatchedUpdate[],
+  DismissContext
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: setPlaybackWatchedBatch,
+    onMutate: async (updates) => {
+      await queryClient.cancelQueries({ queryKey: playbackProgressKey });
+      const previous = queryClient.getQueryData<PlaybackProgressMap>(playbackProgressKey);
+      queryClient.setQueryData<PlaybackProgressMap>(playbackProgressKey, (current) => {
+        const next = { ...current };
+        for (const update of updates) {
+          next[update.rel] = optimisticWatchedProgress(update, current?.[update.rel]);
+        }
+        return next;
+      });
+      return { previous };
+    },
+    onError: (_error, _updates, context) => {
+      queryClient.setQueryData(playbackProgressKey, context?.previous);
+      return queryClient.invalidateQueries({ queryKey: playbackProgressKey });
+    },
+    onSuccess: (saved) => {
+      queryClient.setQueryData<PlaybackProgressMap>(playbackProgressKey, (current) => ({
+        ...current,
+        ...toProgressMap(saved),
       }));
     },
   });
