@@ -18,6 +18,17 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Begin Chrome warmup
+        run: |
+          chrome_path="$(command -v google-chrome-stable || command -v google-chrome)"
+          chrome_profile="$RUNNER_TEMP/nanime-chrome"
+          "$chrome_path" --headless --no-sandbox --disable-gpu --no-first-run \
+            --no-default-browser-check --remote-debugging-address=127.0.0.1 \
+            --remote-debugging-port=0 --user-data-dir="$chrome_profile" \
+            --autoplay-policy=no-user-gesture-required about:blank \
+            > "$RUNNER_TEMP/nanime-chrome.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/nanime-chrome.pid"
+          echo "NANIME_CHROME_PROFILE=$chrome_profile" >> "$GITHUB_ENV"
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -80,6 +91,21 @@ jobs:
           chmod +x .ci/ffmpeg/ffmpeg .ci/ffmpeg/ffprobe
       - name: Add FFmpeg tools to PATH
         run: echo "$GITHUB_WORKSPACE/.ci/ffmpeg" >> "$GITHUB_PATH"
+      - name: Connect to warmed Chrome
+        run: |
+          for attempt in $(seq 1 300); do
+            if test -s "$NANIME_CHROME_PROFILE/DevToolsActivePort"; then
+              break
+            fi
+            sleep 0.05
+          done
+          if ! test -s "$NANIME_CHROME_PROFILE/DevToolsActivePort"; then
+            cat "$RUNNER_TEMP/nanime-chrome.log"
+            exit 1
+          fi
+          chrome_port="$(sed -n '1p' "$NANIME_CHROME_PROFILE/DevToolsActivePort")"
+          chrome_path="$(sed -n '2p' "$NANIME_CHROME_PROFILE/DevToolsActivePort")"
+          echo "NANIME_CHROME_URL=ws://127.0.0.1:$chrome_port$chrome_path" >> "$GITHUB_ENV"
       - name: Run player browser shard
         env:
           NANIME_PLAYER_E2E: "true"
@@ -96,3 +122,9 @@ jobs:
           name: player-harness-diagnostics-${{ matrix.case.name }}
           path: test-results
           if-no-files-found: ignore
+      - name: Stop warmed Chrome
+        if: always()
+        run: |
+          if test -s "$RUNNER_TEMP/nanime-chrome.pid"; then
+            kill "$(cat "$RUNNER_TEMP/nanime-chrome.pid")" || true
+          fi

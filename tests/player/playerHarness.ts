@@ -76,6 +76,18 @@ interface TimedOperationOptions<T> {
   readonly timeout?: number;
 }
 
+function browserBackend(browserPath: string): Bun.WebView.Backend {
+  const browserUrl = Bun.env["NANIME_CHROME_URL"];
+  if (browserUrl !== undefined && browserUrl !== "") {
+    return { type: "chrome", url: browserUrl };
+  }
+  return {
+    type: "chrome",
+    path: browserPath,
+    argv: ["--autoplay-policy=no-user-gesture-required", "--no-sandbox"],
+  };
+}
+
 function reportTiming(description: string, startedAt: number): void {
   const elapsed = performance.now() - startedAt;
   process.stdout.write(`[player-timing] ${description}: ${elapsed.toFixed(1)}ms\n`);
@@ -223,11 +235,7 @@ async function openApp(
   const view = new Bun.WebView({
     width: 1280,
     height: 720,
-    backend: {
-      type: "chrome",
-      path: harness.browserPath,
-      argv: ["--autoplay-policy=no-user-gesture-required", "--no-sandbox"],
-    },
+    backend: browserBackend(harness.browserPath),
     console: browserConsole(consoleErrors),
   });
   const player: PlayerView = {
