@@ -45,6 +45,11 @@ interface Source {
   readonly direct: boolean;
 }
 
+interface SourceResolution {
+  readonly error: string | null;
+  readonly source: Source | null;
+}
+
 const artifacts = database.query<ArtifactRow, []>(`
   SELECT * FROM offline_media_artifacts ORDER BY created_at
 `);
@@ -129,30 +134,41 @@ function artifactResponse(row: ArtifactRow, status = 200): Response {
   });
 }
 
-async function sourceFor(rel: string, options: OfflineMediaOptions): Promise<Source | null> {
+async function resolveSource(rel: string, options: OfflineMediaOptions): Promise<SourceResolution> {
   const candidate = resolve(options.mediaDir, rel);
   if (candidate === options.mediaDir || !candidate.startsWith(options.mediaDir + sep)) {
-    return null;
+    return { error: "Video path is invalid", source: null };
   }
   const abs = await realpath(candidate).catch(() => null);
-  const extension = abs === null ? "" : extname(abs).toLowerCase();
-  if (
-    abs === null || !abs.startsWith(options.mediaRoot + sep) ||
-    !options.videoExtensions.has(extension)
-  ) {
-    return null;
+  if (abs === null) {
+    return { error: "Video file is no longer available", source: null };
+  }
+  if (!abs.startsWith(options.mediaRoot + sep)) {
+    return { error: "Video path is outside the media library", source: null };
+  }
+  const extension = extname(abs).toLowerCase();
+  if (!options.videoExtensions.has(extension)) {
+    return { error: "Video format is not supported for offline playback", source: null };
   }
   const information = await lstat(abs).catch(() => null);
   if (information?.isFile() !== true) {
-    return null;
+    return { error: "Video file is no longer available", source: null };
   }
   return {
-    abs,
-    rel,
-    size: information.size,
-    modifiedAt: information.mtimeMs,
-    direct: options.directPlayExtensions.has(extension),
+    error: null,
+    source: {
+      abs,
+      rel,
+      size: information.size,
+      modifiedAt: information.mtimeMs,
+      direct: options.directPlayExtensions.has(extension),
+    },
   };
+}
+
+async function sourceFor(rel: string, options: OfflineMediaOptions): Promise<Source | null> {
+  const resolution = await resolveSource(rel, options);
+  return resolution.source;
 }
 
 async function selectedAudioIndex(abs: string, requested: number | null): Promise<number | null | undefined> {
@@ -322,10 +338,11 @@ async function prepareResponse(req: Request, options: OfflineMediaOptions): Prom
   ) {
     return new Response("Choose valid media and audio", { status: 400 });
   }
-  const source = await sourceFor(path, options);
-  if (source === null) {
-    return new Response("Video not found", { status: 404 });
+  const resolution = await resolveSource(path, options);
+  if (resolution.source === null) {
+    return new Response(resolution.error ?? "Video not found", { status: 404 });
   }
+  const { source } = resolution;
   const audioIndex = await selectedAudioIndex(source.abs, requestedAudio);
   if (audioIndex === undefined) {
     return new Response("Audio track not found", { status: 404 });

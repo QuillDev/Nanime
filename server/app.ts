@@ -240,10 +240,11 @@ export const app = new Elysia({ name: "nanime" })
     handle(jsonRequest(request, body), server)
   ), {
     body: offlineMediaPrepareSchema,
-    response: offlineMediaArtifactSchema,
+    response: { 200: offlineMediaArtifactSchema, 202: offlineMediaArtifactSchema,
+      400: schema.string(), 404: schema.string(), 500: schema.string() },
   })
   .get("/api/offline-media/:id", ({ request, server }) => handle(request, server), {
-    response: offlineMediaArtifactSchema,
+    response: { 200: offlineMediaArtifactSchema, 404: schema.string() },
   })
   .get("/api/trickplay", ({ request, server }) => handle(request, server), {
     query: pathQuerySchema,
