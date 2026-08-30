@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
+  clickElement,
+  elementVisible,
+  showPlayerControls,
+  waitForElement,
+} from "./browserInteraction.ts";
+import {
   captureFailure,
   DIRECT_FIXTURE,
   FIXTURE_DURATION,
@@ -56,16 +62,132 @@ async function verifyNoPlayerErrors(player: Awaited<ReturnType<PlayerHarness["op
   expect(player.consoleErrors).toEqual([]);
 }
 
-describeBrowser("real browser player harness", () => {
-  beforeAll(async () => {
-    harness = await startPlayerHarness();
-  }, 120_000);
+async function waitForEpisodeRoute(view: Bun.WebView, rel: string): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const current = await view.evaluate<string>("new URL(location.href).searchParams.get('episode') ?? ''");
+    if (current === rel) {
+      await waitForPlayerState({
+        view,
+        predicate: (state) => state.readyState >= 2,
+        description: `${rel} player to become ready`,
+      });
+      return;
+    }
+    await Bun.sleep(50);
+  }
+  throw new Error(`Timed out waiting for episode route: ${rel}`);
+}
 
-  afterAll(async () => {
-    await harness?.close();
-    Bun.WebView.closeAll();
-  });
+async function waitForElementHidden(
+  view: Bun.WebView,
+  target: Parameters<typeof elementVisible>[1],
+): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    if (!(await elementVisible(view, target))) {
+      return;
+    }
+    await Bun.sleep(50);
+  }
+  throw new Error(`Timed out waiting for element to hide: ${JSON.stringify(target)}`);
+}
 
+async function setPlaybackRate(view: Bun.WebView, rate: number): Promise<void> {
+  const updated = await view.evaluate<boolean>(`(() => {
+    const video = document.querySelector("video");
+    if (!(video instanceof HTMLVideoElement)) return false;
+    video.playbackRate = ${String(rate)};
+    return video.playbackRate === ${String(rate)};
+  })()`);
+  expect(updated).toBe(true);
+}
+
+function registerCommonJourneyTests(): void {
+  test("navigates through a season, streams quickly, skips time, and traverses episodes", async () => {
+    const runtime = activeHarness();
+    const player = await runtime.openApp();
+    try {
+      await clickElement(player.view, { selector: "button", text: "Browser Fixture Show" });
+      const season = { selector: "button", ariaLabel: "Expand or collapse Episodes" } as const;
+      const firstEpisode = { selector: "button", text: "Browser Fixture - 01.mkv" } as const;
+      await clickElement(player.view, season);
+      await waitForElementHidden(player.view, firstEpisode);
+      await clickElement(player.view, season);
+      await clickElement(player.view, firstEpisode);
+      await waitForEpisodeRoute(player.view, HLS_FIXTURE);
+      await ensurePlaying(player);
+      await setPlaybackRate(player.view, 4);
+      const acceleratedStart = await playerState(player.view);
+      expect(acceleratedStart).not.toBeNull();
+      await waitForPlayerState({
+        view: player.view,
+        predicate: (state) => state.timelinePosition > (acceleratedStart?.timelinePosition ?? 0) + 2,
+        description: "accelerated browser playback to stream two media seconds",
+        timeout: 5000,
+      });
+      await setPlaybackRate(player.view, 1);
+      await showPlayerControls(player.view);
+      const beforeForward = await playerState(player.view);
+      await clickElement(player.view, { selector: "button", ariaLabel: "Forward 10 seconds" });
+      const forwarded = await waitForPlayerState({
+        view: player.view,
+        predicate: (state) => state.timelinePosition >= (beforeForward?.timelinePosition ?? 0) + 8,
+        description: "forward ten-second control",
+      });
+      await showPlayerControls(player.view);
+      await clickElement(player.view, { selector: "button", ariaLabel: "Back 10 seconds" });
+      await waitForPlayerState({
+        view: player.view,
+        predicate: (state) => state.timelinePosition <= forwarded.timelinePosition - 8,
+        description: "back ten-second control",
+      });
+      await showPlayerControls(player.view);
+      await clickElement(player.view, { selector: "button", ariaLabel: "Next episode" });
+      await waitForEpisodeRoute(player.view, DIRECT_FIXTURE);
+      await verifyNoPlayerErrors(player);
+      await showPlayerControls(player.view);
+      await clickElement(player.view, { selector: "button", ariaLabel: "Previous episode" });
+      await waitForEpisodeRoute(player.view, HLS_FIXTURE);
+      await verifyNoPlayerErrors(player);
+      expect(player.consoleErrors).toEqual([]);
+    } catch (error: unknown) {
+      await captureFailure({ player, name: "common-player-journey", serverLog: runtime.serverLog(), error });
+    } finally {
+      await player.close();
+    }
+  }, 60_000);
+
+  test("marks an episode watched and unwatched durably through the real UI", async () => {
+    const runtime = activeHarness();
+    const player = await runtime.openApp();
+    const episodeActions = { selector: "summary", ariaLabel: "Episode actions", index: 0 } as const;
+    try {
+      await clickElement(player.view, { selector: "button", text: "Browser Fixture Show" });
+      await clickElement(player.view, episodeActions);
+      await clickElement(player.view, { selector: "button[role='menuitem']", text: "Mark as watched" });
+      await waitForElement(player.view, { selector: "li span", text: "Watched" });
+      const showUrl = await player.view.evaluate<string>("location.href");
+      await player.view.navigate(showUrl);
+      await clickElement(player.view, episodeActions);
+      await waitForElement(player.view, { selector: "button[role='menuitem']", text: "Mark as unwatched" });
+      await clickElement(player.view, { selector: "button[role='menuitem']", text: "Mark as unwatched" });
+      await waitForElementHidden(player.view, { selector: "li span", text: "Watched" });
+      await player.view.navigate(showUrl);
+      await clickElement(player.view, episodeActions);
+      expect(await elementVisible(player.view, {
+        selector: "button[role='menuitem']",
+        text: "Mark as watched",
+      })).toBe(true);
+    } catch (error: unknown) {
+      await captureFailure({ player, name: "watched-durability", serverLog: runtime.serverLog(), error });
+    } finally {
+      await player.close();
+    }
+  }, 30_000);
+}
+
+function registerPlaybackRegressionTests(): void {
   test("recovers a transient HLS manifest 404 and plays real generated media", async () => {
     const runtime = activeHarness();
     const player = await runtime.openPlayer(HLS_FIXTURE, { failFirstManifest: true });
@@ -179,4 +301,18 @@ describeBrowser("real browser player harness", () => {
       await player.close();
     }
   }, 45_000);
+}
+
+describeBrowser("real browser player harness", () => {
+  beforeAll(async () => {
+    harness = await startPlayerHarness();
+  }, 120_000);
+
+  afterAll(async () => {
+    await harness?.close();
+    Bun.WebView.closeAll();
+  });
+
+  registerCommonJourneyTests();
+  registerPlaybackRegressionTests();
 });

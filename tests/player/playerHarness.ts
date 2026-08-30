@@ -9,7 +9,7 @@ const ADMIN_PASSWORD = "nanime-player-harness-password";
 const FIXTURE_FOLDER = "Browser Fixture Show";
 export const HLS_FIXTURE = `${FIXTURE_FOLDER}/Browser Fixture - 01.mkv`;
 export const DIRECT_FIXTURE = `${FIXTURE_FOLDER}/Browser Fixture - 02.mp4`;
-export const FIXTURE_DURATION = 120;
+export const FIXTURE_DURATION = 48;
 
 const FIXTURE_METADATA = {
   provider: "jikan",
@@ -66,6 +66,7 @@ export interface PlayerHarness {
   readonly serverLog: () => string;
   readonly temporaryRoot: string;
   close: () => Promise<void>;
+  openApp: () => Promise<PlayerView>;
   openPlayer: (rel: string, options?: { readonly failFirstManifest?: boolean }) => Promise<PlayerView>;
 }
 
@@ -140,7 +141,7 @@ async function generateFixture(mediaDirectory: string): Promise<void> {
   await mkdir(folder, { recursive: true });
   await run([
     ffmpeg, "-hide_banner", "-loglevel", "error",
-    "-f", "lavfi", "-i", `testsrc2=size=960x540:rate=24:duration=${String(FIXTURE_DURATION)}`,
+    "-f", "lavfi", "-i", `testsrc2=size=426x240:rate=24:duration=${String(FIXTURE_DURATION)}`,
     "-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:duration=${String(FIXTURE_DURATION)}`,
     "-f", "lavfi", "-i", `sine=frequency=880:sample_rate=48000:duration=${String(FIXTURE_DURATION)}`,
     "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0",
@@ -151,12 +152,8 @@ async function generateFixture(mediaDirectory: string): Promise<void> {
     "-disposition:a:0", "default", "-shortest", hlsFixture,
   ]);
   await run([
-    ffmpeg, "-hide_banner", "-loglevel", "error",
-    "-f", "lavfi", "-i", `testsrc2=size=960x540:rate=24:duration=${String(FIXTURE_DURATION)}`,
-    "-map", "0:v:0",
-    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "32", "-pix_fmt", "yuv420p",
-    "-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
-    "-an", "-movflags", "+faststart",
+    ffmpeg, "-hide_banner", "-loglevel", "error", "-i", hlsFixture,
+    "-map", "0:v:0", "-c:v", "copy", "-an", "-movflags", "+faststart",
     directFixture,
   ]);
 }
@@ -251,6 +248,24 @@ async function openPlayer(
   rel: string,
   options: { readonly failFirstManifest?: boolean } = {},
 ): Promise<PlayerView> {
+  const player = await openApp(harness);
+  try {
+    if (options.failFirstManifest === true) {
+      await harness.failNextManifest();
+    }
+    const playerUrl = new URL(harness.origin);
+    playerUrl.searchParams.set("episode", rel);
+    await timedOperation({ operation: player.view.navigate(playerUrl.href), description: "player route" });
+    return player;
+  } catch (error: unknown) {
+    await player.close();
+    throw error;
+  }
+}
+
+async function openApp(
+  harness: Pick<PlayerHarness, "browserPath" | "origin">,
+): Promise<PlayerView> {
   const consoleErrors: string[] = [];
   const view = new Bun.WebView({
     width: 1280,
@@ -283,12 +298,7 @@ async function openPlayer(
       }
     });
     await timedOperation({ operation: login(view), description: "browser login" });
-    if (options.failFirstManifest === true) {
-      await harness.failNextManifest();
-    }
-    const playerUrl = new URL(harness.origin);
-    playerUrl.searchParams.set("episode", rel);
-    await timedOperation({ operation: view.navigate(playerUrl.href), description: "player route" });
+    await timedOperation({ operation: view.navigate(harness.origin), description: "authenticated application shell" });
     return player;
   } catch (error: unknown) {
     view.close();
@@ -403,6 +413,7 @@ export async function startPlayerHarness(): Promise<PlayerHarness> {
     origin,
     temporaryRoot,
     serverLog: () => `${stdout.output()}\n${stderr.output()}\n${proxy.output.output()}`,
+    openApp: () => openApp({ browserPath, origin }),
     openPlayer: (rel, options) => openPlayer({
       browserPath,
       origin,
