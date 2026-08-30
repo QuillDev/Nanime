@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { HLS_SEGMENT_SECONDS } from "../shared/playback.ts";
 import type { AudioTrack } from "./audioTracks.ts";
@@ -7,6 +8,20 @@ export { HLS_SEGMENT_SECONDS } from "../shared/playback.ts";
 export interface HlsOptions {
   readonly hardwareAcceleration: string;
   readonly vaapiDevice: string;
+}
+
+interface HlsSessionKeyOptions extends HlsOptions {
+  readonly abs: string;
+  readonly audioIndex: number | null;
+  readonly leaseId: string | null;
+  readonly userId: number;
+}
+
+export function hlsSessionKey(options: HlsSessionKeyOptions, segmentIndex: number): string {
+  return createHash("sha256").update([
+    String(options.userId), options.abs, String(options.audioIndex), String(segmentIndex),
+    options.hardwareAcceleration, options.leaseId === null ? "legacy" : "managed",
+  ].join("\0")).digest("hex");
 }
 
 interface TranscodeCommand extends HlsOptions {

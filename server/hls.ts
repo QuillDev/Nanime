@@ -1,11 +1,15 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { audioTracks, type AudioTrack } from "./audioTracks.ts";
+import { selectedAudioTrack } from "./audioTracks.ts";
 import { SingleFlight } from "./singleFlight.ts";
-import { HlsStoppingCapacity, hlsCapacityAvailable } from "./hlsCapacity.ts";
-import { HLS_SEGMENT_SECONDS, transcodeArgs, type HlsOptions } from "./hlsTranscode.ts";
+import {
+  HlsStoppingCapacity,
+  hlsCapacityAvailable,
+  reserveHlsPlaybackCapacity,
+} from "./hlsCapacity.ts";
+import { HLS_SEGMENT_SECONDS, hlsSessionKey, transcodeArgs, type HlsOptions } from "./hlsTranscode.ts";
 import { stopHlsProcess } from "./hlsProcess.ts";
 import { hlsOwnershipKey, supersedeHlsLease } from "./hlsLeaseOwnership.ts";
 
@@ -68,17 +72,6 @@ let pendingSessionCount = 0;
 const pendingSessionsByUser = new Map<number, number>();
 const stoppingSessions = new HlsStoppingCapacity();
 
-function sessionKey(options: HlsPlaylistOptions, segmentIndex: number): string {
-  return createHash("sha256").update([
-    String(options.userId),
-    options.abs,
-    String(options.audioIndex),
-    String(segmentIndex),
-    options.hardwareAcceleration,
-    options.leaseId === null ? "legacy" : "managed",
-  ].join("\0")).digest("hex");
-}
-
 export function hlsSessionPlan(duration: number, requestedStart: number): HlsSessionPlan {
   const safeDuration = Number.isFinite(duration) ? Math.max(0, duration) : 0;
   const maximumStart = Math.max(0, safeDuration - HLS_SEGMENT_SECONDS);
@@ -86,17 +79,6 @@ export function hlsSessionPlan(duration: number, requestedStart: number): HlsSes
   const safeStart = Math.min(Math.max(0, requested), maximumStart);
   const segmentIndex = Math.floor(safeStart / HLS_SEGMENT_SECONDS);
   return { segmentIndex, start: segmentIndex * HLS_SEGMENT_SECONDS };
-}
-
-async function selectedAudioTrack(
-  abs: string,
-  audioIndex: number | null,
-): Promise<AudioTrack | undefined | null> {
-  const tracks = await audioTracks(abs);
-  if (audioIndex === null) {
-    return tracks.find((track) => track.isDefault) ?? tracks[0];
-  }
-  return tracks.find((track) => track.index === audioIndex) ?? null;
 }
 
 async function monitorSession(session: HlsSession): Promise<void> {
@@ -194,6 +176,19 @@ function releaseReservation(userId: number): void {
   }
 }
 
+function reservePlaybackSession(options: HlsPlaylistOptions): Promise<boolean> {
+  return reserveHlsPlaybackCapacity({
+    managed: options.leaseId !== null,
+    reclaim: removeSession,
+    sessions: () => [...sessionsById.values()].filter((session) => (
+      session.process.exitCode === null
+    )),
+    tryReserve: () => reserveSession(options.userId),
+    userId: options.userId,
+    waitForStopping: () => stoppingSessions.waitForChange(),
+  });
+}
+
 function registerSession(session: HlsSession): HlsSession {
   sessionsById.set(session.id, session);
   sessionsByKey.set(session.key, session);
@@ -205,7 +200,7 @@ async function createReservedSession(
   segmentIndex: number,
   key: string,
 ): Promise<HlsSession | null | undefined> {
-  if (!reserveSession(options.userId)) {
+  if (!await reservePlaybackSession(options)) {
     return null;
   }
   try {
@@ -218,7 +213,7 @@ async function createReservedSession(
 
 function activeSession(options: HlsPlaylistOptions): Promise<HlsSession | null | undefined> {
   const { segmentIndex } = hlsSessionPlan(options.duration, options.requestedStart);
-  const key = sessionKey(options, segmentIndex);
+  const key = hlsSessionKey(options, segmentIndex);
   const existing = sessionsByKey.get(key);
   if (existing !== undefined && existing.error === null) {
     existing.lastAccess = Date.now();
@@ -234,7 +229,7 @@ async function waitForPlaylist(session: HlsSession): Promise<string | null> {
     if (playlist !== null) {
       return playlist;
     }
-    if (session.error !== null) {
+    if (session.error !== null || session.stopping) {
       return null;
     }
     await Bun.sleep(25);
@@ -335,16 +330,17 @@ export async function hlsPlaylistResponse(options: HlsPlaylistOptions): Promise<
     });
   }
   session.pendingClaims += 1;
-  let bound = false;
+  const bound = bindLease(session, options);
+  let ready = false;
   try {
+    if (!bound) {
+      return new Response("Playback lease has ended", { status: 410 });
+    }
     const playlist = await waitForPlaylist(session);
     if (playlist === null) {
       return new Response("Stream could not start", { status: 503 });
     }
-    bound = bindLease(session, options);
-    if (!bound) {
-      return new Response("Playback lease has ended", { status: 410 });
-    }
+    ready = true;
     session.lastAccess = Date.now();
     return new Response(rewritePlaylist(playlist, session.id, options.leaseId), {
       headers: {
@@ -354,9 +350,11 @@ export async function hlsPlaylistResponse(options: HlsPlaylistOptions): Promise<
       },
     });
   } finally {
+    if (bound && !ready && options.leaseId !== null && options.playerId !== null) {
+      await releaseHlsPlayback(options.userId, options.playerId, options.leaseId);
+    }
     session.pendingClaims = Math.max(0, session.pendingClaims - 1);
-    if (!bound && session.pendingClaims === 0 && session.leases.size === 0 &&
-      !session.legacyAccess) {
+    if (!ready && session.pendingClaims === 0 && session.leases.size === 0) {
       abandonUnboundLease(options);
       await removeSession(session);
     }
@@ -469,7 +467,8 @@ export async function releaseHlsPlayback(
   leasesById.delete(key);
   const session = sessionsById.get(lease.sessionId);
   session?.leases.delete(key);
-  if (session !== undefined && session.leases.size === 0 && !session.legacyAccess) {
+  if (session !== undefined && session.leases.size === 0 && session.pendingClaims === 0 &&
+    !session.legacyAccess) {
     await removeSession(session);
   }
   return true;
