@@ -1,5 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
 import { attachNativeHls, type NativeHlsVideo } from "../lib/nativeHlsPlayback.ts";
+import {
+  attachDirectVideoSource,
+  type DirectVideoElement,
+} from "../lib/directVideoPlayback.ts";
 
 function nativeVideo(supported = true) {
   const play = mock(() => Promise.resolve());
@@ -59,5 +63,40 @@ describe("native HLS playback adapter", () => {
     expect(native.video.src).toBe("");
     expect(native.play).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith("This browser does not support HLS video playback.");
+  });
+});
+
+describe("direct video playback", () => {
+  test("enables CORS mode before attaching an offline service-worker URL", async () => {
+    const assignments: string[] = [];
+    const play = mock(() => Promise.resolve());
+    let crossOrigin: string | null = null;
+    let src = "";
+    const video: DirectVideoElement = {
+      play,
+      get crossOrigin() {
+        return crossOrigin;
+      },
+      set crossOrigin(value: string | null) {
+        crossOrigin = value;
+        assignments.push(`crossOrigin:${value ?? ""}`);
+      },
+      get src() {
+        return src;
+      },
+      set src(value: string) {
+        src = value;
+        assignments.push(`src:${value}`);
+      },
+    };
+
+    attachDirectVideoSource(video, "/offline-download/episode-1/media");
+    await Promise.resolve();
+
+    expect(assignments).toEqual([
+      "crossOrigin:anonymous",
+      "src:/offline-download/episode-1/media",
+    ]);
+    expect(play).toHaveBeenCalledTimes(1);
   });
 });

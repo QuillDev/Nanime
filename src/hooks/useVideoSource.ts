@@ -10,16 +10,8 @@ import {
 } from "../lib/mediaTimeline.ts";
 import { videoErrorDetail } from "../lib/videoError.ts";
 import { attachNativeHls } from "../lib/nativeHlsPlayback.ts";
+import { attachDirectVideoSource } from "../lib/directVideoPlayback.ts";
 
-function tryPlay(video: HTMLVideoElement): void {
-  void (async (): Promise<void> => {
-    try {
-      await video.play();
-    } catch {
-      // Autoplay may be blocked by the browser; the user can press play.
-    }
-  })();
-}
 function attachHls(options: HlsAttachment): () => void {
   if (options.video.canPlayType("application/vnd.apple.mpegurl") !== "") {
     attachNativeHls(options);
@@ -55,8 +47,7 @@ interface SourceAttachment {
 function attachSource(options: SourceAttachment): (() => void) | undefined {
   const { video, entry, resumeAt, onError } = options;
   if (entry.direct) {
-    video.src = entry.offlineUrl ?? streamUrl(entry.rel);
-    tryPlay(video);
+    attachDirectVideoSource(video, entry.offlineUrl ?? streamUrl(entry.rel));
     return undefined;
   }
   const timelineOffset = hlsTimelineOffset(resumeAt);

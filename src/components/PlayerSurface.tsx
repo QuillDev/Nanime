@@ -125,6 +125,7 @@ export function PlayerSurface({
         <div className="relative flex h-full w-full items-center justify-center bg-black">
           <video
             ref={setVideo}
+            crossOrigin="anonymous"
             playsInline
             onError={handleVideoError}
             onLoadStart={handleLoadStart}
