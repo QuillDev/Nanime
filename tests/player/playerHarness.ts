@@ -241,6 +241,7 @@ async function openApp(
     },
   };
   try {
+    await timedOperation({ operation: view.evaluate<boolean>("true"), description: "browser backend startup" });
     await timedOperation({ operation: view.navigate(harness.origin), description: "application shell" });
     await view.cdp("Network.enable");
     observeNetwork(view, player);
