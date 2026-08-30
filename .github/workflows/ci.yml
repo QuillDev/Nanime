@@ -30,6 +30,9 @@ jobs:
         run: bun run check
       - name: Run unit tests
         run: bun test
+        env:
+          NANIME_ADMIN_SETUP_TOKEN: nanime-ci-test-token-with-thirty-two-characters
+          NANIME_DATABASE: /tmp/nanime-ci-tests.sqlite
       - name: Build production bundle
         run: bun run build
       - name: Install player harness system dependencies
