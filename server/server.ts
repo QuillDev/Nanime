@@ -427,6 +427,9 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
   if (mediaRequest(pathname, req.method)) {
     return await handleMedia(context);
   }
+  if (pathname.startsWith("/offline-download/")) {
+    return new Response("Offline media requires the service worker", { status: 404 });
+  }
   if (pathname.startsWith("/api/")) {
     return new Response("Not found", { status: 404 });
   }
@@ -439,6 +442,7 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
 function protectedPath(pathname: string): boolean {
   return pathname.startsWith("/api/") ||
     pathname === "/stream" ||
+    pathname.startsWith("/offline-download/") ||
     pathname.startsWith("/offline-media/") ||
     pathname === "/thumbnail" ||
     pathname.startsWith("/trickplay/") ||

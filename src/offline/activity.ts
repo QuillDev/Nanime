@@ -67,3 +67,15 @@ export function mergeOfflineDownloads(
     ...stored.filter((download) => !activeRelations.has(download.rel)),
   ];
 }
+
+export function updateOfflineDownloadList(
+  current: readonly OfflineDownload[],
+  download: OfflineDownload,
+): readonly OfflineDownload[] {
+  const index = current.findIndex((item) => (
+    item.userId === download.userId && item.rel === download.rel
+  ));
+  return index === -1
+    ? [...current, download]
+    : current.toSpliced(index, 1, download);
+}

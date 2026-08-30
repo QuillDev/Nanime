@@ -5,6 +5,7 @@ import {
   preparingOfflineDownload,
   stopTrackingOfflineController,
   trackOfflineController,
+  updateOfflineDownloadList,
 } from "./activity.ts";
 import type { OfflineDownload } from "./types.ts";
 
@@ -42,5 +43,41 @@ describe("offline download activity", () => {
     cancelTrackedOfflineDownload(entry.rel);
     expect(controller.signal.aborted).toBe(true);
     stopTrackingOfflineController(entry.rel, controller);
+  });
+
+  test("does not retain a controller after its own download settles", () => {
+    const controller = new AbortController();
+    trackOfflineController(entry.rel, controller);
+    stopTrackingOfflineController(entry.rel, controller);
+    cancelTrackedOfflineDownload(entry.rel);
+    expect(controller.signal.aborted).toBe(false);
+  });
+
+  test("updates concurrent progress without moving episode rows", () => {
+    const first = preparingOfflineDownload({ ...entry, rel: "episode-1" }, 7, 1);
+    const second = preparingOfflineDownload({ ...entry, rel: "episode-2" }, 7, 2);
+    const third = preparingOfflineDownload({ ...entry, rel: "episode-3" }, 7, 3);
+    const initial = [first, second, third];
+    const updatedSecond = {
+      ...second,
+      id: "durable-episode-2",
+      state: "downloading" as const,
+      downloadedBytes: 512,
+    };
+
+    const updated = updateOfflineDownloadList(initial, updatedSecond);
+    expect(updated.map((download) => download.rel)).toEqual([
+      "episode-1", "episode-2", "episode-3",
+    ]);
+    expect(updated[1]).toBe(updatedSecond);
+  });
+
+  test("appends newly started episodes in their start order", () => {
+    const first = preparingOfflineDownload({ ...entry, rel: "episode-1" }, 7, 1);
+    const second = preparingOfflineDownload({ ...entry, rel: "episode-2" }, 7, 2);
+    const downloads = updateOfflineDownloadList(
+      updateOfflineDownloadList([], first), second);
+
+    expect(downloads.map((download) => download.rel)).toEqual(["episode-1", "episode-2"]);
   });
 });
