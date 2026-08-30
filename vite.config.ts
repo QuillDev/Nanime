@@ -17,6 +17,7 @@ export default defineConfig({
     proxy: {
       "/api": "http://127.0.0.1:8096",
       "/stream": "http://127.0.0.1:8096",
+      "/offline-media": "http://127.0.0.1:8096",
       "/thumbnail": "http://127.0.0.1:8096",
       "/subtitle": "http://127.0.0.1:8096",
       "/hls": "http://127.0.0.1:8096",

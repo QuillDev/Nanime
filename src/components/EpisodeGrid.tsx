@@ -1,5 +1,4 @@
-import { Check, EllipsisVertical, EyeOff } from "lucide-react";
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import type {
   AniListMedia,
   AniListPlaybackTarget,
@@ -13,56 +12,10 @@ import { episodePlaybackTarget } from "../lib/seasonWatched.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
 import { useSetPlaybackWatched } from "../hooks/usePlaybackProgress.ts";
 import { useSeriesCompletionPrompt } from "./SeriesCompletionPrompt.tsx";
-
-interface EpisodeStatusMenuProps {
-  readonly pending: boolean;
-  readonly rel: string;
-  readonly watched: boolean;
-  readonly onSetWatched: EpisodeWatchedHandler;
-  readonly target: AniListPlaybackTarget | null;
-}
-
-type EpisodeWatchedHandler = (
-  rel: string,
-  watched: boolean,
-  target: AniListPlaybackTarget | null,
-) => void;
-
-function EpisodeStatusMenu({
-  pending,
-  rel,
-  watched,
-  onSetWatched,
-  target,
-}: EpisodeStatusMenuProps): React.JSX.Element {
-  const detailsRef = useRef<HTMLDetailsElement | null>(null);
-  const handleSelection = useCallback(() => {
-    onSetWatched(rel, !watched, target);
-    detailsRef.current?.removeAttribute("open");
-  }, [onSetWatched, rel, target, watched]);
-  return (
-    <details ref={detailsRef} className="relative shrink-0 p-2 open:z-30">
-      <summary
-        aria-label="Episode actions"
-        className="flex size-9 cursor-pointer list-none items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
-      >
-        <EllipsisVertical className="size-5" />
-      </summary>
-      <div role="menu" className="absolute right-2 top-11 z-20 min-w-44 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg">
-        <button
-          type="button"
-          role="menuitem"
-          disabled={pending}
-          onClick={handleSelection}
-          className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:opacity-50"
-        >
-          {watched ? <EyeOff className="size-4" /> : <Check className="size-4" />}
-          {watched ? "Mark as unwatched" : "Mark as watched"}
-        </button>
-      </div>
-    </details>
-  );
-}
+import {
+  EpisodeActionsMenu,
+  type EpisodeWatchedHandler,
+} from "./EpisodeActionsMenu.tsx";
 
 interface EpisodeCardProps {
   readonly entry: MediaEntry;
@@ -166,9 +119,9 @@ function EpisodeCard({
           </span>
         </span>
       </button>
-      <EpisodeStatusMenu
+      <EpisodeActionsMenu
+        entry={entry}
         pending={pending}
-        rel={entry.rel}
         watched={progressView.watched}
         onSetWatched={onSetWatched}
         target={target}

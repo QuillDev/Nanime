@@ -1,6 +1,6 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { MediaEntry } from "../types.ts";
-import { fetchLibrary, fetchMediaDuration } from "../api.ts";
+import { fetchLibrary, fetchMediaDuration } from "../libraryApi.ts";
 
 export function useLibrary(): UseQueryResult<readonly MediaEntry[], Error> {
   return useQuery({

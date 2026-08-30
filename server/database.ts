@@ -243,6 +243,36 @@ database.run(`
   )
 `);
 database.run(`
+  CREATE TABLE IF NOT EXISTS offline_media_artifacts (
+    id TEXT PRIMARY KEY,
+    source_rel TEXT NOT NULL,
+    source_size INTEGER NOT NULL,
+    source_modified_at REAL NOT NULL,
+    audio_index INTEGER NOT NULL,
+    direct INTEGER NOT NULL,
+    output_name TEXT,
+    status TEXT NOT NULL,
+    progress REAL NOT NULL DEFAULT 0,
+    speed REAL NOT NULL DEFAULT 0,
+    duration REAL NOT NULL DEFAULT 0,
+    size_bytes INTEGER,
+    mime_type TEXT NOT NULL,
+    error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(source_rel, source_size, source_modified_at, audio_index)
+  )
+`);
+database.run(`
+  CREATE INDEX IF NOT EXISTS offline_media_artifacts_status_created
+  ON offline_media_artifacts(status, created_at)
+`);
+database.run(`
+  UPDATE offline_media_artifacts
+  SET status = 'queued', progress = 0, speed = 0, error = NULL
+  WHERE status = 'preparing'
+`);
+database.run(`
   CREATE TABLE IF NOT EXISTS media_scans (
     source_rel TEXT PRIMARY KEY,
     status TEXT NOT NULL,

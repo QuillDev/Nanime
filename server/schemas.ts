@@ -45,6 +45,23 @@ export const provisionedUserSchema = object({
 export const mediaEntrySchema = object({
   rel: string(), name: string(), folder: string(), size: number(), direct: boolean(),
 });
+export const offlineMediaArtifactSchema = object({
+  id: string(),
+  path: string(),
+  status: union([
+    literal("failed"), literal("preparing"), literal("queued"), literal("ready"),
+  ]),
+  progress: number(),
+  speed: number(),
+  sourceSizeBytes: number(),
+  sizeBytes: nullableNumber,
+  duration: number(),
+  mimeType: string(),
+  mediaUrl: nullableString,
+  error: nullableString,
+  createdAt: number(),
+  updatedAt: number(),
+});
 export const libraryStatusSchema = object({
   entryCount: number(), lastScannedAt: nullableNumber, scanning: boolean(),
 });

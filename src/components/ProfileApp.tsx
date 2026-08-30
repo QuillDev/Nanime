@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { LogOut } from "lucide-react";
 import { useLogout } from "../hooks/useAuth.ts";
 import type { AuthUser } from "../types.ts";
@@ -7,9 +7,15 @@ import { MediaHeader } from "./MediaHeader.tsx";
 import { PlaybackPreferences } from "./PlaybackPreferences.tsx";
 import { PlaybackHistory } from "./PlaybackHistory.tsx";
 import { LibraryActivity } from "./LibraryActivity.tsx";
+import { OfflineDownloads } from "./OfflineDownloads.tsx";
 
 export function ProfileApp({ user }: { readonly user: AuthUser }): React.JSX.Element {
   const logout = useLogout();
+  useEffect(() => {
+    if (globalThis.location.hash === "#offline-downloads") {
+      document.querySelector("#offline-downloads")?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, []);
   const handleLogout = useCallback(() => logout.mutate(), [logout]);
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -35,6 +41,7 @@ export function ProfileApp({ user }: { readonly user: AuthUser }): React.JSX.Ele
           <p className="mt-4 select-text text-sm text-destructive">{logout.error.message}</p>
         )}
         <PlaybackPreferences />
+        <OfflineDownloads />
         <PlaybackHistory />
         {user.isAdmin && <LibraryActivity />}
         <LinkedAccounts />

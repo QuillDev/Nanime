@@ -1,13 +1,19 @@
 import { treaty } from "@elysiajs/eden";
 import type { App } from "../server/app.ts";
 import { apiError } from "./apiError.ts";
+import {
+  activeOfflineProfile,
+  canUseOfflineFallback,
+  clearOfflineIdentity,
+  completedOfflineDownloads,
+  rememberOfflineUser,
+} from "./offline/runtime.ts";
 import type {
   AniListAccountStatus,
   AniListAuthConfig,
   AniListListEntry,
   AniListWatchStatus,
   AuthUser,
-  MediaEntry,
   MediaScan,
   SubtitleTrack,
   ProvisionedUser,
@@ -65,18 +71,6 @@ export function unwrap<T>(
   return result.data;
 }
 
-export async function fetchLibrary(signal: AbortSignal): Promise<readonly MediaEntry[]> {
-  return unwrap(await api.api.list.get({ fetch: { signal } }), "Library request");
-}
-
-export async function fetchMediaDuration(rel: string, signal: AbortSignal): Promise<number> {
-  const info = unwrap(
-    await api.api["media-info"].get({ query: { path: rel }, fetch: { signal } }),
-    "Media information request",
-  );
-  return info.duration;
-}
-
 export async function fetchTrickplayManifest(
   rel: string,
   signal: AbortSignal,
@@ -97,8 +91,36 @@ export async function fetchSubtitleTracks(
   );
 }
 
+async function rememberSessionUser(user: AuthUser | null): Promise<AuthUser | null> {
+  if (user === null) {
+    clearOfflineIdentity();
+  } else {
+    await rememberOfflineUser(user);
+  }
+  return user;
+}
+
+async function fallbackSessionUser(error: unknown): Promise<AuthUser | null> {
+  if (!canUseOfflineFallback(error)) {
+    return null;
+  }
+  const downloadsPromise = completedOfflineDownloads();
+  const profile = await activeOfflineProfile();
+  const downloads = await downloadsPromise;
+  return profile !== null && downloads.length > 0 ? profile.user : null;
+}
+
 export async function fetchCurrentUser(signal: AbortSignal): Promise<AuthUser | null> {
-  return unwrap(await api.api.auth.me.get({ fetch: { signal } }), "Session request");
+  try {
+    const user = unwrap(await api.api.auth.me.get({ fetch: { signal } }), "Session request");
+    return await rememberSessionUser(user);
+  } catch (error: unknown) {
+    const fallback = await fallbackSessionUser(error);
+    if (fallback !== null) {
+      return fallback;
+    }
+    throw error;
+  }
 }
 
 export async function fetchAniListAuthConfig(signal: AbortSignal): Promise<AniListAuthConfig> {
@@ -156,7 +178,9 @@ async function authenticate(
         password: credentials.password,
         setupToken: credentials.setupToken ?? "",
       });
-  return unwrap(result, "Authentication");
+  const user = unwrap(result, "Authentication");
+  await rememberOfflineUser(user);
+  return user;
 }
 
 export function login(username: string, password: string): Promise<AuthUser> {
@@ -173,6 +197,7 @@ export function setupPassword(
 
 export async function logout(): Promise<void> {
   unwrap(await api.api.auth.logout.post(), "Logout");
+  clearOfflineIdentity();
 }
 
 export async function fetchUsers(signal: AbortSignal): Promise<readonly ProvisionedUser[]> {

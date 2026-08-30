@@ -14,6 +14,7 @@ import {
 } from "./routeModules.ts";
 import { AppShellSkeleton, SessionSkeleton } from "./components/Skeleton.tsx";
 import { SeriesCompletionProvider } from "./components/SeriesCompletionPrompt.tsx";
+import { OfflineDownloadToast } from "./components/OfflineDownloadToast.tsx";
 
 const AdminApp = lazy(async () => {
   const module = await loadAdminApp();
@@ -65,6 +66,7 @@ export function App(): React.JSX.Element {
     <Suspense fallback={ROUTE_LOADING}>
       <SeriesCompletionProvider>
         {authenticatedView(currentUser.data, route)}
+        <OfflineDownloadToast />
       </SeriesCompletionProvider>
     </Suspense>
   );

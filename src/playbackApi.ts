@@ -1,13 +1,29 @@
 import { api, unwrap } from "./api.ts";
 import type { PlaybackProgress } from "./types.ts";
+import {
+  canUseOfflineFallback,
+  flushOfflinePlayback,
+  offlineProgressFallback,
+  rememberOfflineProgress,
+  saveOfflinePlayback,
+} from "./offline/runtime.ts";
 
 export async function fetchPlaybackProgress(
   signal: AbortSignal,
 ): Promise<readonly PlaybackProgress[]> {
-  return unwrap(
-    await api.api.progress.get({ fetch: { signal } }),
-    "Playback progress request",
-  );
+  try {
+    const progress = unwrap(
+      await api.api.progress.get({ fetch: { signal } }),
+      "Playback progress request",
+    );
+    await rememberOfflineProgress(progress);
+    return progress;
+  } catch (error: unknown) {
+    if (canUseOfflineFallback(error)) {
+      return offlineProgressFallback();
+    }
+    throw error;
+  }
 }
 
 export interface PlaybackProgressUpdate {
@@ -31,10 +47,27 @@ export interface PlaybackWatchedUpdate {
   readonly origin?: "episode-menu" | "season-menu" | "series-menu";
 }
 
-export async function savePlaybackProgress(
+async function savePlaybackProgressOnline(
   update: PlaybackProgressUpdate,
 ): Promise<PlaybackProgress> {
   return unwrap(await api.api.progress.put(update), "Saving playback progress");
+}
+
+export async function savePlaybackProgress(
+  update: PlaybackProgressUpdate,
+): Promise<PlaybackProgress> {
+  try {
+    return await savePlaybackProgressOnline(update);
+  } catch (error: unknown) {
+    if (canUseOfflineFallback(error)) {
+      return saveOfflinePlayback(update);
+    }
+    throw error;
+  }
+}
+
+export function syncOfflinePlayback(): Promise<void> {
+  return flushOfflinePlayback(savePlaybackProgressOnline);
 }
 
 export async function dismissPlaybackProgress(rel: string): Promise<PlaybackProgress> {

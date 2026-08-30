@@ -18,6 +18,7 @@ import {
   audioTracksResponse,
   hlsPlaylistResponse,
   hlsSegmentResponse,
+  offlineMediaRouteResponse,
   probeDuration,
   subtitleResponse,
   subtitleTracksResponse,
@@ -70,6 +71,17 @@ const MIME = new Map(Object.entries({
 } as const));
 const thumbnailCache = new Map<string, Promise<ArrayBuffer | null>>();
 let activeThumbnailJobs = 0;
+const RELEASE_SENSITIVE_HEADERS = {
+  "cache-control": "no-store",
+  "cdn-cache-control": "no-store",
+  "cloudflare-cdn-cache-control": "no-store",
+} as const;
+const OFFLINE_MEDIA_OPTIONS = {
+  mediaDir: MEDIA_DIR,
+  mediaRoot: MEDIA_ROOT,
+  videoExtensions: VIDEO_EXTS,
+  directPlayExtensions: DIRECT_PLAY,
+} as const;
 async function safePath(rel: string | null): Promise<string | null> {
   if (rel === null || rel === "") {
     return null;
@@ -187,17 +199,15 @@ async function serveStatic(pathname: string): Promise<Response> {
   if (candidate === DIST_DIR || candidate.startsWith(DIST_DIR + sep)) {
     const file = Bun.file(candidate);
     if (await file.exists()) {
-      // Hashed assets are immutable; index.html must never be cached or the
-      // browser can keep loading a deleted bundle after a deploy.
-      const cache = rel.startsWith("assets/")
-        ? "public, max-age=31536000, immutable"
-        : "no-cache";
-      return new Response(file, { headers: { "cache-control": cache } });
+      const headers = rel.startsWith("assets/")
+        ? { "cache-control": "public, max-age=31536000, immutable" }
+        : RELEASE_SENSITIVE_HEADERS;
+      return new Response(file, { headers });
     }
   }
   const index = Bun.file(join(DIST_DIR, "index.html"));
   if (await index.exists()) {
-    return new Response(index, { headers: { "cache-control": "no-cache" } });
+    return new Response(index, { headers: RELEASE_SENSITIVE_HEADERS });
   }
   return new Response("Not found", { status: 404 });
 }
@@ -401,6 +411,10 @@ function mediaRequest(pathname: string, method: string): boolean {
 }
 
 async function authenticatedRoute(context: RouteContext): Promise<Response> {
+  const offline = offlineMediaRouteResponse(context.req, context.pathname, OFFLINE_MEDIA_OPTIONS);
+  if (offline !== null) {
+    return await offline;
+  }
   const library = await libraryRoute(context);
   if (library !== null) {
     return library;
@@ -425,6 +439,7 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
 function protectedPath(pathname: string): boolean {
   return pathname.startsWith("/api/") ||
     pathname === "/stream" ||
+    pathname.startsWith("/offline-media/") ||
     pathname === "/thumbnail" ||
     pathname.startsWith("/trickplay/") ||
     pathname === "/subtitle" ||

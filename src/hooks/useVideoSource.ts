@@ -55,7 +55,7 @@ interface SourceAttachment {
 function attachSource(options: SourceAttachment): (() => void) | undefined {
   const { video, entry, resumeAt, onError } = options;
   if (entry.direct) {
-    video.src = streamUrl(entry.rel);
+    video.src = entry.offlineUrl ?? streamUrl(entry.rel);
     tryPlay(video);
     return undefined;
   }

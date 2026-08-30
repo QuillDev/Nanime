@@ -4,6 +4,26 @@ export interface MediaEntry {
   readonly folder: string;
   readonly size: number;
   readonly direct: boolean;
+  /** Device-local service-worker source; absent from server library responses. */
+  readonly offlineUrl?: string;
+}
+
+export type OfflineMediaStatus = "failed" | "preparing" | "queued" | "ready";
+
+export interface OfflineMediaArtifact {
+  readonly id: string;
+  readonly path: string;
+  readonly status: OfflineMediaStatus;
+  readonly progress: number;
+  readonly speed: number;
+  readonly sourceSizeBytes: number;
+  readonly sizeBytes: number | null;
+  readonly duration: number;
+  readonly mimeType: string;
+  readonly mediaUrl: string | null;
+  readonly error: string | null;
+  readonly createdAt: number;
+  readonly updatedAt: number;
 }
 
 export interface LibraryStatus {
