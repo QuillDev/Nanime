@@ -43,6 +43,7 @@ export interface PlayerHarness {
   close: () => Promise<void>;
   openApp: () => Promise<PlayerView>;
   openPlayer: (rel: string, options?: { readonly failFirstManifest?: boolean }) => Promise<PlayerView>;
+  watchedState: (rel: string) => boolean | null;
 }
 
 interface ProcessOutput {
@@ -149,6 +150,18 @@ function seedFixtureMetadata(databasePath: string): void {
       INSERT INTO media_metadata (key, payload, updated_at) VALUES (?, ?, ?)
       ON CONFLICT(key) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
     `).run(`show:${FIXTURE_FOLDER}`, JSON.stringify(FIXTURE_METADATA), Date.now());
+  } finally {
+    database.close();
+  }
+}
+
+function watchedState(databasePath: string, rel: string): boolean | null {
+  const database = new Database(databasePath, { readonly: true });
+  try {
+    const row = database.query<{ readonly completed: number }, [string]>(`
+      SELECT completed FROM playback_progress WHERE user_id = 1 AND rel = ?
+    `).get(rel);
+    return row === null ? null : row.completed === 1;
   } finally {
     database.close();
   }
@@ -374,6 +387,7 @@ export async function startPlayerHarness(): Promise<PlayerHarness> {
       origin,
       failNextManifest: proxy.failNextManifest,
     }, rel, options),
+    watchedState: (rel) => watchedState(databasePath, rel),
     close: async () => {
       await stopProcess(proxy.process);
       await stopProcess(server);

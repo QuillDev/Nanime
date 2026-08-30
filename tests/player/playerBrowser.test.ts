@@ -111,15 +111,10 @@ async function setPlaybackRate(view: Bun.WebView, rate: number): Promise<void> {
   expect(updated).toBe(true);
 }
 
-async function waitForWatchedState(view: Bun.WebView, rel: string, watched: boolean): Promise<void> {
+async function waitForWatchedState(runtime: PlayerHarness, rel: string, watched: boolean): Promise<void> {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
-    const persisted = await view.evaluate<boolean>(`
-      fetch("/api/progress")
-        .then(response => response.json())
-        .then(items => items.find(item => item.rel === ${JSON.stringify(rel)})?.completed === ${String(watched)})
-    `);
-    if (persisted) {
+    if (runtime.watchedState(rel) === watched) {
       return;
     }
     await Bun.sleep(50);
@@ -195,13 +190,13 @@ function registerCommonJourneyTests(): void {
       await clickElement(player.view, { selector: "button", text: "Browser Fixture Show" });
       await activateElement(player.view, episodeActions);
       await activateElement(player.view, { selector: "button[role='menuitem']", text: "Mark as watched" });
-      await waitForWatchedState(player.view, WATCHED_FIXTURE, true);
+      await waitForWatchedState(runtime, WATCHED_FIXTURE, true);
       const showUrl = await player.view.evaluate<string>("location.href");
       await player.view.navigate(showUrl);
       await activateElement(player.view, episodeActions);
       await waitForElement(player.view, { selector: "button[role='menuitem']", text: "Mark as unwatched" });
       await activateElement(player.view, { selector: "button[role='menuitem']", text: "Mark as unwatched" });
-      await waitForWatchedState(player.view, WATCHED_FIXTURE, false);
+      await waitForWatchedState(runtime, WATCHED_FIXTURE, false);
       await player.view.navigate(showUrl);
       await activateElement(player.view, episodeActions);
       expect(await elementVisible(player.view, {
