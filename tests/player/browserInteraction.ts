@@ -1,6 +1,7 @@
 import { waitForPlayerState } from "./playerHarness.ts";
 
 export interface ElementTarget {
+  readonly ancestorText?: string;
   readonly ariaLabel?: string;
   readonly index?: number;
   readonly selector: string;
@@ -18,13 +19,19 @@ function elementLookup(target: ElementTarget): string {
         bounds.width > 0 && bounds.height > 0;
       const labelMatches = target.ariaLabel === undefined ||
         candidate.getAttribute("aria-label") === target.ariaLabel;
+      const ancestorMatches = target.ancestorText === undefined ||
+        candidate.closest("li")?.textContent?.includes(target.ancestorText) === true;
       const textMatches = target.text === undefined ||
         candidate.textContent?.replace(/\\s+/gu, " ").trim().includes(target.text) === true;
-      return visible && labelMatches && textMatches;
+      return visible && labelMatches && ancestorMatches && textMatches;
     });
     const element = matches[target.index ?? 0];
     if (!(element instanceof HTMLElement)) return null;
     const bounds = element.getBoundingClientRect();
+    if (bounds.top < 0 || bounds.bottom > innerHeight || bounds.left < 0 || bounds.right > innerWidth) {
+      element.scrollIntoView({ block: "center", inline: "center" });
+      return null;
+    }
     return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
   })()`;
 }

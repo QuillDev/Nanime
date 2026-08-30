@@ -168,19 +168,24 @@ function registerCommonJourneyTests(): void {
   test("marks an episode watched and unwatched durably through the real UI", async () => {
     const runtime = activeHarness();
     const player = await runtime.openApp();
-    const episodeActions = { selector: "summary", ariaLabel: "Episode actions", index: 2 } as const;
+    const watchedName = WATCHED_FIXTURE.split("/").at(-1) ?? "";
+    const episodeActions = {
+      selector: "summary",
+      ariaLabel: "Episode actions",
+      ancestorText: watchedName,
+    } as const;
     try {
       await clickElement(player.view, { selector: "button", text: "Browser Fixture Show" });
       await clickElement(player.view, episodeActions);
       await clickElement(player.view, { selector: "button[role='menuitem']", text: "Mark as watched" });
-      await waitForElement(player.view, { selector: "li", text: WATCHED_FIXTURE.split("/").at(-1) ?? "" });
-      await waitForElement(player.view, { selector: "li span", text: "Watched" });
+      const watchedBadge = { selector: "li span", ancestorText: watchedName, text: "Watched" } as const;
+      await waitForElement(player.view, watchedBadge);
       const showUrl = await player.view.evaluate<string>("location.href");
       await player.view.navigate(showUrl);
       await clickElement(player.view, episodeActions);
       await waitForElement(player.view, { selector: "button[role='menuitem']", text: "Mark as unwatched" });
       await clickElement(player.view, { selector: "button[role='menuitem']", text: "Mark as unwatched" });
-      await waitForElementHidden(player.view, { selector: "li span", text: "Watched" });
+      await waitForElementHidden(player.view, watchedBadge);
       await player.view.navigate(showUrl);
       await clickElement(player.view, episodeActions);
       expect(await elementVisible(player.view, {
