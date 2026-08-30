@@ -2,10 +2,6 @@ import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { chmodSync } from "node:fs";
 import { resolve } from "node:path";
-import {
-  PLAYBACK_COMPLETION_RATIO,
-  PLAYBACK_COMPLETION_REMAINING_SECONDS,
-} from "../shared/playback.ts";
 
 const DATABASE_PATH = resolve(
   process.env["NANIME_DATABASE"] ?? resolve(import.meta.dir, "..", ".nanime.sqlite"),
@@ -122,19 +118,89 @@ database.run(`
     PRIMARY KEY (user_id, rel)
   )
 `);
+database.run(`
+  CREATE TABLE IF NOT EXISTS playback_audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    actor_user_id INTEGER,
+    actor_username TEXT NOT NULL,
+    rel TEXT NOT NULL,
+    action TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    previous_state TEXT,
+    next_state TEXT,
+    anilist_media_id INTEGER,
+    episode INTEGER,
+    total_episodes INTEGER,
+    session_seconds REAL,
+    reverts_event_id INTEGER,
+    created_at INTEGER NOT NULL
+  )
+`);
+const playbackAuditColumns = database
+  .query<TableColumn, []>("PRAGMA table_info(playback_audit_log)")
+  .all();
+if (!playbackAuditColumns.some((column) => column.name === "session_seconds")) {
+  database.run("ALTER TABLE playback_audit_log ADD COLUMN session_seconds REAL");
+}
+database.run(`
+  CREATE INDEX IF NOT EXISTS playback_audit_user_created
+  ON playback_audit_log(user_id, created_at DESC, id DESC)
+`);
+database.run(`
+  CREATE INDEX IF NOT EXISTS playback_audit_user_rel_created
+  ON playback_audit_log(user_id, rel, created_at DESC, id DESC)
+`);
+database.run(`
+  CREATE TRIGGER IF NOT EXISTS playback_audit_log_no_update
+  BEFORE UPDATE ON playback_audit_log
+  BEGIN
+    SELECT RAISE(ABORT, 'playback audit entries are immutable');
+  END
+`);
+database.run(`
+  CREATE TRIGGER IF NOT EXISTS playback_audit_log_no_delete
+  BEFORE DELETE ON playback_audit_log
+  BEGIN
+    SELECT RAISE(ABORT, 'playback audit entries are immutable');
+  END
+`);
+database.run(`
+  CREATE TABLE IF NOT EXISTS library_activity_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_user_id INTEGER NOT NULL,
+    actor_username TEXT NOT NULL,
+    action TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    previous_state TEXT,
+    next_state TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )
+`);
+database.run(`
+  CREATE INDEX IF NOT EXISTS library_activity_created
+  ON library_activity_log(created_at DESC, id DESC)
+`);
+database.run(`
+  CREATE TRIGGER IF NOT EXISTS library_activity_log_no_update
+  BEFORE UPDATE ON library_activity_log
+  BEGIN
+    SELECT RAISE(ABORT, 'library activity entries are immutable');
+  END
+`);
+database.run(`
+  CREATE TRIGGER IF NOT EXISTS library_activity_log_no_delete
+  BEFORE DELETE ON library_activity_log
+  BEGIN
+    SELECT RAISE(ABORT, 'library activity entries are immutable');
+  END
+`);
 const currentPlaybackColumns = database
   .query<TableColumn, []>("PRAGMA table_info(playback_progress)")
   .all();
 if (!currentPlaybackColumns.some((column) => column.name === "dismissed_at")) {
   database.run("ALTER TABLE playback_progress ADD COLUMN dismissed_at INTEGER");
 }
-database.query<void, [number, number]>(`
-  UPDATE playback_progress
-  SET completed = 0
-  WHERE completed = 1
-    AND duration > 0
-    AND position < MAX(duration * ?, duration - ?)
-`).run(PLAYBACK_COMPLETION_RATIO, PLAYBACK_COMPLETION_REMAINING_SECONDS);
 database.run(`
   CREATE TABLE IF NOT EXISTS media_metadata (
     key TEXT PRIMARY KEY,

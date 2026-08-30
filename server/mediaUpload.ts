@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { lstat, link, mkdir, open, realpath, unlink } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import { fileSystemErrorCode } from "./fileSystemError.ts";
+import { recordUploadActivity } from "./libraryActivity.ts";
 
 const MAX_CHUNK_BYTES = 8 * 1024 * 1024;
 const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024 * 1024;
@@ -35,6 +36,7 @@ interface MediaUploadOptions {
   readonly mediaRoot: string;
   readonly videoExtensions: ReadonlySet<string>;
   readonly userId: number;
+  readonly username: string;
 }
 
 const uploads = new Map<string, UploadSession>();
@@ -206,9 +208,9 @@ async function appendChunk(req: Request, id: string, userId: number): Promise<Re
   return Response.json({ received: session.received });
 }
 
-async function completeUpload(id: string, userId: number): Promise<Response> {
+async function completeUpload(id: string, options: MediaUploadOptions): Promise<Response> {
   await removeExpiredUploads();
-  const session = ownedUpload(id, userId);
+  const session = ownedUpload(id, options.userId);
   if (session === null) {
     return new Response("Upload not found", { status: 404 });
   }
@@ -228,6 +230,16 @@ async function completeUpload(id: string, userId: number): Promise<Response> {
       code === "EEXIST" ? "A file with that name already exists" : "Could not finish upload",
       { status: code === "EEXIST" ? 409 : 500 },
     );
+  }
+  try {
+    recordUploadActivity(
+      { id: options.userId, username: options.username },
+      session.relativePath,
+      session.size,
+    );
+  } catch {
+    await unlink(session.destinationPath).catch(() => undefined);
+    return new Response("Could not record completed upload", { status: 500 });
   }
   await discard(session);
   return Response.json({ path: session.relativePath });
@@ -255,7 +267,7 @@ export function mediaUploadResponse(
     return new Response("Not found", { status: 404 });
   }
   if (route.complete && req.method === "POST") {
-    return completeUpload(route.id, options.userId);
+    return completeUpload(route.id, options);
   }
   if (!route.complete && req.method === "POST") {
     return appendChunk(req, route.id, options.userId);

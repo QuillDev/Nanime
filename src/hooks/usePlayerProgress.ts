@@ -7,7 +7,12 @@ import { useSeriesCompletionPrompt } from "../components/SeriesCompletionPrompt.
 import type { PlaybackProgressUpdate } from "../playbackApi.ts";
 
 export interface PlaybackHandlers {
-  readonly saveCurrentProgress: (video: HTMLVideoElement, completed: boolean) => void;
+  readonly saveCurrentProgress: (
+    video: HTMLVideoElement,
+    completed: boolean,
+    event?: PlaybackProgressUpdate["event"],
+  ) => void;
+  readonly handlePlay: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handleLoadedMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handleTimeUpdate: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handlePause: (event: SyntheticEvent<HTMLVideoElement>) => void;
@@ -54,11 +59,67 @@ function useProgressSaver(target: AniListPlaybackTarget | null) {
   }, [mutate, notifyCompletion]);
 }
 
+function usePlaybackSaving(target: AniListPlaybackTarget | null) {
+  return {
+    lastSavedAtRef: useRef<number>(0),
+    startedAtRef: useRef<number | null>(null),
+    savePlayback: useProgressSaver(target),
+  };
+}
+
+function progressUpdate(options: {
+  readonly rel: string;
+  readonly position: number;
+  readonly duration: number;
+  readonly completed: boolean;
+  readonly event: NonNullable<PlaybackProgressUpdate["event"]>;
+  readonly sessionSeconds: number | undefined;
+}): PlaybackProgressUpdate {
+  const update: PlaybackProgressUpdate = {
+    rel: options.rel,
+    position: options.position,
+    duration: options.duration,
+    completed: options.completed,
+    event: options.completed ? "completed" : options.event,
+  };
+  return options.sessionSeconds === undefined
+    ? update
+    : { ...update, sessionSeconds: options.sessionSeconds };
+}
+
+function progressSavedAt(lastSavedAtRef: { current: number }): number {
+  const now = Date.now();
+  lastSavedAtRef.current = now;
+  return now;
+}
+
+function markSessionStarted(
+  startedAtRef: { current: number | null },
+  event: PlaybackProgressUpdate["event"],
+  now: number,
+): void {
+  if (event === "started") {
+    startedAtRef.current ??= now;
+  }
+}
+
+function markSessionStopped(
+  startedAtRef: { current: number | null },
+  event: PlaybackProgressUpdate["event"],
+): void {
+  if (event === "stopped" || event === "completed") {
+    startedAtRef.current = null;
+  }
+}
+
 export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandlers {
   const { anilistTarget, entry, knownDuration, playbackPosition, resumeAt, timelineOffset } = options;
-  const lastSavedAtRef = useRef<number>(0);
-  const savePlayback = useProgressSaver(anilistTarget);
-  const saveCurrentProgress = useCallback((video: HTMLVideoElement, completed: boolean) => {
+  const { lastSavedAtRef, savePlayback, startedAtRef } = usePlaybackSaving(anilistTarget);
+  const saveCurrentProgress = useCallback((
+    video: HTMLVideoElement,
+    completed: boolean,
+    event: PlaybackProgressUpdate["event"] = "heartbeat",
+  ) => {
     const position = playbackPosition(video);
     const duration = resolvedPlaybackDuration({
       mediaDuration: video.duration,
@@ -68,18 +129,25 @@ export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandl
     });
     if (
       !Number.isFinite(position) ||
-      !hasMeaningfulPlaybackProgress(position) ||
+      event !== "started" && event !== "stopped" && !hasMeaningfulPlaybackProgress(position) ||
       !Number.isFinite(duration)
     ) {
       return;
     }
-    lastSavedAtRef.current = Date.now();
-    const progress = {
+    const now = progressSavedAt(lastSavedAtRef);
+    markSessionStarted(startedAtRef, event, now);
+    const sessionSeconds = (event === "stopped" || event === "completed") &&
+      startedAtRef.current !== null
+      ? Math.max(0, (now - startedAtRef.current) / 1000)
+      : undefined;
+    const progress = progressUpdate({
       rel: entry.rel,
       position,
       duration,
       completed,
-    };
+      event,
+      sessionSeconds,
+    });
     savePlayback(anilistTarget === null
       ? progress
       : {
@@ -88,26 +156,31 @@ export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandl
         episode: anilistTarget.episode,
         totalEpisodes: anilistTarget.totalEpisodes,
       });
-  }, [anilistTarget, entry.rel, knownDuration, playbackPosition, savePlayback]);
+    markSessionStopped(startedAtRef, event);
+  }, [anilistTarget, entry.rel, knownDuration, lastSavedAtRef, playbackPosition, savePlayback, startedAtRef]);
   const handleLoadedMetadata = useInitialPosition(resumeAt, timelineOffset);
+  const handlePlay = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    saveCurrentProgress(event.currentTarget, false, "started");
+  }, [saveCurrentProgress]);
   const handleTimeUpdate = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     if (Date.now() - lastSavedAtRef.current >= 10_000) {
-      saveCurrentProgress(event.currentTarget, false);
+      saveCurrentProgress(event.currentTarget, false, "heartbeat");
     }
-  }, [saveCurrentProgress]);
+  }, [lastSavedAtRef, saveCurrentProgress]);
   const handlePause = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     if (!event.currentTarget.ended) {
-      saveCurrentProgress(event.currentTarget, false);
+      saveCurrentProgress(event.currentTarget, false, "stopped");
     }
   }, [saveCurrentProgress]);
   const handleSeeked = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    saveCurrentProgress(event.currentTarget, false);
+    saveCurrentProgress(event.currentTarget, false, "seeked");
   }, [saveCurrentProgress]);
   const handleEnded = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    saveCurrentProgress(event.currentTarget, true);
+    saveCurrentProgress(event.currentTarget, true, "completed");
   }, [saveCurrentProgress]);
   return {
     saveCurrentProgress,
+    handlePlay,
     handleLoadedMetadata,
     handleTimeUpdate,
     handlePause,

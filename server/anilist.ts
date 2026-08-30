@@ -6,6 +6,7 @@ import { jsonObject, type JsonObject } from "./json.ts";
 import type { AnimeMetadata, MetadataStore } from "./metadataTypes.ts";
 import { fetchJikanMedia, searchJikan } from "./jikan.ts";
 import { matchTvmaze, plainText } from "./tvmaze.ts";
+import { recordMappingActivity, type ActivityActor } from "./libraryActivity.ts";
 
 export { aniListErrorResponse } from "./anilistClient.ts";
 export { jikanErrorResponse } from "./jikan.ts";
@@ -357,7 +358,7 @@ function linkBody(value: unknown): LinkBody | null {
     : null;
 }
 
-export async function linkAniListResponse(req: Request): Promise<Response> {
+export async function linkAniListResponse(req: Request, actor: ActivityActor): Promise<Response> {
   const body = linkBody(await req.json().catch((): null => null));
   if (body === null) {
     return new Response("Invalid link request", { status: 400 });
@@ -365,12 +366,18 @@ export async function linkAniListResponse(req: Request): Promise<Response> {
   const clean = await fetchMedia(body.id);
   const media = body.key.startsWith("show:") ? await tvmazeEnrichment(clean) : clean;
   const store = await metadata();
+  recordMappingActivity({
+    actor,
+    key: body.key,
+    previous: store[body.key],
+    next: media,
+    write: () => upsertMetadata.run(body.key, JSON.stringify(media), Date.now()),
+  });
   store[body.key] = media;
-  upsertMetadata.run(body.key, JSON.stringify(media), Date.now());
   return Response.json(media);
 }
 
-export async function linkJikanResponse(req: Request): Promise<Response> {
+export async function linkJikanResponse(req: Request, actor: ActivityActor): Promise<Response> {
   const body = linkBody(await req.json().catch((): null => null));
   if (body === null) {
     return new Response("Invalid link request", { status: 400 });
@@ -378,8 +385,14 @@ export async function linkJikanResponse(req: Request): Promise<Response> {
   const clean = { ...await fetchJikanMedia(body.id), anilistId: body.anilistId };
   const media = body.key.startsWith("show:") ? await tvmazeEnrichment(clean) : clean;
   const store = await metadata();
+  recordMappingActivity({
+    actor,
+    key: body.key,
+    previous: store[body.key],
+    next: media,
+    write: () => upsertMetadata.run(body.key, JSON.stringify(media), Date.now()),
+  });
   store[body.key] = media;
-  upsertMetadata.run(body.key, JSON.stringify(media), Date.now());
   return Response.json(media);
 }
 
@@ -397,7 +410,10 @@ function aniListIdBody(value: unknown): AniListIdBody | null {
     : null;
 }
 
-export async function updateMetadataAniListIdResponse(req: Request): Promise<Response> {
+export async function updateMetadataAniListIdResponse(
+  req: Request,
+  actor: ActivityActor,
+): Promise<Response> {
   const body = aniListIdBody(await req.json().catch((): null => null));
   if (body === null) {
     return new Response("Invalid AniList ID request", { status: 400 });
@@ -411,7 +427,13 @@ export async function updateMetadataAniListIdResponse(req: Request): Promise<Res
     return new Response("AniList mappings already use their matched media ID", { status: 409 });
   }
   const updated = { ...current, anilistId: body.anilistId };
+  recordMappingActivity({
+    actor,
+    key: body.key,
+    previous: current,
+    next: updated,
+    write: () => upsertMetadata.run(body.key, JSON.stringify(updated), Date.now()),
+  });
   store[body.key] = updated;
-  upsertMetadata.run(body.key, JSON.stringify(updated), Date.now());
   return Response.json(updated);
 }

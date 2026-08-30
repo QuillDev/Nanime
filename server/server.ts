@@ -13,7 +13,7 @@ import {
   startMetadataRefreshResponse,
   updateMetadataAniListIdResponse,
 } from "./anilist.ts";
-import { dismissPlaybackProgress, playbackProgressResponse, setPlaybackWatchedState, updatePlaybackProgress } from "./playback.ts";
+import { playbackRoute } from "./playbackRoutes.ts";
 import {
   audioTracksResponse,
   hlsPlaylistResponse,
@@ -28,6 +28,7 @@ import { torrentsResponse } from "./torrents.ts";
 import { mediaAdminResponse } from "./mediaAdmin.ts";
 import {
   libraryStatusResponse,
+  libraryActivityResponse,
   listMedia,
   refreshLibraryResponse,
 } from "./mediaLibrary.ts";
@@ -284,7 +285,10 @@ interface RouteContext {
 }
 async function libraryRoute(context: RouteContext): Promise<Response | null> {
   const information = await libraryInformationRoute(context);
-  return information ?? playbackRoute(context);
+  return information ?? playbackRoute(context, {
+    mediaExists,
+    sync: syncAniListPlayback,
+  });
 }
 
 async function libraryInformationRoute(context: RouteContext): Promise<Response | null> {
@@ -316,36 +320,11 @@ async function libraryInformationRoute(context: RouteContext): Promise<Response 
   return null;
 }
 
-function playbackRoute(context: RouteContext): Response | Promise<Response> | null {
-  const { pathname, req, user } = context;
-  if (pathname === "/api/progress" && req.method === "GET") {
-    return playbackProgressResponse(user.id);
-  }
-  if (pathname === "/api/progress" && req.method === "PUT") {
-    return updatePlaybackProgress(
-      req,
-      user.id,
-      {
-        mediaExists,
-        sync: (target) => syncAniListPlayback(user.id, target),
-      },
-    );
-  }
-  if (pathname === "/api/progress/dismiss" && req.method === "POST") {
-    return dismissPlaybackProgress(req, user.id);
-  }
-  if (pathname === "/api/progress/watched" && req.method === "POST") {
-    return setPlaybackWatchedState(req, user.id, {
-      mediaExists, sync: (target) => syncAniListPlayback(user.id, target),
-    });
-  }
-  return null;
-}
-
 const DIRECT_ADMIN_ROUTES = new Set([
   "GET /api/anilist/search",
   "GET /api/jikan/search",
   "GET /api/library/status",
+  "GET /api/library/activity",
   "GET /api/metadata/refresh",
   "POST /api/anilist/link",
   "POST /api/jikan/link",
@@ -355,16 +334,17 @@ const DIRECT_ADMIN_ROUTES = new Set([
 ]);
 
 function directAdminResponse(context: RouteContext): Response | Promise<Response> {
-  const { pathname, url, req } = context;
+  const { pathname, url, req, user } = context;
   switch (`${req.method} ${pathname}`) {
     case "GET /api/library/status": { return libraryStatusResponse(); }
     case "POST /api/library/refresh": { return refreshLibraryResponse({ mediaDir: MEDIA_DIR, videoExtensions: VIDEO_EXTS, directPlayExtensions: DIRECT_PLAY }); }
     case "GET /api/anilist/search": { return searchAniListResponse(url); }
-    case "POST /api/anilist/link": { return linkAniListResponse(req); }
+    case "POST /api/anilist/link": { return linkAniListResponse(req, user); }
     case "GET /api/jikan/search": { return searchJikanResponse(url); }
-    case "POST /api/jikan/link": { return linkJikanResponse(req); }
+    case "POST /api/jikan/link": { return linkJikanResponse(req, user); }
     case "GET /api/metadata/refresh": { return metadataRefreshStatusResponse(); }
-    case "PUT /api/metadata/anilist-id": { return updateMetadataAniListIdResponse(req); }
+    case "PUT /api/metadata/anilist-id": { return updateMetadataAniListIdResponse(req, user); }
+    case "GET /api/library/activity": { return libraryActivityResponse(url); }
     case "POST /api/metadata/refresh": { return startMetadataRefreshResponse(); }
     default: { return new Response("Not found", { status: 404 }); }
   }
@@ -391,6 +371,7 @@ async function administrationRoute(context: RouteContext): Promise<Response | nu
   const mediaAdmin = mediaAdminResponse(req, pathname, {
     isAdmin: user.isAdmin,
     userId: user.id,
+    username: user.username,
     mediaDir: MEDIA_DIR,
     mediaRoot: MEDIA_ROOT,
     videoExtensions: VIDEO_EXTS,

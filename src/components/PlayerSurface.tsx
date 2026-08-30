@@ -32,10 +32,11 @@ function usePlaybackEvents(
   callbacks: PlaybackEventCallbacks,
 ) {
   const { onPlay, onSourceMetadata } = callbacks;
-  const handlePlay = useCallback(() => {
+  const handlePlay = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     controls.handlePlay();
+    progress.handlePlay(event);
     onPlay();
-  }, [controls, onPlay]);
+  }, [controls, onPlay, progress]);
   const handleLoadedMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     onSourceMetadata(event);
     progress.handleLoadedMetadata(event);

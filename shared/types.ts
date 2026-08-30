@@ -31,6 +31,71 @@ export interface PlaybackProgress {
   readonly dismissedAt: number | null;
 }
 
+export type PlaybackAuditAction =
+  | "completed"
+  | "playback-started"
+  | "playback-stopped"
+  | "restored"
+  | "snapshot-imported"
+  | "watched"
+  | "unwatched";
+
+export type PlaybackAuditOrigin =
+  | "episode-menu"
+  | "history"
+  | "home"
+  | "media-library"
+  | "migration"
+  | "player"
+  | "season-menu"
+  | "series-menu";
+
+export interface PlaybackAuditEvent {
+  readonly id: number;
+  readonly userId: number;
+  readonly actorUserId: number | null;
+  readonly actorUsername: string;
+  readonly rel: string;
+  readonly action: PlaybackAuditAction;
+  readonly origin: PlaybackAuditOrigin;
+  readonly previous: PlaybackProgress | null;
+  readonly next: PlaybackProgress | null;
+  readonly anilistMediaId: number | null;
+  readonly episode: number | null;
+  readonly totalEpisodes: number | null;
+  readonly sessionSeconds: number | null;
+  readonly revertsEventId: number | null;
+  readonly createdAt: number;
+}
+
+export interface UploadActivityState {
+  readonly kind: "upload";
+  readonly path: string;
+  readonly size: number;
+}
+
+export interface MappingActivityState {
+  readonly kind: "mapping";
+  readonly key: string;
+  readonly provider: string;
+  readonly mediaId: number;
+  readonly anilistId: number | null;
+  readonly title: string;
+}
+
+export type LibraryActivityState = MappingActivityState | UploadActivityState;
+
+export interface LibraryActivityEvent {
+  readonly id: number;
+  readonly actorUserId: number;
+  readonly actorUsername: string;
+  readonly action: "mapping-updated" | "media-uploaded";
+  readonly subject: string;
+  readonly previous: LibraryActivityState | null;
+  readonly next: LibraryActivityState;
+  readonly createdAt: number;
+}
+
 export interface TrickplayReady {
   readonly status: "ready";
   readonly version: string;

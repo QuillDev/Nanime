@@ -73,6 +73,59 @@ export const playbackProgressSchema = object({
   updatedAt: number(),
   dismissedAt: nullableNumber,
 });
+const nullablePlaybackProgressSchema = union([playbackProgressSchema, nullValue()]);
+export const playbackAuditEventSchema = object({
+  id: number(),
+  userId: number(),
+  actorUserId: nullableNumber,
+  actorUsername: string(),
+  rel: string(),
+  action: union([
+    literal("completed"), literal("playback-started"), literal("playback-stopped"),
+    literal("restored"),
+    literal("snapshot-imported"), literal("watched"), literal("unwatched"),
+  ]),
+  origin: union([
+    literal("episode-menu"), literal("history"), literal("home"),
+    literal("media-library"), literal("migration"), literal("player"),
+    literal("season-menu"), literal("series-menu"),
+  ]),
+  previous: nullablePlaybackProgressSchema,
+  next: nullablePlaybackProgressSchema,
+  anilistMediaId: nullableNumber,
+  episode: nullableNumber,
+  totalEpisodes: nullableNumber,
+  sessionSeconds: nullableNumber,
+  revertsEventId: nullableNumber,
+  createdAt: number(),
+});
+const mappingActivityStateSchema = object({
+  kind: literal("mapping"),
+  key: string(),
+  provider: string(),
+  mediaId: number(),
+  anilistId: nullableNumber,
+  title: string(),
+});
+const uploadActivityStateSchema = object({
+  kind: literal("upload"),
+  path: string(),
+  size: number(),
+});
+const libraryActivityStateSchema = union([
+  mappingActivityStateSchema,
+  uploadActivityStateSchema,
+]);
+export const libraryActivityEventSchema = object({
+  id: number(),
+  actorUserId: number(),
+  actorUsername: string(),
+  action: union([literal("mapping-updated"), literal("media-uploaded")]),
+  subject: string(),
+  previous: union([libraryActivityStateSchema, nullValue()]),
+  next: libraryActivityStateSchema,
+  createdAt: number(),
+});
 
 const tvmazeEpisodeSchema = object({
   id: number(),

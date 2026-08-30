@@ -45,13 +45,14 @@ function watchedUpdate(
 ): PlaybackWatchedUpdate {
   const target = episodePlaybackTarget(entry, media);
   return target === null
-    ? { rel: entry.rel, watched }
+    ? { rel: entry.rel, watched, origin: "season-menu" }
     : {
       rel: entry.rel,
       watched,
       anilistMediaId: target.mediaId,
       episode: target.episode,
       totalEpisodes: target.totalEpisodes,
+      origin: "season-menu",
     };
 }
 
