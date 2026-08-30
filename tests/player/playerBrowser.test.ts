@@ -5,6 +5,7 @@ import {
   FIXTURE_DURATION,
   HLS_FIXTURE,
   type PlayerHarness,
+  playerState,
   startPlayerHarness,
   timelineBounds,
   waitForPlayerState,
@@ -21,6 +22,10 @@ function activeHarness(): PlayerHarness {
 }
 
 async function ensurePlaying(player: Awaited<ReturnType<PlayerHarness["openPlayer"]>>): Promise<void> {
+  const current = await playerState(player.view);
+  if (current?.paused === false) {
+    return;
+  }
   const started = await player.view.evaluate<boolean>(`(() => {
     const video = document.querySelector("video");
     return video instanceof HTMLVideoElement
