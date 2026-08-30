@@ -1,8 +1,25 @@
 import { api, unwrap } from "./api.ts";
 import type { AniListMedia, MetadataProvider, ShowMetadata } from "./types.ts";
+import {
+  canUseOfflineFallback,
+  offlineMetadataFallback,
+  rememberOfflineMetadata,
+} from "./offline/runtime.ts";
 
 export async function fetchShowMetadata(signal: AbortSignal): Promise<ShowMetadata> {
-  return unwrap(await api.api.metadata.get({ fetch: { signal } }), "Metadata request");
+  try {
+    const metadata = unwrap(
+      await api.api.metadata.get({ fetch: { signal } }),
+      "Metadata request",
+    );
+    await rememberOfflineMetadata(metadata);
+    return metadata;
+  } catch (error: unknown) {
+    if (canUseOfflineFallback(error)) {
+      return offlineMetadataFallback();
+    }
+    throw error;
+  }
 }
 
 export async function searchMetadata(

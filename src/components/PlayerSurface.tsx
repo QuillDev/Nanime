@@ -78,7 +78,7 @@ export function PlayerSurface({
   onAudioTrack, onTimelineSeek, playbackPosition,
 }: PlayerSurfaceProps): React.JSX.Element {
   const subtitles = useSubtitleTracks(entry.rel);
-  const audio = useAudioSelection(entry.rel, onAudioTrack);
+  const audio = useAudioSelection(entry.rel, onAudioTrack, entry.offlineUrl === undefined);
   const playerRef = useRef<HTMLDivElement | null>(null);
   const {
     buffering,

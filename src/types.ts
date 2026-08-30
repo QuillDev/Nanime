@@ -17,6 +17,8 @@ export type {
   NyaaSearchResult,
   NyaaSort,
   NyaaSortOrder,
+  OfflineMediaArtifact,
+  OfflineMediaStatus,
   PlaybackProgress,
   PlaybackAuditAction,
   PlaybackAuditEvent,

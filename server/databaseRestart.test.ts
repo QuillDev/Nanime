@@ -50,3 +50,18 @@ test("preserves manually watched state when the database restarts", async () => 
   `);
   expect(JSON.parse(output)).toEqual({ completed: 1, position: 100, duration: 1200 });
 });
+
+test("requeues interrupted offline preparation when the database restarts", async () => {
+  await runDatabaseScript(`
+    import { database } from "./server/database.ts";
+    database.query("INSERT INTO offline_media_artifacts (id, source_rel, source_size, source_modified_at, audio_index, direct, output_name, status, progress, speed, duration, size_bytes, mime_type, error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, 'preparing', 0.75, 1.5, 1200, NULL, 'video/mp4', NULL, ?, ?)")
+      .run("offline-restart-artifact", "Example/episode-02.mkv", 1000, 1234, 1, "offline-restart-artifact.mp4", Date.now(), Date.now());
+  `);
+  const output = await runDatabaseScript(`
+    import { database } from "./server/database.ts";
+    const artifact = database.query("SELECT status, progress, speed, error FROM offline_media_artifacts WHERE id = ?")
+      .get("offline-restart-artifact");
+    console.log(JSON.stringify(artifact));
+  `);
+  expect(JSON.parse(output)).toEqual({ status: "queued", progress: 0, speed: 0, error: null });
+});

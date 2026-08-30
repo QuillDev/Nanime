@@ -1,63 +1,24 @@
-const CACHE_PREFIX = "nanime-app-";
-const CACHE_NAME = `${CACHE_PREFIX}v1`;
-const APP_SHELL = [
-  "/",
-  "/manifest.webmanifest",
-  "/favicon.svg",
-  "/icon-180.png",
-  "/icon-192.png",
-  "/icon-512.png",
-  "/icon-maskable-512.png",
-];
-const UNCACHED_PREFIXES = [
-  "/api/",
-  "/hls/",
-  "/stream",
-  "/subtitle",
-  "/thumbnail",
-  "/trickplay/",
-  "/transcode",
-];
+importScripts("/swCore.js", "/swStorage.js");
 
-function isCacheableAsset(url) {
-  return url.pathname.startsWith("/assets/") || APP_SHELL.includes(url.pathname);
-}
-
-function isMediaOrApi(url) {
-  return UNCACHED_PREFIXES.some((prefix) => url.pathname.startsWith(prefix));
-}
-
-async function cacheResponse(request, response) {
-  if (response.ok) {
-    const cache = await caches.open(CACHE_NAME);
-    await cache.put(request, response.clone());
-  }
-  return response;
-}
-
-async function networkFirstNavigation(request) {
-  try {
-    const response = await fetch(request);
-    return cacheResponse("/", response);
-  } catch {
-    return (await caches.match("/")) ?? Response.error();
-  }
-}
-
-async function cacheFirstAsset(request) {
-  const cached = await caches.match(request);
-  return cached ?? cacheResponse(request, await fetch(request));
-}
+const worker = globalThis.NanimeOfflineWorker;
+const storage = globalThis.NanimeOfflineStorage;
+const dependencies = {
+  caches,
+  fetch: (request) => fetch(request),
+  loadOfflineMedia: storage.loadOfflineMedia,
+};
 
 async function installWorker() {
-  const cache = await caches.open(CACHE_NAME);
-  await cache.addAll(APP_SHELL);
+  const cache = await caches.open(worker.CACHE_NAME);
+  await cache.addAll(worker.APP_SHELL);
   await globalThis.skipWaiting();
 }
 
 async function activateWorker() {
   const names = await caches.keys();
-  const oldCaches = names.filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME);
+  const oldCaches = names.filter((name) => (
+    name.startsWith(worker.CACHE_PREFIX) && name !== worker.CACHE_NAME
+  ));
   await Promise.all(oldCaches.map((name) => caches.delete(name)));
   await globalThis.clients.claim();
 }
@@ -72,13 +33,9 @@ globalThis.addEventListener("activate", (event) => {
 
 globalThis.addEventListener("fetch", (event) => {
   const { request } = event;
-  const url = new URL(request.url);
-  if (request.method !== "GET" || url.origin !== globalThis.location.origin || isMediaOrApi(url)) {
+  const route = worker.requestRoute(request, globalThis.location.origin);
+  if (route.kind === "none") {
     return;
   }
-  if (request.mode === "navigate") {
-    event.respondWith(networkFirstNavigation(request));
-  } else if (isCacheableAsset(url)) {
-    event.respondWith(cacheFirstAsset(request));
-  }
+  event.respondWith(worker.routeResponse(route, request, dependencies));
 });

@@ -10,6 +10,7 @@ import {
   authUserSchema,
   credentialsSchema,
   mediaEntrySchema,
+  offlineMediaArtifactSchema,
   libraryStatusSchema,
   libraryActivityEventSchema,
   metadataRefreshStatusSchema,
@@ -166,6 +167,10 @@ const nyaaSearchQuerySchema = schema.object({
   order: schema.optional(nyaaSortOrderSchema),
 });
 const pathQuerySchema = schema.object({ path: schema.string({ minLength: 1 }) });
+const offlineMediaPrepareSchema = schema.object({
+  path: schema.string({ minLength: 1 }),
+  audioIndex: schema.optional(schema.integer({ minimum: 0 })),
+});
 const indexedPathQuerySchema = schema.object({
   path: schema.string({ minLength: 1 }),
   index: schema.integer(),
@@ -230,6 +235,15 @@ export const app = new Elysia({ name: "nanime" })
   .get("/api/media-info", ({ request, server }) => handle(request, server), {
     query: pathQuerySchema,
     response: schema.object({ duration: schema.number({ minimum: 0 }) }),
+  })
+  .post("/api/offline-media", ({ request, server, body }) => (
+    handle(jsonRequest(request, body), server)
+  ), {
+    body: offlineMediaPrepareSchema,
+    response: offlineMediaArtifactSchema,
+  })
+  .get("/api/offline-media/:id", ({ request, server }) => handle(request, server), {
+    response: offlineMediaArtifactSchema,
   })
   .get("/api/trickplay", ({ request, server }) => handle(request, server), {
     query: pathQuerySchema,
@@ -452,6 +466,8 @@ export const app = new Elysia({ name: "nanime" })
   .get("/stream", ({ request, server }) => handle(request, server), {
     query: pathQuerySchema,
   })
+  .get("/offline-media/:id/media", ({ request, server }) => handle(request, server))
+  .head("/offline-media/:id/media", ({ request, server }) => handle(request, server))
   .get("/thumbnail", ({ request, server }) => handle(request, server), {
     query: pathQuerySchema,
   })

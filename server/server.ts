@@ -18,6 +18,7 @@ import {
   audioTracksResponse,
   hlsPlaylistResponse,
   hlsSegmentResponse,
+  offlineMediaRouteResponse,
   probeDuration,
   subtitleResponse,
   subtitleTracksResponse,
@@ -70,6 +71,12 @@ const MIME = new Map(Object.entries({
 } as const));
 const thumbnailCache = new Map<string, Promise<ArrayBuffer | null>>();
 let activeThumbnailJobs = 0;
+const OFFLINE_MEDIA_OPTIONS = {
+  mediaDir: MEDIA_DIR,
+  mediaRoot: MEDIA_ROOT,
+  videoExtensions: VIDEO_EXTS,
+  directPlayExtensions: DIRECT_PLAY,
+} as const;
 async function safePath(rel: string | null): Promise<string | null> {
   if (rel === null || rel === "") {
     return null;
@@ -401,6 +408,10 @@ function mediaRequest(pathname: string, method: string): boolean {
 }
 
 async function authenticatedRoute(context: RouteContext): Promise<Response> {
+  const offline = offlineMediaRouteResponse(context.req, context.pathname, OFFLINE_MEDIA_OPTIONS);
+  if (offline !== null) {
+    return await offline;
+  }
   const library = await libraryRoute(context);
   if (library !== null) {
     return library;
@@ -425,6 +436,7 @@ async function authenticatedRoute(context: RouteContext): Promise<Response> {
 function protectedPath(pathname: string): boolean {
   return pathname.startsWith("/api/") ||
     pathname === "/stream" ||
+    pathname.startsWith("/offline-media/") ||
     pathname === "/thumbnail" ||
     pathname.startsWith("/trickplay/") ||
     pathname === "/subtitle" ||

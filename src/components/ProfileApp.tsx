@@ -7,6 +7,7 @@ import { MediaHeader } from "./MediaHeader.tsx";
 import { PlaybackPreferences } from "./PlaybackPreferences.tsx";
 import { PlaybackHistory } from "./PlaybackHistory.tsx";
 import { LibraryActivity } from "./LibraryActivity.tsx";
+import { OfflineDownloads } from "./OfflineDownloads.tsx";
 
 export function ProfileApp({ user }: { readonly user: AuthUser }): React.JSX.Element {
   const logout = useLogout();
@@ -35,6 +36,7 @@ export function ProfileApp({ user }: { readonly user: AuthUser }): React.JSX.Ele
           <p className="mt-4 select-text text-sm text-destructive">{logout.error.message}</p>
         )}
         <PlaybackPreferences />
+        <OfflineDownloads />
         <PlaybackHistory />
         {user.isAdmin && <LibraryActivity />}
         <LinkedAccounts />

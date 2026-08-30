@@ -14,8 +14,9 @@ interface AudioSelection {
 export function useAudioSelection(
   rel: string,
   onTrack: (index: number) => void,
+  enabled = true,
 ): AudioSelection {
-  const audio = useAudioTracks(rel);
+  const audio = useAudioTracks(rel, enabled);
   const [selection, setSelection] = useState<number | null>(null);
   const tracks = audio.data ?? EMPTY_AUDIO_TRACKS;
   const selectedTrack = selection ??
