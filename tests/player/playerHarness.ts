@@ -76,6 +76,11 @@ interface TimedOperationOptions<T> {
   readonly timeout?: number;
 }
 
+function reportTiming(description: string, startedAt: number): void {
+  const elapsed = performance.now() - startedAt;
+  process.stdout.write(`[player-timing] ${description}: ${elapsed.toFixed(1)}ms\n`);
+}
+
 function requiredExecutable(names: readonly string[]): string {
   for (const name of names) {
     const executable = Bun.which(name);
@@ -86,13 +91,18 @@ function requiredExecutable(names: readonly string[]): string {
   throw new Error(`Player browser harness requires one of: ${names.join(", ")}`);
 }
 
-function timedOperation<T>(options: TimedOperationOptions<T>): Promise<T> {
+async function timedOperation<T>(options: TimedOperationOptions<T>): Promise<T> {
+  const startedAt = performance.now();
   const timeout = options.timeout ?? 15_000;
   const timeoutFailure = (async (): Promise<never> => {
     await Bun.sleep(timeout);
     throw new Error(`Timed out waiting for ${options.description}`);
   })();
-  return Promise.race([options.operation, timeoutFailure]);
+  try {
+    return await Promise.race([options.operation, timeoutFailure]);
+  } finally {
+    reportTiming(options.description, startedAt);
+  }
 }
 
 async function generateFixture(mediaDirectory: string): Promise<void> {
@@ -309,6 +319,7 @@ async function startHarnessProxy(
 }
 
 export async function startPlayerHarness(): Promise<PlayerHarness> {
+  const harnessStartedAt = performance.now();
   if (Bun.version !== "1.4.0") {
     throw new Error(`Player harness requires Bun 1.4.0; received ${Bun.version}`);
   }
@@ -318,7 +329,7 @@ export async function startPlayerHarness(): Promise<PlayerHarness> {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "nanime-player-harness-"));
   const mediaDirectory = join(temporaryRoot, "media");
   await mkdir(mediaDirectory);
-  await generateFixture(mediaDirectory);
+  await timedOperation({ operation: generateFixture(mediaDirectory), description: "fixture generation" });
   const backendPort = availablePort();
   let publicPort = availablePort();
   while (publicPort === backendPort) {
@@ -349,10 +360,14 @@ export async function startPlayerHarness(): Promise<PlayerHarness> {
   });
   const stdout = captureProcessOutput(server.stdout);
   const stderr = captureProcessOutput(server.stderr);
-  await waitForServer(backendOrigin, server);
+  await timedOperation({ operation: waitForServer(backendOrigin, server), description: "backend readiness" });
   seedFixtureMetadata(databasePath);
-  const proxy = await startHarnessProxy(publicPort, backendOrigin, origin);
-  await createAdmin(origin);
+  const proxy = await timedOperation({
+    operation: startHarnessProxy(publicPort, backendOrigin, origin),
+    description: "proxy readiness",
+  });
+  await timedOperation({ operation: createAdmin(origin), description: "admin creation" });
+  reportTiming("complete harness startup", harnessStartedAt);
   return {
     browserPath,
     origin,
@@ -399,16 +414,19 @@ export function playerState(view: Bun.WebView): Promise<PlayerState | null> {
 
 export async function waitForPlayerState(options: WaitForPlayerStateOptions): Promise<PlayerState> {
   const { description, predicate, view } = options;
+  const startedAt = performance.now();
   const timeout = options.timeout ?? 30_000;
   const deadline = Date.now() + timeout;
   let latest: PlayerState | null = null;
   while (Date.now() < deadline) {
     latest = await playerState(view);
     if (latest !== null && predicate(latest)) {
+      reportTiming(description, startedAt);
       return latest;
     }
     await Bun.sleep(100);
   }
+  reportTiming(`${description} (timeout)`, startedAt);
   throw new Error(`Timed out waiting for ${description}; last state: ${JSON.stringify(latest)}`);
 }
 
