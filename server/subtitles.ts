@@ -6,7 +6,12 @@ import { probeStreams } from "./ffprobe.ts";
 import { jsonObject, type JsonObject } from "./json.ts";
 import { fileSystemErrorCode } from "./fileSystemError.ts";
 
-export { audioTracksResponse, hlsPlaylistResponse, hlsSegmentResponse } from "./hls.ts";
+export {
+  audioTracksResponse,
+  hlsPlaylistResponse,
+  hlsSegmentResponse,
+  releaseHlsPlayback,
+} from "./hls.ts";
 export { offlineMediaRouteResponse } from "./offlineMedia.ts";
 export { probeDuration } from "./mediaInfo.ts";
 export { trickplayManifestResponse, trickplayMediaResponse } from "./trickplay.ts";

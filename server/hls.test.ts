@@ -59,6 +59,9 @@ test("routes generated playlist segments through the authenticated session", () 
   expect(rewritePlaylist(playlist, "session id")).toContain(
     "/hls/seg?session=session%20id&name=segment-000061.ts",
   );
+  expect(rewritePlaylist(playlist, "session id", "lease id")).toContain(
+    "/hls/seg?session=session%20id&lease=lease%20id&name=segment-000061.ts",
+  );
 });
 
 test("aligns requested HLS starts to safe segment boundaries", () => {

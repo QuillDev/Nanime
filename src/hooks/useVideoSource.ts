@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState, type SyntheticEvent } from "react";
-import { hlsUrl, streamUrl } from "../api.ts";
+import { streamUrl } from "../api.ts";
+import { hlsUrl } from "../hlsApi.ts";
 import type { MediaEntry } from "../types.ts";
-import type { HlsAttachment } from "../lib/hlsPlayback.ts";
 import {
   absolutePlaybackPosition,
   hlsTimelineOffset,
@@ -9,74 +9,30 @@ import {
   sourceMetadataPosition,
 } from "../lib/mediaTimeline.ts";
 import { videoErrorDetail } from "../lib/videoError.ts";
-import { attachNativeHls } from "../lib/nativeHlsPlayback.ts";
 import { attachDirectVideoSource } from "../lib/directVideoPlayback.ts";
-import { selectHlsPlaybackEngine } from "../lib/hlsPlaybackSelection.ts";
-
-function nativeHlsSupported(video: HTMLVideoElement): boolean {
-  return video.canPlayType("application/vnd.apple.mpegurl") !== "";
-}
-
-interface LoadedHlsModule {
-  readonly attachHls: (options: HlsAttachment) => (() => void) | undefined;
-  readonly hlsJsSupported: () => boolean;
-}
-function attachLoadedHls(module: LoadedHlsModule, options: HlsAttachment): (() => void) | undefined {
-  const engine = selectHlsPlaybackEngine(
-    module.hlsJsSupported(), nativeHlsSupported(options.video));
-  if (engine === "hls.js") {
-    return module.attachHls(options);
-  }
-  if (engine === "native") {
-    attachNativeHls(options);
-    return undefined;
-  }
-  options.onError("This browser does not support HLS video playback.");
-  return undefined;
-}
-
-function attachHls(options: HlsAttachment): () => void {
-  let active = true;
-  let detach: (() => void) | undefined = undefined;
-  void (async (): Promise<void> => {
-    try {
-      const module = await import("../lib/hlsPlayback.ts");
-      if (active) {
-        detach = attachLoadedHls(module, options);
-      }
-    } catch (error: unknown) {
-      if (active) {
-        const detail = error instanceof Error ? error.message : "Unknown loading error";
-        options.onError(`Could not load HLS playback support: ${detail}`);
-      }
-    }
-  })();
-  return () => {
-    active = false;
-    detach?.();
-  };
-}
+import { attachManagedHls } from "../lib/managedHlsPlayback.ts";
 
 interface SourceAttachment {
   readonly video: HTMLVideoElement;
   readonly entry: MediaEntry;
   readonly resumeAt: number;
   readonly onError: (message: string) => void;
+  readonly playerId: string;
 }
 function attachSource(options: SourceAttachment): (() => void) | undefined {
-  const { video, entry, resumeAt, onError } = options;
+  const { video, entry, resumeAt, onError, playerId } = options;
   if (entry.direct) {
     attachDirectVideoSource(video, entry.offlineUrl ?? streamUrl(entry.rel));
     return undefined;
   }
   const timelineOffset = hlsTimelineOffset(resumeAt);
-  return attachHls({
+  return attachManagedHls({
     video,
     url: hlsUrl(entry.rel, null, resumeAt),
     onError,
     resumeAt,
     timelineOffset,
-  });
+  }, playerId);
 }
 
 interface VideoSourceState {
@@ -95,6 +51,7 @@ interface MutableSourceState {
   detach: (() => void) | undefined;
   selectedAudio: number | null;
   pendingPosition: number | null;
+  readonly playerId: string;
   timelineOffset: number;
   video: HTMLVideoElement | null;
 }
@@ -124,14 +81,14 @@ function restartHls(options: RestartOptions): void {
   stopSource(source, setError);
   Object.assign(source, { pendingPosition: position, selectedAudio: audioTrack, timelineOffset });
   setOffset(timelineOffset);
-  source.detach = attachHls({
+  source.detach = attachManagedHls({
     video,
     url: hlsUrl(entry.rel, audioTrack, position),
     onError: setError,
     resumeAt: position,
     shouldPlay,
     timelineOffset,
-  });
+  }, source.playerId);
 }
 function tryLocalHlsSeek(
   source: MutableSourceState,
@@ -196,6 +153,7 @@ function useSourceReferences(entry: MediaEntry, resumeAt: number, timelineOffset
     detach: undefined,
     selectedAudio: null,
     pendingPosition: null,
+    playerId: crypto.randomUUID(),
     timelineOffset,
     video: null,
   });
@@ -225,6 +183,7 @@ export function useVideoSource(entry: MediaEntry, resumeAt: number): VideoSource
         const detachSource = attachSource({
           video,
           ...initialSourceRef.current,
+          playerId: sourceRef.current.playerId,
           onError: setPlaybackError,
         });
         sourceRef.current.detach = detachSource;
