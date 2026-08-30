@@ -11,19 +11,38 @@ import {
 import { videoErrorDetail } from "../lib/videoError.ts";
 import { attachNativeHls } from "../lib/nativeHlsPlayback.ts";
 import { attachDirectVideoSource } from "../lib/directVideoPlayback.ts";
+import { selectHlsPlaybackEngine } from "../lib/hlsPlaybackSelection.ts";
+
+function nativeHlsSupported(video: HTMLVideoElement): boolean {
+  return video.canPlayType("application/vnd.apple.mpegurl") !== "";
+}
+
+interface LoadedHlsModule {
+  readonly attachHls: (options: HlsAttachment) => (() => void) | undefined;
+  readonly hlsJsSupported: () => boolean;
+}
+function attachLoadedHls(module: LoadedHlsModule, options: HlsAttachment): (() => void) | undefined {
+  const engine = selectHlsPlaybackEngine(
+    module.hlsJsSupported(), nativeHlsSupported(options.video));
+  if (engine === "hls.js") {
+    return module.attachHls(options);
+  }
+  if (engine === "native") {
+    attachNativeHls(options);
+    return undefined;
+  }
+  options.onError("This browser does not support HLS video playback.");
+  return undefined;
+}
 
 function attachHls(options: HlsAttachment): () => void {
-  if (options.video.canPlayType("application/vnd.apple.mpegurl") !== "") {
-    attachNativeHls(options);
-    return () => undefined;
-  }
   let active = true;
   let detach: (() => void) | undefined = undefined;
   void (async (): Promise<void> => {
     try {
       const module = await import("../lib/hlsPlayback.ts");
       if (active) {
-        detach = module.attachHls(options);
+        detach = attachLoadedHls(module, options);
       }
     } catch (error: unknown) {
       if (active) {

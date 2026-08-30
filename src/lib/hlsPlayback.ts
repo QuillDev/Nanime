@@ -9,6 +9,10 @@ export interface HlsAttachment {
   readonly timelineOffset?: number;
 }
 
+export function hlsJsSupported(): boolean {
+  return Hls.isSupported();
+}
+
 function tryPlay(video: HTMLVideoElement): void {
   void (async (): Promise<void> => {
     try {
@@ -59,7 +63,7 @@ function bindHlsEvents(hls: Hls, options: HlsAttachment): void {
 }
 
 export function attachHls(options: HlsAttachment): (() => void) | undefined {
-  if (!Hls.isSupported()) {
+  if (!hlsJsSupported()) {
     options.onError("This browser does not support HLS video playback.");
     return undefined;
   }

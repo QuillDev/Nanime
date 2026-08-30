@@ -4,6 +4,7 @@ import {
   attachDirectVideoSource,
   type DirectVideoElement,
 } from "../lib/directVideoPlayback.ts";
+import { selectHlsPlaybackEngine } from "../lib/hlsPlaybackSelection.ts";
 
 function nativeVideo(supported = true) {
   const play = mock(() => Promise.resolve());
@@ -63,6 +64,17 @@ describe("native HLS playback adapter", () => {
     expect(native.video.src).toBe("");
     expect(native.play).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith("This browser does not support HLS video playback.");
+  });
+});
+
+describe("HLS playback engine selection", () => {
+  test("prefers hls.js when Chrome claims native HLS might work", () => {
+    expect(selectHlsPlaybackEngine(true, true)).toBe("hls.js");
+  });
+
+  test("uses native HLS only when MSE playback is unavailable", () => {
+    expect(selectHlsPlaybackEngine(false, true)).toBe("native");
+    expect(selectHlsPlaybackEngine(false, false)).toBe("unsupported");
   });
 });
 
