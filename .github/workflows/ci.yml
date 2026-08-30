@@ -45,14 +45,10 @@ jobs:
         case:
           - name: journey
             pattern: navigates through a season
-          - name: watched
-            pattern: marks an episode watched
-          - name: manifest-recovery
-            pattern: recovers a transient HLS manifest
-          - name: timeline-seek
-            pattern: keeps controls visible
-          - name: direct-seek
-            pattern: direct playback accepts
+          - name: state-and-direct
+            pattern: "marks an episode watched|direct playback accepts"
+          - name: hls-resilience
+            pattern: "recovers a transient HLS manifest|keeps controls visible"
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

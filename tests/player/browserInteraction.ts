@@ -8,9 +8,10 @@ export interface ElementTarget {
   readonly text?: string;
 }
 
-function elementLookup(target: ElementTarget): string {
+function elementLookup(target: ElementTarget, activate = false): string {
   return `(() => {
     const target = ${JSON.stringify(target)};
+    const activate = ${String(activate)};
     const matches = Array.from(document.querySelectorAll(target.selector)).filter((candidate) => {
       if (!(candidate instanceof HTMLElement)) return false;
       const style = getComputedStyle(candidate);
@@ -32,6 +33,7 @@ function elementLookup(target: ElementTarget): string {
       element.scrollIntoView({ block: "center", inline: "center" });
       return null;
     }
+    if (activate) element.click();
     return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
   })()`;
 }
@@ -55,6 +57,18 @@ export async function waitForElement(
 export async function clickElement(view: Bun.WebView, target: ElementTarget): Promise<void> {
   const bounds = await waitForElement(view, target);
   await view.click(bounds.x, bounds.y);
+}
+
+export async function activateElement(view: Bun.WebView, target: ElementTarget): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const activated = await view.evaluate<unknown>(elementLookup(target, true));
+    if (activated !== null) {
+      return;
+    }
+    await Bun.sleep(50);
+  }
+  throw new Error(`Timed out waiting to activate element: ${JSON.stringify(target)}`);
 }
 
 export async function clickStableElement(view: Bun.WebView, target: ElementTarget): Promise<void> {
