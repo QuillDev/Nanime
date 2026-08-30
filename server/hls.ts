@@ -4,18 +4,20 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { audioTracks, type AudioTrack } from "./audioTracks.ts";
 import { SingleFlight } from "./singleFlight.ts";
-import { HLS_SEGMENT_SECONDS } from "../shared/playback.ts";
+import { HlsStoppingCapacity, hlsCapacityAvailable } from "./hlsCapacity.ts";
+import { HLS_SEGMENT_SECONDS, transcodeArgs, type HlsOptions } from "./hlsTranscode.ts";
+import { stopHlsProcess } from "./hlsProcess.ts";
+import { hlsOwnershipKey, supersedeHlsLease } from "./hlsLeaseOwnership.ts";
 
 export { audioTracksResponse } from "./audioTracks.ts";
+export { transcodeArgs } from "./hlsTranscode.ts";
 
-const SESSION_IDLE_MS = 10 * 60 * 1000;
+const SESSION_IDLE_MS = 60 * 1000;
+const PROCESS_STOP_GRACE_MS = 2 * 1000;
+const MAX_ACTIVE_SESSIONS = 4;
+const MAX_ACTIVE_SESSIONS_PER_USER = 2;
 const PLAYLIST_WAIT_MS = 20 * 1000;
 const cacheRoot = mkdtemp(join(tmpdir(), "nanime-hls-"));
-
-interface HlsOptions {
-  readonly hardwareAcceleration: string;
-  readonly vaapiDevice: string;
-}
 
 export interface HlsPlaylistOptions extends HlsOptions {
   readonly abs: string;
@@ -23,6 +25,8 @@ export interface HlsPlaylistOptions extends HlsOptions {
   readonly duration: number;
   readonly requestedStart: number;
   readonly userId: number;
+  readonly leaseId: string | null;
+  readonly playerId: string | null;
 }
 
 interface HlsSession {
@@ -32,17 +36,21 @@ interface HlsSession {
   readonly playlistPath: string;
   readonly process: Bun.Subprocess<"ignore", "ignore", "pipe">;
   readonly userId: number;
+  readonly leases: Set<string>;
+  readonly legacyAccess: boolean;
   error: string | null;
   lastAccess: number;
+  pendingClaims: number;
+  removal: Promise<void> | null;
+  stopping: boolean;
 }
 
-interface TranscodeCommand extends HlsOptions {
-  readonly abs: string;
-  readonly audioTrack: AudioTrack | undefined;
-  readonly directory: string;
-  readonly duration: number;
-  readonly segmentIndex: number;
-  readonly start: number;
+interface HlsLease {
+  readonly id: string;
+  readonly playerId: string;
+  readonly sessionId: string;
+  readonly userId: number;
+  lastAccess: number;
 }
 
 interface HlsSessionPlan {
@@ -52,7 +60,13 @@ interface HlsSessionPlan {
 
 const sessionsById = new Map<string, HlsSession>();
 const sessionsByKey = new Map<string, HlsSession>();
-const pendingSessions = new SingleFlight<string, HlsSession | null>();
+const leasesById = new Map<string, HlsLease>();
+const activeLeaseByPlayer = new Map<string, string>();
+const releasedLeases = new Map<string, number>();
+const pendingSessions = new SingleFlight<string, HlsSession | null | undefined>();
+let pendingSessionCount = 0;
+const pendingSessionsByUser = new Map<number, number>();
+const stoppingSessions = new HlsStoppingCapacity();
 
 function sessionKey(options: HlsPlaylistOptions, segmentIndex: number): string {
   return createHash("sha256").update([
@@ -61,6 +75,7 @@ function sessionKey(options: HlsPlaylistOptions, segmentIndex: number): string {
     String(options.audioIndex),
     String(segmentIndex),
     options.hardwareAcceleration,
+    options.leaseId === null ? "legacy" : "managed",
   ].join("\0")).digest("hex");
 }
 
@@ -71,65 +86,6 @@ export function hlsSessionPlan(duration: number, requestedStart: number): HlsSes
   const safeStart = Math.min(Math.max(0, requested), maximumStart);
   const segmentIndex = Math.floor(safeStart / HLS_SEGMENT_SECONDS);
   return { segmentIndex, start: segmentIndex * HLS_SEGMENT_SECONDS };
-}
-
-function videoArgs(command: TranscodeCommand): readonly string[] {
-  const keyframes = [
-    "-flags", "+cgop",
-    "-force_key_frames", `expr:gte(t,n_forced*${String(HLS_SEGMENT_SECONDS)})`,
-  ];
-  if (command.hardwareAcceleration === "vaapi") {
-    return [
-      "-vf", "scale_vaapi=format=nv12",
-      "-c:v", "h264_vaapi",
-      "-b:v", "6M", "-maxrate", "8M", "-bufsize", "12M",
-      ...keyframes,
-    ];
-  }
-  return [
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-    "-sc_threshold", "0",
-    ...keyframes,
-  ];
-}
-
-function inputHardwareArgs(command: TranscodeCommand): readonly string[] {
-  return command.hardwareAcceleration === "vaapi"
-    ? [
-        "-hwaccel", "vaapi",
-        "-hwaccel_device", command.vaapiDevice,
-        "-hwaccel_output_format", "vaapi",
-      ]
-    : [];
-}
-
-export function transcodeArgs(command: TranscodeCommand): readonly string[] {
-  const remaining = Math.max(0, command.duration - command.start);
-  const streams = command.audioTrack === undefined
-    ? ["-map", "0:v:0"]
-    : ["-map", "0:v:0", "-map", `0:${String(command.audioTrack.index)}`];
-  const audio = command.audioTrack === undefined
-    ? []
-    : ["-c:a", "aac", "-ac", "2", "-b:a", "160k"];
-  return [
-    "-hide_banner", "-loglevel", "error",
-    ...inputHardwareArgs(command),
-    "-ss", String(command.start), "-i", command.abs,
-    "-t", String(remaining),
-    ...streams,
-    ...videoArgs(command),
-    ...audio,
-    "-output_ts_offset", String(command.start),
-    "-muxdelay", "0",
-    "-f", "hls",
-    "-hls_time", String(HLS_SEGMENT_SECONDS),
-    "-hls_list_size", "0",
-    "-hls_playlist_type", "event",
-    "-start_number", String(command.segmentIndex),
-    "-hls_flags", "independent_segments+temp_file",
-    "-hls_segment_filename", join(command.directory, "segment-%06d.ts"),
-    join(command.directory, "index.m3u8"),
-  ];
 }
 
 async function selectedAudioTrack(
@@ -146,10 +102,19 @@ async function selectedAudioTrack(
 async function monitorSession(session: HlsSession): Promise<void> {
   const errorText = await new Response(session.process.stderr).text();
   const exitCode = await session.process.exited;
-  if (exitCode !== 0) {
+  if (exitCode !== 0 && !session.stopping) {
     session.error = errorText.trim() || `FFmpeg exited with code ${String(exitCode)}`;
     // eslint-disable-next-line no-console
     console.error(`HLS session failed: id=${session.id} ${session.error}`);
+  }
+}
+
+async function spawnHlsProcess(command: string[], directory: string) {
+  try {
+    return Bun.spawn(command, { stdout: "ignore", stderr: "pipe" });
+  } catch (error: unknown) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
   }
 }
 
@@ -157,25 +122,25 @@ async function createSession(
   options: HlsPlaylistOptions,
   segmentIndex: number,
   key: string,
-): Promise<HlsSession | null> {
+): Promise<HlsSession | undefined> {
   const audioTrack = await selectedAudioTrack(options.abs, options.audioIndex);
   if (audioTrack === null) {
-    return null;
+    return undefined;
   }
   const root = await cacheRoot;
   const id = randomUUID();
   const directory = join(root, id);
   await mkdir(directory, { mode: 0o700 });
-  const process = Bun.spawn([
-    "ffmpeg",
-    ...transcodeArgs({
-      ...options,
-      audioTrack,
-      directory,
-      segmentIndex,
-      start: segmentIndex * HLS_SEGMENT_SECONDS,
-    }),
-  ], { stdout: "ignore", stderr: "pipe" });
+  const process = await spawnHlsProcess([
+      "ffmpeg",
+      ...transcodeArgs({
+        ...options,
+        audioTrack,
+        directory,
+        segmentIndex,
+        start: segmentIndex * HLS_SEGMENT_SECONDS,
+      }),
+    ], directory);
   const session: HlsSession = {
     id,
     key,
@@ -183,16 +148,75 @@ async function createSession(
     playlistPath: join(directory, "index.m3u8"),
     process,
     userId: options.userId,
+    leases: new Set(),
+    legacyAccess: options.leaseId === null,
     error: null,
     lastAccess: Date.now(),
+    pendingClaims: 0,
+    removal: null,
+    stopping: false,
   };
-  sessionsById.set(id, session);
-  sessionsByKey.set(key, session);
   void monitorSession(session);
   return session;
 }
 
-function activeSession(options: HlsPlaylistOptions): Promise<HlsSession | null> {
+function activeProcessCount(userId?: number): number {
+  const active = [...sessionsById.values()].filter((session) => (
+    session.process.exitCode === null && (userId === undefined || session.userId === userId)
+  )).length;
+  return active + stoppingSessions.count(userId);
+}
+
+function reserveSession(userId: number): boolean {
+  const userPending = pendingSessionsByUser.get(userId) ?? 0;
+  if (!hlsCapacityAvailable({
+    activeGlobal: activeProcessCount(),
+    activeUser: activeProcessCount(userId),
+    maxGlobal: MAX_ACTIVE_SESSIONS,
+    maxUser: MAX_ACTIVE_SESSIONS_PER_USER,
+    pendingGlobal: pendingSessionCount,
+    pendingUser: userPending,
+  })) {
+    return false;
+  }
+  pendingSessionCount += 1;
+  pendingSessionsByUser.set(userId, userPending + 1);
+  return true;
+}
+
+function releaseReservation(userId: number): void {
+  pendingSessionCount = Math.max(0, pendingSessionCount - 1);
+  const remaining = Math.max(0, (pendingSessionsByUser.get(userId) ?? 1) - 1);
+  if (remaining === 0) {
+    pendingSessionsByUser.delete(userId);
+  } else {
+    pendingSessionsByUser.set(userId, remaining);
+  }
+}
+
+function registerSession(session: HlsSession): HlsSession {
+  sessionsById.set(session.id, session);
+  sessionsByKey.set(session.key, session);
+  return session;
+}
+
+async function createReservedSession(
+  options: HlsPlaylistOptions,
+  segmentIndex: number,
+  key: string,
+): Promise<HlsSession | null | undefined> {
+  if (!reserveSession(options.userId)) {
+    return null;
+  }
+  try {
+    const session = await createSession(options, segmentIndex, key);
+    return session === undefined ? undefined : registerSession(session);
+  } finally {
+    releaseReservation(options.userId);
+  }
+}
+
+function activeSession(options: HlsPlaylistOptions): Promise<HlsSession | null | undefined> {
   const { segmentIndex } = hlsSessionPlan(options.duration, options.requestedStart);
   const key = sessionKey(options, segmentIndex);
   const existing = sessionsByKey.get(key);
@@ -200,7 +224,7 @@ function activeSession(options: HlsPlaylistOptions): Promise<HlsSession | null> 
     existing.lastAccess = Date.now();
     return Promise.resolve(existing);
   }
-  return pendingSessions.run(key, () => createSession(options, segmentIndex, key));
+  return pendingSessions.run(key, () => createReservedSession(options, segmentIndex, key));
 }
 
 async function waitForPlaylist(session: HlsSession): Promise<string | null> {
@@ -218,45 +242,143 @@ async function waitForPlaylist(session: HlsSession): Promise<string | null> {
   return null;
 }
 
-export function rewritePlaylist(playlist: string, sessionId: string): string {
+export function rewritePlaylist(
+  playlist: string,
+  sessionId: string,
+  leaseId: string | null = null,
+): string {
   return playlist.split("\n").map((line) => {
     if (line === "" || line.startsWith("#")) {
       return line;
     }
     const name = basename(line);
-    return `/hls/seg?session=${encodeURIComponent(sessionId)}&name=${encodeURIComponent(name)}`;
+    const lease = leaseId === null ? "" : `&lease=${encodeURIComponent(leaseId)}`;
+    return `/hls/seg?session=${encodeURIComponent(sessionId)}${lease}&name=${encodeURIComponent(name)}`;
   }).join("\n");
 }
 
-export async function hlsPlaylistResponse(options: HlsPlaylistOptions): Promise<Response> {
-  const session = await activeSession(options);
-  if (session === null) {
-    return new Response("Audio track not found", { status: 404 });
+function prepareLease(options: HlsPlaylistOptions): Promise<boolean> {
+  const { leaseId, playerId, userId } = options;
+  if (leaseId === null || playerId === null) {
+    return Promise.resolve(leaseId === null && playerId === null);
   }
-  const playlist = await waitForPlaylist(session);
-  if (playlist === null) {
-    return new Response("Stream could not start", { status: 503 });
+  const key = hlsOwnershipKey(userId, leaseId);
+  if (releasedLeases.has(key)) {
+    return Promise.resolve(false);
   }
-  session.lastAccess = Date.now();
-  return new Response(rewritePlaylist(playlist, session.id), {
-    headers: {
-      "content-type": "application/vnd.apple.mpegurl",
-      "cache-control": "no-store",
+  const owner = hlsOwnershipKey(userId, playerId);
+  return supersedeHlsLease({
+    owners: activeLeaseByPlayer,
+    owner,
+    leaseId,
+    release: async (previous) => {
+      await releaseHlsPlayback(userId, playerId, previous);
     },
   });
+}
+
+function bindLease(session: HlsSession, options: HlsPlaylistOptions): boolean {
+  const { leaseId, playerId, userId } = options;
+  if (leaseId === null || playerId === null) {
+    session.lastAccess = Date.now();
+    return session.legacyAccess;
+  }
+  const key = hlsOwnershipKey(userId, leaseId);
+  const owner = hlsOwnershipKey(userId, playerId);
+  if (releasedLeases.has(key) || activeLeaseByPlayer.get(owner) !== leaseId) {
+    return false;
+  }
+  const lease: HlsLease = {
+    id: leaseId,
+    playerId,
+    sessionId: session.id,
+    userId,
+    lastAccess: Date.now(),
+  };
+  leasesById.set(key, lease);
+  session.leases.add(key);
+  session.lastAccess = lease.lastAccess;
+  return true;
+}
+
+function abandonUnboundLease(options: HlsPlaylistOptions): void {
+  const { leaseId, playerId, userId } = options;
+  if (leaseId === null || playerId === null) {
+    return;
+  }
+  const owner = hlsOwnershipKey(userId, playerId);
+  if (activeLeaseByPlayer.get(owner) === leaseId) {
+    activeLeaseByPlayer.delete(owner);
+  }
+}
+
+export async function hlsPlaylistResponse(options: HlsPlaylistOptions): Promise<Response> {
+  if (!await prepareLease(options)) {
+    return new Response("Playback lease has ended", { status: 410 });
+  }
+  let session: HlsSession | null | undefined = null;
+  try {
+    session = await activeSession(options);
+  } catch {
+    abandonUnboundLease(options);
+    return new Response("Stream could not start", { status: 503 });
+  }
+  if (session === undefined) {
+    abandonUnboundLease(options);
+    return new Response("Audio track not found", { status: 404 });
+  }
+  if (session === null) {
+    abandonUnboundLease(options);
+    return new Response("No HLS encoder is currently available", {
+      status: 429,
+      headers: { "retry-after": "2" },
+    });
+  }
+  session.pendingClaims += 1;
+  let bound = false;
+  try {
+    const playlist = await waitForPlaylist(session);
+    if (playlist === null) {
+      return new Response("Stream could not start", { status: 503 });
+    }
+    bound = bindLease(session, options);
+    if (!bound) {
+      return new Response("Playback lease has ended", { status: 410 });
+    }
+    session.lastAccess = Date.now();
+    return new Response(rewritePlaylist(playlist, session.id, options.leaseId), {
+      headers: {
+        "content-type": "application/vnd.apple.mpegurl",
+        "cache-control": "no-store",
+        "x-nanime-hls-session": session.id,
+      },
+    });
+  } finally {
+    session.pendingClaims = Math.max(0, session.pendingClaims - 1);
+    if (!bound && session.pendingClaims === 0 && session.leases.size === 0 &&
+      !session.legacyAccess) {
+      abandonUnboundLease(options);
+      await removeSession(session);
+    }
+  }
 }
 
 export function safeSegmentName(value: string | null): value is string {
   return value !== null && /^segment-\d{6}\.ts$/u.test(value);
 }
 
-export async function hlsSegmentResponse(
-  sessionId: string | null,
-  name: string | null,
-  userId: number,
-): Promise<Response> {
+export async function hlsSegmentResponse(options: {
+  readonly leaseId: string | null;
+  readonly name: string | null;
+  readonly sessionId: string | null;
+  readonly userId: number;
+}): Promise<Response> {
+  const { leaseId, name, sessionId, userId } = options;
   const session = sessionId === null ? undefined : sessionsById.get(sessionId);
-  if (session === undefined || session.userId !== userId || !safeSegmentName(name)) {
+  if (
+    session === undefined || session.userId !== userId || !safeSegmentName(name) ||
+    !touchSessionLease(session, leaseId, userId)
+  ) {
     return new Response("Not found", { status: 404 });
   }
   session.lastAccess = Date.now();
@@ -274,21 +396,101 @@ export async function hlsSegmentResponse(
   });
 }
 
-async function removeSession(session: HlsSession): Promise<void> {
+function touchSessionLease(session: HlsSession, leaseId: string | null, userId: number): boolean {
+  if (leaseId === null) {
+    return session.legacyAccess;
+  }
+  const lease = leasesById.get(hlsOwnershipKey(userId, leaseId));
+  if (lease === undefined || lease.sessionId !== session.id) {
+    return false;
+  }
+  lease.lastAccess = Date.now();
+  session.lastAccess = lease.lastAccess;
+  return true;
+}
+
+async function performRemoveSession(session: HlsSession): Promise<void> {
+  const countedAsStopping = session.process.exitCode === null;
+  session.stopping = true;
+  const finishStopping = countedAsStopping ? stoppingSessions.begin(session.userId) : undefined;
   sessionsById.delete(session.id);
   if (sessionsByKey.get(session.key) === session) {
     sessionsByKey.delete(session.key);
   }
-  if (session.process.exitCode === null) {
-    session.process.kill();
+  for (const key of session.leases) {
+    const lease = leasesById.get(key);
+    if (lease !== undefined && lease.sessionId === session.id) {
+      leasesById.delete(key);
+      const owner = hlsOwnershipKey(lease.userId, lease.playerId);
+      if (activeLeaseByPlayer.get(owner) === lease.id) {
+        activeLeaseByPlayer.delete(owner);
+      }
+    }
   }
-  await rm(session.directory, { recursive: true, force: true });
+  session.leases.clear();
+  try {
+    await stopHlsProcess(session.process, PROCESS_STOP_GRACE_MS);
+    await rm(session.directory, { recursive: true, force: true });
+  } finally {
+    finishStopping?.();
+  }
+}
+
+function removeSession(session: HlsSession): Promise<void> {
+  if (session.removal !== null) {
+    return session.removal;
+  }
+  session.removal = performRemoveSession(session);
+  return session.removal;
+}
+
+export async function releaseHlsPlayback(
+  userId: number,
+  playerId: string,
+  leaseId: string,
+): Promise<boolean> {
+  const key = hlsOwnershipKey(userId, leaseId);
+  const owner = hlsOwnershipKey(userId, playerId);
+  const lease = leasesById.get(key);
+  const claimedOwner = [...activeLeaseByPlayer].find((entry) => entry[1] === leaseId)?.[0];
+  if (
+    lease !== undefined && (lease.userId !== userId || lease.playerId !== playerId) ||
+    lease === undefined && claimedOwner !== undefined && claimedOwner !== owner
+  ) {
+    return false;
+  }
+  releasedLeases.set(key, Date.now());
+  if (activeLeaseByPlayer.get(owner) === leaseId) {
+    activeLeaseByPlayer.delete(owner);
+  }
+  if (lease === undefined) {
+    return false;
+  }
+  leasesById.delete(key);
+  const session = sessionsById.get(lease.sessionId);
+  session?.leases.delete(key);
+  if (session !== undefined && session.leases.size === 0 && !session.legacyAccess) {
+    await removeSession(session);
+  }
+  return true;
 }
 
 async function cleanupSessions(): Promise<void> {
-  const cutoff = Date.now() - SESSION_IDLE_MS;
-  const expired = [...sessionsById.values()].filter((session) => session.lastAccess < cutoff);
+  const now = Date.now();
+  const cutoff = now - SESSION_IDLE_MS;
+  const expiredLeases = [...leasesById.values()].filter((lease) => lease.lastAccess <= cutoff);
+  await Promise.all(expiredLeases.map((lease) => (
+    releaseHlsPlayback(lease.userId, lease.playerId, lease.id)
+  )));
+  const expired = [...sessionsById.values()].filter((session) => (
+    session.leases.size === 0 && session.lastAccess <= cutoff
+  ));
   await Promise.all(expired.map((session) => removeSession(session)));
+  for (const [key, releasedAt] of releasedLeases) {
+    if (releasedAt <= cutoff) {
+      releasedLeases.delete(key);
+    }
+  }
 }
 
 setInterval(() => {

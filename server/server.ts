@@ -24,7 +24,9 @@ import {
   subtitleTracksResponse,
   trickplayManifestResponse,
   trickplayMediaResponse,
-} from "./subtitles.ts";
+  hlsReleaseRouteResponse,
+  mediaRequest,
+} from "./mediaRouting.ts";
 import { torrentsResponse } from "./torrents.ts";
 import { mediaAdminResponse } from "./mediaAdmin.ts";
 import {
@@ -214,12 +216,13 @@ async function serveStatic(pathname: string): Promise<Response> {
 
 async function handleMedia(context: RouteContext): Promise<Response> {
   const { pathname, url, user } = context;
+  if (pathname === "/api/hls/release") {
+    return hlsReleaseRouteResponse(url, user.id);
+  }
   if (pathname === "/hls/seg") {
-    return hlsSegmentResponse(
-      url.searchParams.get("session"),
-      url.searchParams.get("name"),
-      user.id,
-    );
+    return hlsSegmentResponse({ sessionId: url.searchParams.get("session"),
+      leaseId: url.searchParams.get("lease"), name: url.searchParams.get("name"),
+      userId: user.id });
   }
   const abs = await safePath(url.searchParams.get("path"));
   if (abs === null || !VIDEO_EXTS.has(extname(abs).toLowerCase())) {
@@ -273,6 +276,8 @@ async function timedMediaResponse(context: RouteContext, abs: string): Promise<R
       duration: await probeDuration(abs),
       requestedStart,
       userId: user.id,
+      leaseId: url.searchParams.get("lease"),
+      playerId: url.searchParams.get("player"),
       hardwareAcceleration: HWACCEL,
       vaapiDevice: VAAPI_DEVICE,
     });
@@ -390,24 +395,6 @@ async function administrationRoute(context: RouteContext): Promise<Response | nu
     return await mediaAdmin;
   }
   return null;
-}
-
-function mediaRequest(pathname: string, method: string): boolean {
-  if (pathname === "/api/subtitles") {
-    return true;
-  }
-  if (pathname === "/api/audio-tracks" && method === "GET") {
-    return true;
-  }
-  return (method === "GET" || method === "HEAD") && (
-    pathname === "/stream" ||
-    pathname === "/thumbnail" ||
-    pathname === "/trickplay/sheet" ||
-    pathname === "/trickplay/frame" ||
-    pathname === "/subtitle" ||
-    pathname === "/hls/index" ||
-    pathname === "/hls/seg"
-  );
 }
 
 async function authenticatedRoute(context: RouteContext): Promise<Response> {

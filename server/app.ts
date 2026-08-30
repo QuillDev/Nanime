@@ -2,6 +2,11 @@ import { Elysia } from "elysia";
 import { handle, serverOptions } from "./server.ts";
 import { securityHeaders } from "./security.ts";
 import {
+  hlsQuerySchema,
+  hlsReleaseQuerySchema,
+  hlsSegmentQuerySchema,
+} from "./hlsSchemas.ts";
+import {
   aniListMediaSchema,
   aniListAccountSchema,
   aniListAuthConfigSchema,
@@ -175,15 +180,6 @@ const indexedPathQuerySchema = schema.object({
   path: schema.string({ minLength: 1 }),
   index: schema.integer(),
   offset: schema.optional(schema.number({ minimum: 0 })),
-});
-const segmentQuerySchema = schema.object({
-  session: schema.string({ minLength: 1 }),
-  name: schema.string({ pattern: "^segment-[0-9]{6}\\.ts$" }),
-});
-const hlsQuerySchema = schema.object({
-  path: schema.string({ minLength: 1 }),
-  audio: schema.optional(schema.integer({ minimum: 0 })),
-  start: schema.optional(schema.number({ minimum: 0 })),
 });
 const trickplaySheetQuerySchema = schema.object({
   path: schema.string({ minLength: 1 }),
@@ -485,7 +481,10 @@ export const app = new Elysia({ name: "nanime" })
     query: hlsQuerySchema,
   })
   .get("/hls/seg", ({ request, server }) => handle(request, server), {
-    query: segmentQuerySchema,
+    query: hlsSegmentQuerySchema,
+  })
+  .post("/api/hls/release", ({ request, server }) => handle(request, server), {
+    query: hlsReleaseQuerySchema,
   })
   .all("*", ({ request, server }) => handle(request, server));
 

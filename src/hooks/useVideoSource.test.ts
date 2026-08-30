@@ -8,13 +8,22 @@ import { selectHlsPlaybackEngine } from "../lib/hlsPlaybackSelection.ts";
 
 function nativeVideo(supported = true) {
   const play = mock(() => Promise.resolve());
+  const load = mock(() => undefined);
+  const pause = mock(() => undefined);
+  const removeAttribute = mock((_name: string) => undefined);
   const video: NativeHlsVideo = Object.assign(new EventTarget(), {
     currentTime: 0,
     src: "",
     canPlayType: () => supported ? "maybe" as const : "" as const,
+    load,
+    pause,
     play,
+    removeAttribute,
   });
-  return { video, play, loadedMetadata: () => video.dispatchEvent(new Event("loadedmetadata")) };
+  return {
+    video, play, load, pause, removeAttribute,
+    loadedMetadata: () => video.dispatchEvent(new Event("loadedmetadata")),
+  };
 }
 
 describe("native HLS playback adapter", () => {
@@ -53,6 +62,24 @@ describe("native HLS playback adapter", () => {
 
     expect(native.video.currentTime).toBe(1);
     expect(native.play).not.toHaveBeenCalled();
+  });
+
+  test("stops native loading and removes delayed metadata work on detach", () => {
+    const native = nativeVideo();
+    const detach = attachNativeHls({
+      video: native.video,
+      url: "/hls",
+      onError: () => undefined,
+      resumeAt: 20,
+    });
+
+    detach?.();
+    native.loadedMetadata();
+
+    expect(native.pause).toHaveBeenCalledTimes(1);
+    expect(native.removeAttribute).toHaveBeenCalledWith("src");
+    expect(native.load).toHaveBeenCalledTimes(1);
+    expect(native.play).toHaveBeenCalledTimes(1);
   });
 
   test("reports unsupported native playback without attaching a source", () => {
