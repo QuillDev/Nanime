@@ -15,6 +15,7 @@ import {
   mediaScanSchema,
   nyaaSearchResultSchema,
   playbackProgressSchema,
+  playbackAuditEventSchema,
   provisionedUserSchema,
   schema,
   storageStatusSchema,
@@ -99,6 +100,15 @@ const jikanLinkSchema = schema.object({
   id: schema.integer(),
   anilistId: schema.optional(nullablePositiveIntegerSchema),
 });
+const playbackEventSchema = schema.union([
+  schema.literal("completed"), schema.literal("heartbeat"), schema.literal("seeked"),
+  schema.literal("started"), schema.literal("stopped"),
+]);
+const watchedOriginSchema = schema.union([
+  schema.literal("episode-menu"),
+  schema.literal("season-menu"),
+  schema.literal("series-menu"),
+]);
 const playbackUpdateSchema = schema.object({
   rel: schema.string(),
   position: schema.number({ minimum: 0 }),
@@ -107,6 +117,7 @@ const playbackUpdateSchema = schema.object({
   anilistMediaId: schema.optional(schema.integer({ minimum: 1 })),
   episode: schema.optional(schema.integer({ minimum: 1 })),
   totalEpisodes: optionalEpisodeCountSchema,
+  event: schema.optional(playbackEventSchema),
 });
 const playbackDismissSchema = schema.object({ rel: schema.string({ minLength: 1 }) });
 const playbackWatchedSchema = schema.object({
@@ -115,7 +126,16 @@ const playbackWatchedSchema = schema.object({
   anilistMediaId: schema.optional(schema.integer({ minimum: 1 })),
   episode: schema.optional(schema.integer({ minimum: 1 })),
   totalEpisodes: optionalEpisodeCountSchema,
+  origin: schema.optional(watchedOriginSchema),
 });
+const playbackHistoryQuerySchema = schema.object({
+  limit: schema.optional(schema.string()),
+  rel: schema.optional(schema.string()),
+});
+const nullablePlaybackProgressSchema = schema.union([
+  playbackProgressSchema,
+  schema.nullValue(),
+]);
 const aniListUpdateSchema = schema.object({
   status: schema.optional(schema.string()),
   progress: schema.optional(schema.integer({ minimum: 0 })),
@@ -243,6 +263,15 @@ export const app = new Elysia({ name: "nanime" })
   .post("/api/progress/watched", ({ request, server, body }) => (
     handle(jsonRequest(request, body), server)
   ), { body: playbackWatchedSchema, response: playbackProgressSchema })
+  .get("/api/progress/history", ({ request, server }) => handle(request, server), {
+    query: playbackHistoryQuerySchema,
+    response: schema.array(playbackAuditEventSchema),
+  })
+  .post("/api/progress/history/:id/restore", ({ request, server }) => (
+    handle(request, server)
+  ), {
+    response: nullablePlaybackProgressSchema,
+  })
   .get("/api/anilist/search", ({ request, server }) => handle(request, server), {
     query: searchQuerySchema,
     response: schema.array(aniListMediaSchema),

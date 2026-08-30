@@ -18,6 +18,7 @@ export interface PlaybackProgressUpdate {
   readonly anilistMediaId?: number;
   readonly episode?: number;
   readonly totalEpisodes?: number | null;
+  readonly event?: "completed" | "heartbeat" | "seeked" | "started" | "stopped";
 }
 
 export interface PlaybackWatchedUpdate {
@@ -26,6 +27,7 @@ export interface PlaybackWatchedUpdate {
   readonly anilistMediaId?: number;
   readonly episode?: number;
   readonly totalEpisodes?: number | null;
+  readonly origin?: "episode-menu" | "season-menu" | "series-menu";
 }
 
 export async function savePlaybackProgress(
@@ -44,7 +46,7 @@ export async function dismissPlaybackProgress(rel: string): Promise<PlaybackProg
 export async function setPlaybackWatched(
   rel: string,
   watched: boolean,
-  target?: AniListPlaybackUpdate,
+  target?: AniListPlaybackUpdate & Pick<PlaybackWatchedUpdate, "origin">,
 ): Promise<PlaybackProgress> {
   return unwrap(
     await api.api.progress.watched.post({ rel, watched, ...target }),

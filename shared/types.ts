@@ -31,6 +31,45 @@ export interface PlaybackProgress {
   readonly dismissedAt: number | null;
 }
 
+export type PlaybackAuditAction =
+  | "completed"
+  | "dismissed"
+  | "media-removed"
+  | "playback-started"
+  | "playback-stopped"
+  | "progress-checkpoint"
+  | "restored"
+  | "snapshot-imported"
+  | "watched"
+  | "unwatched";
+
+export type PlaybackAuditOrigin =
+  | "episode-menu"
+  | "history"
+  | "home"
+  | "media-library"
+  | "migration"
+  | "player"
+  | "season-menu"
+  | "series-menu";
+
+export interface PlaybackAuditEvent {
+  readonly id: number;
+  readonly userId: number;
+  readonly actorUserId: number | null;
+  readonly actorUsername: string;
+  readonly rel: string;
+  readonly action: PlaybackAuditAction;
+  readonly origin: PlaybackAuditOrigin;
+  readonly previous: PlaybackProgress | null;
+  readonly next: PlaybackProgress | null;
+  readonly anilistMediaId: number | null;
+  readonly episode: number | null;
+  readonly totalEpisodes: number | null;
+  readonly revertsEventId: number | null;
+  readonly createdAt: number;
+}
+
 export interface TrickplayReady {
   readonly status: "ready";
   readonly version: string;

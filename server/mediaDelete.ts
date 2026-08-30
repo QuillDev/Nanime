@@ -1,6 +1,7 @@
 import { lstat, unlink } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { forgetPlaybackProgress } from "./playback.ts";
+import type { PlaybackActor } from "./playbackAudit.ts";
 import { detachTorrentsForFiles } from "./torrents.ts";
 import { removeTrickplayCache } from "./trickplay.ts";
 
@@ -17,9 +18,13 @@ function mediaPath(mediaDir: string, rel: string): string | null {
 
 export async function deleteMediaResponse(
   req: Request,
-  mediaDir: string,
-  videoExtensions: ReadonlySet<string>,
+  options: {
+    readonly mediaDir: string;
+    readonly videoExtensions: ReadonlySet<string>;
+    readonly actor: PlaybackActor;
+  },
 ): Promise<Response> {
+  const { mediaDir, videoExtensions, actor } = options;
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
   }
@@ -55,6 +60,6 @@ export async function deleteMediaResponse(
   }
   await Promise.all(absoluteFiles.map((file) => unlink(file)));
   await Promise.all(absoluteFiles.map((file) => removeTrickplayCache(file)));
-  forgetPlaybackProgress(typedRels);
+  forgetPlaybackProgress(typedRels, actor);
   return Response.json({ deleted: typedRels.length });
 }

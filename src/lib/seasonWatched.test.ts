@@ -46,6 +46,7 @@ describe("season watched actions", () => {
     expect(seasonWatchedUpdates(entries, undefined, true)).toEqual(entries.map((item) => ({
       rel: item.rel,
       watched: true,
+      origin: "season-menu",
     })));
   });
 
@@ -53,7 +54,11 @@ describe("season watched actions", () => {
     const entries = [entry(1), entry(2), entry(3)];
 
     expect(seasonWatchedUpdates(entries, undefined, false)).toEqual(
-      entries.toReversed().map((item) => ({ rel: item.rel, watched: false })),
+      entries.toReversed().map((item) => ({
+        rel: item.rel,
+        watched: false,
+        origin: "season-menu",
+      })),
     );
   });
 });

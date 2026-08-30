@@ -13,7 +13,7 @@ import {
   startMetadataRefreshResponse,
   updateMetadataAniListIdResponse,
 } from "./anilist.ts";
-import { dismissPlaybackProgress, playbackProgressResponse, setPlaybackWatchedState, updatePlaybackProgress } from "./playback.ts";
+import { playbackRoute } from "./playbackRoutes.ts";
 import {
   audioTracksResponse,
   hlsPlaylistResponse,
@@ -284,7 +284,10 @@ interface RouteContext {
 }
 async function libraryRoute(context: RouteContext): Promise<Response | null> {
   const information = await libraryInformationRoute(context);
-  return information ?? playbackRoute(context);
+  return information ?? playbackRoute(context, {
+    mediaExists,
+    sync: syncAniListPlayback,
+  });
 }
 
 async function libraryInformationRoute(context: RouteContext): Promise<Response | null> {
@@ -312,32 +315,6 @@ async function libraryInformationRoute(context: RouteContext): Promise<Response 
       return new Response("Not found", { status: 404 });
     }
     return trickplayManifestResponse(abs, await probeDuration(abs));
-  }
-  return null;
-}
-
-function playbackRoute(context: RouteContext): Response | Promise<Response> | null {
-  const { pathname, req, user } = context;
-  if (pathname === "/api/progress" && req.method === "GET") {
-    return playbackProgressResponse(user.id);
-  }
-  if (pathname === "/api/progress" && req.method === "PUT") {
-    return updatePlaybackProgress(
-      req,
-      user.id,
-      {
-        mediaExists,
-        sync: (target) => syncAniListPlayback(user.id, target),
-      },
-    );
-  }
-  if (pathname === "/api/progress/dismiss" && req.method === "POST") {
-    return dismissPlaybackProgress(req, user.id);
-  }
-  if (pathname === "/api/progress/watched" && req.method === "POST") {
-    return setPlaybackWatchedState(req, user.id, {
-      mediaExists, sync: (target) => syncAniListPlayback(user.id, target),
-    });
   }
   return null;
 }
@@ -391,6 +368,7 @@ async function administrationRoute(context: RouteContext): Promise<Response | nu
   const mediaAdmin = mediaAdminResponse(req, pathname, {
     isAdmin: user.isAdmin,
     userId: user.id,
+    username: user.username,
     mediaDir: MEDIA_DIR,
     mediaRoot: MEDIA_ROOT,
     videoExtensions: VIDEO_EXTS,

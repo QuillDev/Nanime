@@ -122,6 +122,46 @@ database.run(`
     PRIMARY KEY (user_id, rel)
   )
 `);
+database.run(`
+  CREATE TABLE IF NOT EXISTS playback_audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    actor_user_id INTEGER,
+    actor_username TEXT NOT NULL,
+    rel TEXT NOT NULL,
+    action TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    previous_state TEXT,
+    next_state TEXT,
+    anilist_media_id INTEGER,
+    episode INTEGER,
+    total_episodes INTEGER,
+    reverts_event_id INTEGER,
+    created_at INTEGER NOT NULL
+  )
+`);
+database.run(`
+  CREATE INDEX IF NOT EXISTS playback_audit_user_created
+  ON playback_audit_log(user_id, created_at DESC, id DESC)
+`);
+database.run(`
+  CREATE INDEX IF NOT EXISTS playback_audit_user_rel_created
+  ON playback_audit_log(user_id, rel, created_at DESC, id DESC)
+`);
+database.run(`
+  CREATE TRIGGER IF NOT EXISTS playback_audit_log_no_update
+  BEFORE UPDATE ON playback_audit_log
+  BEGIN
+    SELECT RAISE(ABORT, 'playback audit entries are immutable');
+  END
+`);
+database.run(`
+  CREATE TRIGGER IF NOT EXISTS playback_audit_log_no_delete
+  BEFORE DELETE ON playback_audit_log
+  BEGIN
+    SELECT RAISE(ABORT, 'playback audit entries are immutable');
+  END
+`);
 const currentPlaybackColumns = database
   .query<TableColumn, []>("PRAGMA table_info(playback_progress)")
   .all();

@@ -12,6 +12,7 @@ import { fileSystemErrorCode } from "./fileSystemError.ts";
 interface MediaAdminOptions {
   readonly isAdmin: boolean;
   readonly userId: number;
+  readonly username: string;
   readonly mediaDir: string;
   readonly mediaRoot: string;
   readonly videoExtensions: ReadonlySet<string>;
@@ -80,7 +81,11 @@ function dispatchCoreMediaAdmin(
     return storageResponse(options.mediaRoot);
   }
   if (pathname === "/api/media/delete") {
-    return deleteMediaResponse(req, options.mediaDir, options.videoExtensions);
+    return deleteMediaResponse(req, {
+      mediaDir: options.mediaDir,
+      videoExtensions: options.videoExtensions,
+      actor: { id: options.userId, username: options.username },
+    });
   }
   if (pathname === "/api/audio-tracks" && req.method === "DELETE") {
     return deleteAudioTrackResponse(req, { ...options, invalidateSubtitles: invalidateSubtitleTracks });

@@ -73,8 +73,8 @@ export function Player({
   const handleOpenChange = useCallback(
     (open: boolean) => {
       if (!open) {
-        if (videoRef.current !== null && !videoRef.current.ended) {
-          progress.saveCurrentProgress(videoRef.current, false);
+        if (videoRef.current !== null && !videoRef.current.ended && !videoRef.current.paused) {
+          progress.saveCurrentProgress(videoRef.current, false, "stopped");
         }
         onClose();
       }

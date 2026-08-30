@@ -7,7 +7,12 @@ import { useSeriesCompletionPrompt } from "../components/SeriesCompletionPrompt.
 import type { PlaybackProgressUpdate } from "../playbackApi.ts";
 
 export interface PlaybackHandlers {
-  readonly saveCurrentProgress: (video: HTMLVideoElement, completed: boolean) => void;
+  readonly saveCurrentProgress: (
+    video: HTMLVideoElement,
+    completed: boolean,
+    event?: PlaybackProgressUpdate["event"],
+  ) => void;
+  readonly handlePlay: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handleLoadedMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handleTimeUpdate: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly handlePause: (event: SyntheticEvent<HTMLVideoElement>) => void;
@@ -54,11 +59,21 @@ function useProgressSaver(target: AniListPlaybackTarget | null) {
   }, [mutate, notifyCompletion]);
 }
 
+function usePlaybackSaving(target: AniListPlaybackTarget | null) {
+  return {
+    lastSavedAtRef: useRef<number>(0),
+    savePlayback: useProgressSaver(target),
+  };
+}
+
 export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandlers {
   const { anilistTarget, entry, knownDuration, playbackPosition, resumeAt, timelineOffset } = options;
-  const lastSavedAtRef = useRef<number>(0);
-  const savePlayback = useProgressSaver(anilistTarget);
-  const saveCurrentProgress = useCallback((video: HTMLVideoElement, completed: boolean) => {
+  const { lastSavedAtRef, savePlayback } = usePlaybackSaving(anilistTarget);
+  const saveCurrentProgress = useCallback((
+    video: HTMLVideoElement,
+    completed: boolean,
+    event: PlaybackProgressUpdate["event"] = "heartbeat",
+  ) => {
     const position = playbackPosition(video);
     const duration = resolvedPlaybackDuration({
       mediaDuration: video.duration,
@@ -68,7 +83,7 @@ export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandl
     });
     if (
       !Number.isFinite(position) ||
-      !hasMeaningfulPlaybackProgress(position) ||
+      event !== "started" && !hasMeaningfulPlaybackProgress(position) ||
       !Number.isFinite(duration)
     ) {
       return;
@@ -79,6 +94,7 @@ export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandl
       position,
       duration,
       completed,
+      event: completed ? "completed" : event,
     };
     savePlayback(anilistTarget === null
       ? progress
@@ -88,26 +104,30 @@ export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandl
         episode: anilistTarget.episode,
         totalEpisodes: anilistTarget.totalEpisodes,
       });
-  }, [anilistTarget, entry.rel, knownDuration, playbackPosition, savePlayback]);
+  }, [anilistTarget, entry.rel, knownDuration, lastSavedAtRef, playbackPosition, savePlayback]);
   const handleLoadedMetadata = useInitialPosition(resumeAt, timelineOffset);
+  const handlePlay = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    saveCurrentProgress(event.currentTarget, false, "started");
+  }, [saveCurrentProgress]);
   const handleTimeUpdate = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     if (Date.now() - lastSavedAtRef.current >= 10_000) {
-      saveCurrentProgress(event.currentTarget, false);
+      saveCurrentProgress(event.currentTarget, false, "heartbeat");
     }
-  }, [saveCurrentProgress]);
+  }, [lastSavedAtRef, saveCurrentProgress]);
   const handlePause = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     if (!event.currentTarget.ended) {
-      saveCurrentProgress(event.currentTarget, false);
+      saveCurrentProgress(event.currentTarget, false, "stopped");
     }
   }, [saveCurrentProgress]);
   const handleSeeked = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    saveCurrentProgress(event.currentTarget, false);
+    saveCurrentProgress(event.currentTarget, false, "seeked");
   }, [saveCurrentProgress]);
   const handleEnded = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    saveCurrentProgress(event.currentTarget, true);
+    saveCurrentProgress(event.currentTarget, true, "completed");
   }, [saveCurrentProgress]);
   return {
     saveCurrentProgress,
+    handlePlay,
     handleLoadedMetadata,
     handleTimeUpdate,
     handlePause,

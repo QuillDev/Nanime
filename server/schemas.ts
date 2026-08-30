@@ -73,6 +73,32 @@ export const playbackProgressSchema = object({
   updatedAt: number(),
   dismissedAt: nullableNumber,
 });
+const nullablePlaybackProgressSchema = union([playbackProgressSchema, nullValue()]);
+export const playbackAuditEventSchema = object({
+  id: number(),
+  userId: number(),
+  actorUserId: nullableNumber,
+  actorUsername: string(),
+  rel: string(),
+  action: union([
+    literal("completed"), literal("dismissed"), literal("media-removed"),
+    literal("playback-started"), literal("playback-stopped"),
+    literal("progress-checkpoint"), literal("restored"),
+    literal("snapshot-imported"), literal("watched"), literal("unwatched"),
+  ]),
+  origin: union([
+    literal("episode-menu"), literal("history"), literal("home"),
+    literal("media-library"), literal("migration"), literal("player"),
+    literal("season-menu"), literal("series-menu"),
+  ]),
+  previous: nullablePlaybackProgressSchema,
+  next: nullablePlaybackProgressSchema,
+  anilistMediaId: nullableNumber,
+  episode: nullableNumber,
+  totalEpisodes: nullableNumber,
+  revertsEventId: nullableNumber,
+  createdAt: number(),
+});
 
 const tvmazeEpisodeSchema = object({
   id: number(),
