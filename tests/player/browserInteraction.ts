@@ -50,6 +50,21 @@ export async function clickElement(view: Bun.WebView, target: ElementTarget): Pr
   await view.click(bounds.x, bounds.y);
 }
 
+export async function clickStableElement(view: Bun.WebView, target: ElementTarget): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  let previous: { readonly x: number; readonly y: number } | null = null;
+  while (Date.now() < deadline) {
+    const current = await waitForElement(view, target, Math.max(100, deadline - Date.now()));
+    if (previous !== null && Math.abs(current.x - previous.x) < 1 && Math.abs(current.y - previous.y) < 1) {
+      await view.click(current.x, current.y);
+      return;
+    }
+    previous = current;
+    await Bun.sleep(100);
+  }
+  throw new Error(`Timed out waiting for stable element: ${JSON.stringify(target)}`);
+}
+
 export async function elementVisible(view: Bun.WebView, target: ElementTarget): Promise<boolean> {
   return await view.evaluate<unknown>(elementLookup(target)) !== null;
 }

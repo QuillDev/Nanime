@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   clickElement,
+  clickStableElement,
   elementVisible,
   showPlayerControls,
   waitForElement,
@@ -114,7 +115,7 @@ function registerCommonJourneyTests(): void {
       await clickElement(player.view, season);
       await waitForElementHidden(player.view, firstEpisode);
       await clickElement(player.view, season);
-      await clickElement(player.view, firstEpisode);
+      await clickStableElement(player.view, firstEpisode);
       await waitForEpisodeRoute(player.view, HLS_FIXTURE);
       await ensurePlaying(player);
       await setPlaybackRate(player.view, 4);
