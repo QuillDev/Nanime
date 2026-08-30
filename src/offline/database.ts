@@ -1,54 +1,37 @@
 import type {
+  OfflineChunkMetadata,
   OfflineDownload,
   OfflineDownloadStore,
   OfflineChunkWrite,
+  OfflineDownloadFailure,
+  OfflineDownloadTransition,
   OfflineMediaChunk,
   OfflineProfile,
 } from "./types.ts";
+import {
+  commitOfflineChunk,
+  completeStoredDownload,
+  failStoredDownload,
+} from "./databaseMutations.ts";
+import {
+  OFFLINE_CHUNK_INVENTORY_STORE,
+  OFFLINE_CHUNK_STORE,
+  OFFLINE_DOWNLOAD_STORE,
+  OFFLINE_PROFILE_STORE,
+  openOfflineDatabase,
+  requestResult,
+  transactionDone,
+} from "./databaseSchema.ts";
 
-export const OFFLINE_DATABASE_NAME = "nanime-offline-v1";
-export const OFFLINE_DATABASE_VERSION = 2;
-export const OFFLINE_DOWNLOAD_STORE = "downloads";
-export const OFFLINE_CHUNK_STORE = "mediaChunks";
-export const OFFLINE_PROFILE_STORE = "profiles";
-
-function requestResult<T>(request: IDBRequest<T>): Promise<T> {
-  const result = Promise.withResolvers<T>();
-  request.addEventListener("success", () => result.resolve(request.result), { once: true });
-  request.addEventListener("error", () => result.reject(request.error ?? new Error("IndexedDB request failed")), {
-    once: true,
-  });
-  return result.promise;
-}
-
-function transactionDone(transaction: IDBTransaction): Promise<void> {
-  const result = Promise.withResolvers<void>();
-  transaction.addEventListener("complete", () => result.resolve(), { once: true });
-  transaction.addEventListener("abort", () => result.reject(transaction.error ?? new Error("IndexedDB transaction aborted")), { once: true });
-  transaction.addEventListener("error", () => result.reject(transaction.error ?? new Error("IndexedDB transaction failed")), { once: true });
-  return result.promise;
-}
-
-function createSchema(database: IDBDatabase): void {
-  const downloads = database.createObjectStore(OFFLINE_DOWNLOAD_STORE, { keyPath: "id" });
-  downloads.createIndex("by-user-rel", ["userId", "rel"], { unique: true });
-  downloads.createIndex("by-user-state", ["userId", "state"]);
-  const chunks = database.createObjectStore(OFFLINE_CHUNK_STORE, {
-    keyPath: ["downloadId", "index"],
-  });
-  chunks.createIndex("by-download", "downloadId");
-  database.createObjectStore(OFFLINE_PROFILE_STORE, { keyPath: "user.id" });
-}
-
-export function openOfflineDatabase(factory: IDBFactory = indexedDB): Promise<IDBDatabase> {
-  const request = factory.open(OFFLINE_DATABASE_NAME, OFFLINE_DATABASE_VERSION);
-  request.addEventListener("upgradeneeded", (event) => {
-    if ((event as IDBVersionChangeEvent).oldVersion === 0) {
-      createSchema(request.result);
-    }
-  });
-  return requestResult(request);
-}
+export {
+  OFFLINE_CHUNK_INVENTORY_STORE,
+  OFFLINE_CHUNK_STORE,
+  OFFLINE_DATABASE_NAME,
+  OFFLINE_DATABASE_VERSION,
+  OFFLINE_DOWNLOAD_STORE,
+  OFFLINE_PROFILE_STORE,
+  openOfflineDatabase,
+} from "./databaseSchema.ts";
 
 async function deleteChunkCursor(store: IDBObjectStore, downloadId: string): Promise<void> {
   const index = store.index("by-download");
@@ -68,14 +51,47 @@ async function deleteChunkCursor(store: IDBObjectStore, downloadId: string): Pro
 }
 
 export class IndexedDbOfflineStore implements OfflineDownloadStore {
-  readonly #database: Promise<IDBDatabase>;
+  #database: Promise<IDBDatabase> | null = null;
+  readonly #factory: IDBFactory | undefined;
+  readonly #observed = new WeakSet<IDBDatabase>();
 
   constructor(factory?: IDBFactory) {
-    this.#database = factory === undefined ? openOfflineDatabase() : openOfflineDatabase(factory);
+    this.#factory = factory;
+  }
+
+  private async database(): Promise<IDBDatabase> {
+    const opening = this.#database ?? (
+      this.#factory === undefined
+        ? openOfflineDatabase()
+        : openOfflineDatabase(this.#factory)
+    );
+    this.#database = opening;
+    try {
+      const database = await opening;
+      this.observeConnection(database, opening);
+      return database;
+    } catch (error: unknown) {
+      if (this.#database === opening) {
+        this.#database = null;
+      }
+      throw error;
+    }
+  }
+
+  private observeConnection(database: IDBDatabase, opening: Promise<IDBDatabase>): void {
+    if (this.#observed.has(database)) {
+      return;
+    }
+    this.#observed.add(database);
+    database.addEventListener("versionchange", () => {
+      if (this.#database === opening) {
+        this.#database = null;
+      }
+    });
   }
 
   async findDownload(userId: number, rel: string): Promise<OfflineDownload | null> {
-    const database = await this.#database;
+    const database = await this.database();
     const transaction = database.transaction(OFFLINE_DOWNLOAD_STORE, "readonly");
     const done = transactionDone(transaction);
     const request = transaction.objectStore(OFFLINE_DOWNLOAD_STORE)
@@ -85,8 +101,16 @@ export class IndexedDbOfflineStore implements OfflineDownloadStore {
     return result ?? null;
   }
 
+  async completeDownload(transition: OfflineDownloadTransition): Promise<OfflineDownload> {
+    return completeStoredDownload(await this.database(), transition);
+  }
+
+  async failDownload(transition: OfflineDownloadFailure): Promise<OfflineDownload | null> {
+    return failStoredDownload(await this.database(), transition);
+  }
+
   async getChunk(downloadId: string, index: number): Promise<ArrayBuffer | null> {
-    const database = await this.#database;
+    const database = await this.database();
     const transaction = database.transaction(OFFLINE_CHUNK_STORE, "readonly");
     const done = transactionDone(transaction);
     const request = transaction.objectStore(OFFLINE_CHUNK_STORE).get([downloadId, index]);
@@ -95,8 +119,19 @@ export class IndexedDbOfflineStore implements OfflineDownloadStore {
     return result?.bytes ?? null;
   }
 
+  async listChunkMetadata(downloadId: string): Promise<readonly OfflineChunkMetadata[]> {
+    const database = await this.database();
+    const transaction = database.transaction(OFFLINE_CHUNK_INVENTORY_STORE, "readonly");
+    const done = transactionDone(transaction);
+    const request = transaction.objectStore(OFFLINE_CHUNK_INVENTORY_STORE)
+      .index("by-download").getAll(downloadId);
+    const result = await requestResult(request) as OfflineChunkMetadata[];
+    await done;
+    return result;
+  }
+
   async listDownloads(userId: number, completedOnly = false): Promise<readonly OfflineDownload[]> {
-    const database = await this.#database;
+    const database = await this.database();
     const transaction = database.transaction(OFFLINE_DOWNLOAD_STORE, "readonly");
     const done = transactionDone(transaction);
     const store = transaction.objectStore(OFFLINE_DOWNLOAD_STORE);
@@ -111,7 +146,7 @@ export class IndexedDbOfflineStore implements OfflineDownloadStore {
   }
 
   async putDownload(download: OfflineDownload): Promise<void> {
-    const database = await this.#database;
+    const database = await this.database();
     const transaction = database.transaction(OFFLINE_DOWNLOAD_STORE, "readwrite");
     const done = transactionDone(transaction);
     transaction.objectStore(OFFLINE_DOWNLOAD_STORE).put(download);
@@ -119,7 +154,7 @@ export class IndexedDbOfflineStore implements OfflineDownloadStore {
   }
 
   async putProfile(profile: OfflineProfile): Promise<void> {
-    const database = await this.#database;
+    const database = await this.database();
     const transaction = database.transaction(OFFLINE_PROFILE_STORE, "readwrite");
     const done = transactionDone(transaction);
     transaction.objectStore(OFFLINE_PROFILE_STORE).put(profile);
@@ -127,7 +162,7 @@ export class IndexedDbOfflineStore implements OfflineDownloadStore {
   }
 
   async getProfile(userId: number): Promise<OfflineProfile | null> {
-    const database = await this.#database;
+    const database = await this.database();
     const transaction = database.transaction(OFFLINE_PROFILE_STORE, "readonly");
     const done = transactionDone(transaction);
     const result = await requestResult(transaction.objectStore(OFFLINE_PROFILE_STORE).get(userId)) as OfflineProfile | undefined;
@@ -136,7 +171,7 @@ export class IndexedDbOfflineStore implements OfflineDownloadStore {
   }
 
   async getLatestProfile(): Promise<OfflineProfile | null> {
-    const database = await this.#database;
+    const database = await this.database();
     const transaction = database.transaction(OFFLINE_PROFILE_STORE, "readonly");
     const done = transactionDone(transaction);
     const profiles = await requestResult(
@@ -147,7 +182,7 @@ export class IndexedDbOfflineStore implements OfflineDownloadStore {
   }
 
   async setActiveProfile(userId: number | null): Promise<void> {
-    const database = await this.#database;
+    const database = await this.database();
     const transaction = database.transaction(OFFLINE_PROFILE_STORE, "readwrite");
     const done = transactionDone(transaction);
     const store = transaction.objectStore(OFFLINE_PROFILE_STORE);
@@ -159,28 +194,37 @@ export class IndexedDbOfflineStore implements OfflineDownloadStore {
   }
 
   async removeDownload(downloadId: string): Promise<void> {
-    const database = await this.#database;
+    const database = await this.database();
     const transaction = database.transaction(
-      [OFFLINE_DOWNLOAD_STORE, OFFLINE_CHUNK_STORE],
+      [OFFLINE_DOWNLOAD_STORE, OFFLINE_CHUNK_STORE, OFFLINE_CHUNK_INVENTORY_STORE],
       "readwrite",
     );
     const done = transactionDone(transaction);
     transaction.objectStore(OFFLINE_DOWNLOAD_STORE).delete(downloadId);
-    await deleteChunkCursor(transaction.objectStore(OFFLINE_CHUNK_STORE), downloadId);
+    const chunksRemoved = deleteChunkCursor(
+      transaction.objectStore(OFFLINE_CHUNK_STORE), downloadId);
+    const inventoryRemoved = deleteChunkCursor(
+      transaction.objectStore(OFFLINE_CHUNK_INVENTORY_STORE), downloadId);
+    await Promise.all([chunksRemoved, inventoryRemoved]);
     await done;
   }
 
-  async writeChunk(write: OfflineChunkWrite): Promise<void> {
-    const { downloadId, index, bytes, download } = write;
-    const database = await this.#database;
+  async removeChunks(downloadId: string, indexes: readonly number[]): Promise<void> {
+    const database = await this.database();
     const transaction = database.transaction(
-      [OFFLINE_DOWNLOAD_STORE, OFFLINE_CHUNK_STORE],
+      [OFFLINE_CHUNK_STORE, OFFLINE_CHUNK_INVENTORY_STORE],
       "readwrite",
     );
     const done = transactionDone(transaction);
-    transaction.objectStore(OFFLINE_CHUNK_STORE).put({ downloadId, index, bytes });
-    transaction.objectStore(OFFLINE_DOWNLOAD_STORE).put(download);
+    for (const index of indexes) {
+      transaction.objectStore(OFFLINE_CHUNK_STORE).delete([downloadId, index]);
+      transaction.objectStore(OFFLINE_CHUNK_INVENTORY_STORE).delete([downloadId, index]);
+    }
     await done;
+  }
+
+  async writeChunk(write: OfflineChunkWrite): Promise<OfflineDownload> {
+    return commitOfflineChunk(await this.database(), write);
   }
 }
 

@@ -5,9 +5,8 @@ import { isOfflineDownloadAvailable } from "./database.ts";
 import { downloadOfflineMedia, OFFLINE_MEDIA_CHUNK_BYTES } from "./download.ts";
 import type {
   OfflineDownload,
-  OfflineDownloadStore,
-  OfflineProfile,
 } from "./types.ts";
+import { MemoryOfflineStore } from "./downloadTestSupport.test.ts";
 
 const ENTRY: MediaEntry = {
   rel: "Example/Season 01/Episode 01.mp4",
@@ -16,77 +15,6 @@ const ENTRY: MediaEntry = {
   size: 10,
   direct: true,
 };
-
-class MemoryOfflineStore implements OfflineDownloadStore {
-  readonly downloads = new Map<string, OfflineDownload>();
-  readonly chunks = new Map<string, ArrayBuffer>();
-  readonly profiles = new Map<number, OfflineProfile>();
-
-  findDownload(userId: number, rel: string): Promise<OfflineDownload | null> {
-    return Promise.resolve(
-      [...this.downloads.values()].find((item) => item.userId === userId && item.rel === rel) ?? null,
-    );
-  }
-
-  getChunk(downloadId: string, index: number): Promise<ArrayBuffer | null> {
-    return Promise.resolve(this.chunks.get(`${downloadId}:${String(index)}`) ?? null);
-  }
-
-  listDownloads(userId: number, completedOnly = false): Promise<readonly OfflineDownload[]> {
-    return Promise.resolve([...this.downloads.values()].filter((item) => (
-      item.userId === userId && (!completedOnly || isOfflineDownloadAvailable(item))
-    )));
-  }
-
-  putDownload(download: OfflineDownload): Promise<void> {
-    this.downloads.set(download.id, download);
-    return Promise.resolve();
-  }
-
-  putProfile(profile: OfflineProfile): Promise<void> {
-    this.profiles.set(profile.user.id, profile);
-    return Promise.resolve();
-  }
-
-  getProfile(userId: number): Promise<OfflineProfile | null> {
-    return Promise.resolve(this.profiles.get(userId) ?? null);
-  }
-
-  getLatestProfile(): Promise<OfflineProfile | null> {
-    return Promise.resolve(
-      [...this.profiles.values()].toSorted((left, right) => right.updatedAt - left.updatedAt)[0] ?? null,
-    );
-  }
-
-  setActiveProfile(userId: number | null): Promise<void> {
-    for (const [id, profile] of this.profiles) {
-      this.profiles.set(id, { ...profile, active: id === userId });
-    }
-    return Promise.resolve();
-  }
-
-  removeDownload(downloadId: string): Promise<void> {
-    this.downloads.delete(downloadId);
-    for (const key of this.chunks.keys()) {
-      if (key.startsWith(`${downloadId}:`)) {
-        this.chunks.delete(key);
-      }
-    }
-    return Promise.resolve();
-  }
-
-  writeChunk(write: {
-    readonly downloadId: string;
-    readonly index: number;
-    readonly bytes: ArrayBuffer;
-    readonly download: OfflineDownload;
-  }): Promise<void> {
-    const { downloadId, index, bytes, download } = write;
-    this.chunks.set(`${downloadId}:${String(index)}`, bytes);
-    this.downloads.set(download.id, download);
-    return Promise.resolve();
-  }
-}
 
 function streamResponse(
   parts: readonly Uint8Array[],
@@ -133,7 +61,7 @@ function savedDownload(overrides: Partial<OfflineDownload> = {}): OfflineDownloa
 
 async function completeChunkedDownload() {
   const store = new MemoryOfflineStore();
-  const size = OFFLINE_MEDIA_CHUNK_BYTES * 3 + 3;
+  const size = OFFLINE_MEDIA_CHUNK_BYTES * 9 + 3;
   const states: string[] = [];
   let activeRequests = 0;
   let maximumActiveRequests = 0;
@@ -168,26 +96,26 @@ describe("offline media download manager", () => {
 
     expect(isOfflineDownloadAvailable(result)).toBe(true);
     expect(result.downloadedBytes).toBe(size);
-    expect(maximumActiveRequests).toBe(4);
-    expect(request).toHaveBeenCalledTimes(4);
+    expect(maximumActiveRequests).toBe(8);
+    expect(request).toHaveBeenCalledTimes(10);
     expect(store.chunks.get(`${result.id}:0`)?.byteLength).toBe(OFFLINE_MEDIA_CHUNK_BYTES);
-    expect(store.chunks.get(`${result.id}:3`)?.byteLength).toBe(3);
+    expect(store.chunks.get(`${result.id}:9`)?.byteLength).toBe(3);
     expect(states.at(-1)).toBe("complete");
     expect(await store.listDownloads(7, true)).toEqual([result]);
   });
 
-  test("resumes at the atomically committed byte and extends a partial chunk", async () => {
+  test("repairs a partial chunk instead of trusting stale progress", async () => {
     const store = new MemoryOfflineStore();
     const paused = savedDownload();
     await store.putDownload(paused);
     store.chunks.set(`${paused.id}:0`, new Uint8Array([1, 2, 3]).buffer);
     const request = mock((_input: RequestInfo | URL, init?: RequestInit) => {
-      expect(new Headers(init?.headers).get("range")).toBe("bytes=3-5");
+      expect(new Headers(init?.headers).get("range")).toBe("bytes=0-5");
       expect(new Headers(init?.headers).get("if-range")).toBe('"source-v1"');
-      return Promise.resolve(streamResponse([new Uint8Array([4, 5, 6])], {
+      return Promise.resolve(streamResponse([new Uint8Array([1, 2, 3, 4, 5, 6])], {
         status: 206,
         headers: {
-          "content-range": "bytes 3-5/6",
+          "content-range": "bytes 0-5/6",
           etag: '"source-v1"',
         },
       }));
@@ -226,6 +154,49 @@ describe("offline media download manager", () => {
     const failed = await store.findDownload(7, ENTRY.rel);
     expect(failed?.state).toBe("failed");
     expect(await store.listDownloads(7, true)).toEqual([]);
+  });
+
+  test("publishes streamed progress before a complete chunk is committed", async () => {
+    const store = new MemoryOfflineStore();
+    const progress: number[] = [];
+    const result = await downloadOfflineMedia({
+      userId: 7,
+      entry: ENTRY,
+      source: source(6),
+      store,
+      fetch: () => Promise.resolve(streamResponse([
+        new Uint8Array([1, 2, 3]),
+        new Uint8Array([4, 5, 6]),
+      ], {
+        status: 206,
+        headers: { "content-range": "bytes 0-5/6", etag: '"source-v1"' },
+      })),
+      onProgress: (download) => progress.push(download.downloadedBytes),
+    });
+
+    expect(result.state).toBe("complete");
+    expect(progress).toContain(3);
+    expect(progress.at(-1)).toBe(6);
+  });
+
+  test("retries a transient range failure without failing the episode", async () => {
+    const store = new MemoryOfflineStore();
+    let attempts = 0;
+    const request = () => {
+      attempts += 1;
+      return Promise.resolve(attempts === 1
+        ? new Response(null, { status: 503 })
+        : streamResponse([new Uint8Array([1, 2, 3, 4, 5, 6])], {
+          status: 206,
+          headers: { "content-range": "bytes 0-5/6", etag: '"source-v1"' },
+        }));
+    };
+
+    const result = await downloadOfflineMedia({
+      userId: 7, entry: ENTRY, source: source(6), store, fetch: request,
+    });
+    expect(result.state).toBe("complete");
+    expect(attempts).toBe(2);
   });
 
   test("keeps identically named downloads isolated by user", async () => {
