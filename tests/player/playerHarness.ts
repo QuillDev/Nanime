@@ -2,36 +2,11 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Database } from "bun:sqlite";
+import { FIXTURE_FOLDER, FIXTURE_METADATA, generateFixture as generateMediaFixture } from "./mediaFixture.ts";
 import { PLAYER_PROXY_ENTRYPOINT } from "./playerProxy.ts";
 
 const ADMIN_SETUP_TOKEN = "nanime-player-harness-setup-token-0001";
 const ADMIN_PASSWORD = "nanime-player-harness-password";
-const FIXTURE_FOLDER = "Browser Fixture Show";
-export const HLS_FIXTURE = `${FIXTURE_FOLDER}/Browser Fixture - 01.mkv`;
-export const DIRECT_FIXTURE = `${FIXTURE_FOLDER}/Browser Fixture - 02.mp4`;
-export const FIXTURE_DURATION = 48;
-
-const FIXTURE_METADATA = {
-  provider: "jikan",
-  id: 1,
-  anilistId: null,
-  idMal: 1,
-  title: { english: FIXTURE_FOLDER, romaji: FIXTURE_FOLDER, native: null },
-  description: "Generated browser player test fixture",
-  coverImage: { extraLarge: null, large: null, color: null },
-  bannerImage: null,
-  episodes: 2,
-  duration: 2,
-  season: null,
-  seasonYear: null,
-  startDate: null,
-  format: "TV",
-  status: "FINISHED_AIRING",
-  genres: [],
-  averageScore: null,
-  siteUrl: "https://example.invalid/nanime-player-fixture",
-  streamingEpisodes: [],
-};
 
 interface PlayerState {
   readonly bufferedEnd: number;
@@ -76,7 +51,7 @@ interface ProcessOutput {
 }
 
 interface HarnessProxy {
-  readonly failNextManifest: () => Promise<void>;
+  readonly failNextManifest: (rel: string) => Promise<void>;
   readonly output: ProcessOutput;
   readonly process: Bun.Subprocess;
 }
@@ -120,42 +95,10 @@ function timedOperation<T>(options: TimedOperationOptions<T>): Promise<T> {
   return Promise.race([options.operation, timeoutFailure]);
 }
 
-async function run(command: readonly string[]): Promise<void> {
-  const process = Bun.spawn(command, { stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-    process.exited,
-  ]);
-  if (exitCode !== 0) {
-    throw new Error(`${command[0] ?? "Command"} failed (${String(exitCode)})\n${stdout}${stderr}`);
-  }
-}
-
 async function generateFixture(mediaDirectory: string): Promise<void> {
   const ffmpeg = requiredExecutable(["ffmpeg"]);
   requiredExecutable(["ffprobe"]);
-  const folder = join(mediaDirectory, FIXTURE_FOLDER);
-  const hlsFixture = join(mediaDirectory, HLS_FIXTURE);
-  const directFixture = join(mediaDirectory, DIRECT_FIXTURE);
-  await mkdir(folder, { recursive: true });
-  await run([
-    ffmpeg, "-hide_banner", "-loglevel", "error",
-    "-f", "lavfi", "-i", `testsrc2=size=426x240:rate=24:duration=${String(FIXTURE_DURATION)}`,
-    "-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:duration=${String(FIXTURE_DURATION)}`,
-    "-f", "lavfi", "-i", `sine=frequency=880:sample_rate=48000:duration=${String(FIXTURE_DURATION)}`,
-    "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0",
-    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "32", "-pix_fmt", "yuv420p",
-    "-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
-    "-c:a", "aac", "-b:a", "64k",
-    "-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=jpn",
-    "-disposition:a:0", "default", "-shortest", hlsFixture,
-  ]);
-  await run([
-    ffmpeg, "-hide_banner", "-loglevel", "error", "-i", hlsFixture,
-    "-map", "0:v:0", "-c:v", "copy", "-an", "-movflags", "+faststart",
-    directFixture,
-  ]);
+  await generateMediaFixture(mediaDirectory, ffmpeg);
 }
 
 function availablePort(): number {
@@ -243,7 +186,7 @@ async function login(view: Bun.WebView): Promise<void> {
 
 async function openPlayer(
   harness: Pick<PlayerHarness, "browserPath" | "origin"> & {
-    readonly failNextManifest: () => Promise<void>;
+    readonly failNextManifest: (rel: string) => Promise<void>;
   },
   rel: string,
   options: { readonly failFirstManifest?: boolean } = {},
@@ -251,7 +194,7 @@ async function openPlayer(
   const player = await openApp(harness);
   try {
     if (options.failFirstManifest === true) {
-      await harness.failNextManifest();
+      await harness.failNextManifest(rel);
     }
     const playerUrl = new URL(harness.origin);
     playerUrl.searchParams.set("episode", rel);
@@ -352,8 +295,10 @@ async function startHarnessProxy(
       })(),
       output: () => `${standardOutput.output()}\n${errorOutput.output()}`,
     },
-    failNextManifest: async () => {
-      const response = await fetch(`${publicOrigin}/__player-harness/fail-next-manifest`, {
+    failNextManifest: async (rel) => {
+      const endpoint = new URL("/__player-harness/fail-next-manifest", publicOrigin);
+      endpoint.searchParams.set("path", rel);
+      const response = await fetch(endpoint, {
         method: "POST",
       });
       if (!response.ok) {

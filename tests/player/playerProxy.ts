@@ -6,7 +6,7 @@ function startProxy(): void {
   if (port <= 0 || backendOrigin === "") {
     throw new Error("Player proxy requires PORT and BACKEND_ORIGIN");
   }
-  let failManifest = false;
+  let failedManifestPath: string | null = null;
 
   Bun.serve({
     hostname: "127.0.0.1",
@@ -17,11 +17,12 @@ function startProxy(): void {
         return new Response("ok");
       }
       if (source.pathname === "/__player-harness/fail-next-manifest") {
-        failManifest = true;
+        failedManifestPath = source.searchParams.get("path");
         return new Response(null, { status: 204 });
       }
-      if (failManifest && source.pathname === "/hls/index") {
-        failManifest = false;
+      if (failedManifestPath !== null && source.pathname === "/hls/index" &&
+        source.searchParams.get("path") === failedManifestPath) {
+        failedManifestPath = null;
         return new Response("Not found", { status: 404 });
       }
       const destination = new URL(`${source.pathname}${source.search}`, backendOrigin);

@@ -7,10 +7,16 @@ import {
   waitForElement,
 } from "./browserInteraction.ts";
 import {
-  captureFailure,
+  COMMON_FIRST_FIXTURE,
+  COMMON_SECOND_FIXTURE,
   DIRECT_FIXTURE,
   FIXTURE_DURATION,
+  HLS_FAILURE_FIXTURE,
   HLS_FIXTURE,
+  WATCHED_FIXTURE,
+} from "./mediaFixture.ts";
+import {
+  captureFailure,
   type PlayerHarness,
   playerState,
   startPlayerHarness,
@@ -105,18 +111,18 @@ async function setPlaybackRate(view: Bun.WebView, rate: number): Promise<void> {
 }
 
 function registerCommonJourneyTests(): void {
-  test("navigates through a season, streams quickly, skips time, and traverses episodes", async () => {
+  test.concurrent("navigates through a season, streams quickly, skips time, and traverses episodes", async () => {
     const runtime = activeHarness();
     const player = await runtime.openApp();
     try {
       await clickElement(player.view, { selector: "button", text: "Browser Fixture Show" });
       const season = { selector: "button", ariaLabel: "Expand or collapse Episodes" } as const;
-      const firstEpisode = { selector: "button", text: "Browser Fixture - 01.mkv" } as const;
+      const firstEpisode = { selector: "button", text: "Browser Fixture - 01.mp4" } as const;
       await clickElement(player.view, season);
       await waitForElementHidden(player.view, firstEpisode);
       await clickElement(player.view, season);
       await clickStableElement(player.view, firstEpisode);
-      await waitForEpisodeRoute(player.view, HLS_FIXTURE);
+      await waitForEpisodeRoute(player.view, COMMON_FIRST_FIXTURE);
       await ensurePlaying(player);
       await setPlaybackRate(player.view, 4);
       const acceleratedStart = await playerState(player.view);
@@ -145,11 +151,11 @@ function registerCommonJourneyTests(): void {
       });
       await showPlayerControls(player.view);
       await clickElement(player.view, { selector: "button", ariaLabel: "Next episode" });
-      await waitForEpisodeRoute(player.view, DIRECT_FIXTURE);
+      await waitForEpisodeRoute(player.view, COMMON_SECOND_FIXTURE);
       await verifyNoPlayerErrors(player);
       await showPlayerControls(player.view);
       await clickElement(player.view, { selector: "button", ariaLabel: "Previous episode" });
-      await waitForEpisodeRoute(player.view, HLS_FIXTURE);
+      await waitForEpisodeRoute(player.view, COMMON_FIRST_FIXTURE);
       await verifyNoPlayerErrors(player);
       expect(player.consoleErrors).toEqual([]);
     } catch (error: unknown) {
@@ -159,14 +165,15 @@ function registerCommonJourneyTests(): void {
     }
   }, 60_000);
 
-  test("marks an episode watched and unwatched durably through the real UI", async () => {
+  test.concurrent("marks an episode watched and unwatched durably through the real UI", async () => {
     const runtime = activeHarness();
     const player = await runtime.openApp();
-    const episodeActions = { selector: "summary", ariaLabel: "Episode actions", index: 0 } as const;
+    const episodeActions = { selector: "summary", ariaLabel: "Episode actions", index: 2 } as const;
     try {
       await clickElement(player.view, { selector: "button", text: "Browser Fixture Show" });
       await clickElement(player.view, episodeActions);
       await clickElement(player.view, { selector: "button[role='menuitem']", text: "Mark as watched" });
+      await waitForElement(player.view, { selector: "li", text: WATCHED_FIXTURE.split("/").at(-1) ?? "" });
       await waitForElement(player.view, { selector: "li span", text: "Watched" });
       const showUrl = await player.view.evaluate<string>("location.href");
       await player.view.navigate(showUrl);
@@ -189,9 +196,9 @@ function registerCommonJourneyTests(): void {
 }
 
 function registerPlaybackRegressionTests(): void {
-  test("recovers a transient HLS manifest 404 and plays real generated media", async () => {
+  test.concurrent("recovers a transient HLS manifest 404 and plays real generated media", async () => {
     const runtime = activeHarness();
-    const player = await runtime.openPlayer(HLS_FIXTURE, { failFirstManifest: true });
+    const player = await runtime.openPlayer(HLS_FAILURE_FIXTURE, { failFirstManifest: true });
     try {
       await verifyNoPlayerErrors(player);
       expect(player.manifestRequests.length).toBeGreaterThanOrEqual(2);
@@ -208,7 +215,7 @@ function registerPlaybackRegressionTests(): void {
     }
   }, 60_000);
 
-  test("keeps controls visible during a real timeline drag and settles on the requested HLS seek", async () => {
+  test.concurrent("keeps controls visible during a real timeline drag and settles on the requested HLS seek", async () => {
     const runtime = activeHarness();
     const player = await runtime.openPlayer(HLS_FIXTURE);
     try {
@@ -264,7 +271,7 @@ function registerPlaybackRegressionTests(): void {
     }
   }, 75_000);
 
-  test("direct playback accepts a real range seek and continues advancing", async () => {
+  test.concurrent("direct playback accepts a real range seek and continues advancing", async () => {
     const runtime = activeHarness();
     const player = await runtime.openPlayer(DIRECT_FIXTURE);
     try {
