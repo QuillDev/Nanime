@@ -28,6 +28,20 @@ import {
 let harness: PlayerHarness | undefined = undefined;
 const describeBrowser = Bun.env["NANIME_PLAYER_E2E"] === "true" ? describe : describe.skip;
 
+function testProfile(testName: string): (phase: string) => void {
+  const startedAt = performance.now();
+  let checkpointAt = startedAt;
+  return (phase) => {
+    const now = performance.now();
+    const phaseDuration = now - checkpointAt;
+    const totalDuration = now - startedAt;
+    process.stdout.write(
+      `[browser-profile] ${testName} | ${phase}: phase=${phaseDuration.toFixed(1)}ms total=${totalDuration.toFixed(1)}ms\n`,
+    );
+    checkpointAt = now;
+  };
+}
+
 function activeHarness(): PlayerHarness {
   if (harness === undefined) {
     throw new Error("Player harness has not started");
@@ -111,6 +125,24 @@ async function setPlaybackRate(view: Bun.WebView, rate: number): Promise<void> {
   expect(updated).toBe(true);
 }
 
+async function verifySkipControls(player: Awaited<ReturnType<PlayerHarness["openPlayer"]>>): Promise<void> {
+  await showPlayerControls(player.view);
+  const beforeForward = await playerState(player.view);
+  await clickElement(player.view, { selector: "button", ariaLabel: "Forward 10 seconds" });
+  const forwarded = await waitForPlayerState({
+    view: player.view,
+    predicate: (state) => state.timelinePosition >= (beforeForward?.timelinePosition ?? 0) + 8,
+    description: "forward ten-second control",
+  });
+  await showPlayerControls(player.view);
+  await clickElement(player.view, { selector: "button", ariaLabel: "Back 10 seconds" });
+  await waitForPlayerState({
+    view: player.view,
+    predicate: (state) => state.timelinePosition <= forwarded.timelinePosition - 8,
+    description: "back ten-second control",
+  });
+}
+
 async function waitForWatchedMutation(player: Awaited<ReturnType<PlayerHarness["openApp"]>>, count: number): Promise<void> {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
@@ -127,8 +159,10 @@ async function waitForWatchedMutation(player: Awaited<ReturnType<PlayerHarness["
 
 function registerCommonJourneyTests(): void {
   test("navigates through a season, streams quickly, skips time, and traverses episodes", async () => {
+    const profile = testProfile("journey");
     const runtime = activeHarness();
     const player = await runtime.openApp();
+    profile("open application");
     try {
       await clickElement(player.view, { selector: "button", text: "Browser Fixture Show" });
       const season = { selector: "button", ariaLabel: "Expand or collapse Episodes" } as const;
@@ -138,6 +172,7 @@ function registerCommonJourneyTests(): void {
       await clickElement(player.view, season);
       await clickStableElement(player.view, firstEpisode);
       await waitForEpisodeRoute(player.view, COMMON_FIRST_FIXTURE);
+      profile("navigate show and season, then open episode");
       await ensurePlaying(player);
       await setPlaybackRate(player.view, 16);
       const acceleratedStart = await playerState(player.view);
@@ -149,40 +184,33 @@ function registerCommonJourneyTests(): void {
         timeout: 5000,
       });
       await setPlaybackRate(player.view, 1);
-      await showPlayerControls(player.view);
-      const beforeForward = await playerState(player.view);
-      await clickElement(player.view, { selector: "button", ariaLabel: "Forward 10 seconds" });
-      const forwarded = await waitForPlayerState({
-        view: player.view,
-        predicate: (state) => state.timelinePosition >= (beforeForward?.timelinePosition ?? 0) + 8,
-        description: "forward ten-second control",
-      });
-      await showPlayerControls(player.view);
-      await clickElement(player.view, { selector: "button", ariaLabel: "Back 10 seconds" });
-      await waitForPlayerState({
-        view: player.view,
-        predicate: (state) => state.timelinePosition <= forwarded.timelinePosition - 8,
-        description: "back ten-second control",
-      });
+      profile("start and advance accelerated playback");
+      await verifySkipControls(player);
+      profile("forward and backward controls");
       await showPlayerControls(player.view);
       await clickElement(player.view, { selector: "button", ariaLabel: "Next episode" });
       await waitForEpisodeRoute(player.view, COMMON_SECOND_FIXTURE);
       await verifyNoPlayerErrors(player);
+      profile("load and play next episode");
       await showPlayerControls(player.view);
       await clickElement(player.view, { selector: "button", ariaLabel: "Previous episode" });
       await waitForEpisodeRoute(player.view, COMMON_FIRST_FIXTURE);
       await verifyNoPlayerErrors(player);
+      profile("load and play previous episode");
       expect(player.consoleErrors).toEqual([]);
     } catch (error: unknown) {
       await captureFailure({ player, name: "common-player-journey", serverLog: runtime.serverLog(), error });
     } finally {
       await player.close();
+      profile("close browser view");
     }
   }, 60_000);
 
   test("marks an episode watched and unwatched durably through the real UI", async () => {
+    const profile = testProfile("watched durability");
     const runtime = activeHarness();
     const player = await runtime.openApp();
+    profile("open application");
     const watchedName = WATCHED_FIXTURE.split("/").at(-1) ?? "";
     const episodeActions = {
       selector: "summary",
@@ -191,35 +219,44 @@ function registerCommonJourneyTests(): void {
     } as const;
     try {
       await clickElement(player.view, { selector: "button", text: "Browser Fixture Show" });
+      profile("open show");
       await activateElement(player.view, episodeActions);
       await activateElement(player.view, { selector: "button[role='menuitem']", text: "Mark as watched" });
       await waitForWatchedMutation(player, 1);
+      profile("mark watched and persist mutation");
       const showUrl = await player.view.evaluate<string>("location.href");
       await player.view.navigate(showUrl);
       await activateElement(player.view, episodeActions);
       await waitForElement(player.view, { selector: "button[role='menuitem']", text: "Mark as unwatched" });
+      profile("reload and verify watched state");
       await activateElement(player.view, { selector: "button[role='menuitem']", text: "Mark as unwatched" });
       await waitForWatchedMutation(player, 2);
+      profile("mark unwatched and persist mutation");
       await player.view.navigate(showUrl);
       await activateElement(player.view, episodeActions);
       expect(await elementVisible(player.view, {
         selector: "button[role='menuitem']",
         text: "Mark as watched",
       })).toBe(true);
+      profile("reload and verify unwatched state");
     } catch (error: unknown) {
       await captureFailure({ player, name: "watched-durability", serverLog: runtime.serverLog(), error });
     } finally {
       await player.close();
+      profile("close browser view");
     }
   }, 30_000);
 }
 
 function registerPlaybackRegressionTests(): void {
   test("recovers a transient HLS manifest 404 and plays real generated media", async () => {
+    const profile = testProfile("transient HLS recovery");
     const runtime = activeHarness();
     const player = await runtime.openPlayer(HLS_FAILURE_FIXTURE, { failFirstManifest: true });
+    profile("open player and inject manifest failure");
     try {
       await verifyNoPlayerErrors(player);
+      profile("recover manifest and advance playback");
       expect(player.manifestRequests.length).toBeGreaterThanOrEqual(2);
       expect(player.networkResponses.some(({ status, url }) => (
         status === 200 && url.includes("/hls/index")
@@ -231,14 +268,18 @@ function registerPlaybackRegressionTests(): void {
       await captureFailure({ player, name: "transient-manifest", serverLog: runtime.serverLog(), error });
     } finally {
       await player.close();
+      profile("validate requests and close browser view");
     }
   }, 60_000);
 
   test("keeps controls visible during a real timeline drag and settles on the requested HLS seek", async () => {
+    const profile = testProfile("timeline HLS seek");
     const runtime = activeHarness();
     const player = await runtime.openPlayer(HLS_FIXTURE);
+    profile("open player");
     try {
       await verifyNoPlayerErrors(player);
+      profile("load and advance initial playback");
       const bounds = await timelineBounds(player.view);
       const startX = bounds.left + bounds.width * 0.1;
       const targetX = bounds.left + bounds.width * 0.75;
@@ -259,6 +300,7 @@ function registerPlaybackRegressionTests(): void {
         },
       );
       expect(held.controlsVisible).toBe(true);
+      profile("hold vertical timeline drag past dismissal timeout");
       await player.view.cdp("Input.dispatchMouseEvent", {
         type: "mouseReleased", x: targetX, y: y - 180, button: "left", clickCount: 1,
       });
@@ -272,6 +314,7 @@ function registerPlaybackRegressionTests(): void {
         },
       );
       expect(settled.error).toBeNull();
+      profile("release drag and settle HLS seek");
       await ensurePlaying(player);
       const advanced = await waitForPlayerState(
         {
@@ -280,6 +323,7 @@ function registerPlaybackRegressionTests(): void {
           description: "playback to continue after seeking",
         },
       );
+      profile("resume and advance playback after seek");
       expect(advanced.timelinePosition).toBeGreaterThan(target - 3);
       expect(player.manifestRequests.length).toBeGreaterThanOrEqual(2);
       expect(player.consoleErrors).toEqual([]);
@@ -287,14 +331,18 @@ function registerPlaybackRegressionTests(): void {
       await captureFailure({ player, name: "timeline-seek", serverLog: runtime.serverLog(), error });
     } finally {
       await player.close();
+      profile("validate state and close browser view");
     }
   }, 75_000);
 
   test("direct playback accepts a real range seek and continues advancing", async () => {
+    const profile = testProfile("direct range seek");
     const runtime = activeHarness();
     const player = await runtime.openPlayer(DIRECT_FIXTURE);
+    profile("open player");
     try {
       await verifyNoPlayerErrors(player);
+      profile("load and advance initial playback");
       const bounds = await timelineBounds(player.view);
       await player.view.click(
         bounds.left + bounds.width * 0.65,
@@ -309,6 +357,7 @@ function registerPlaybackRegressionTests(): void {
         },
       );
       expect(settled.error).toBeNull();
+      profile("issue and settle range seek");
       await ensurePlaying(player);
       const advanced = await waitForPlayerState(
         {
@@ -317,6 +366,7 @@ function registerPlaybackRegressionTests(): void {
           description: "direct playback to advance after seeking",
         },
       );
+      profile("resume and advance playback after seek");
       expect(advanced.error).toBeNull();
       expect(player.networkResponses.some(({ status, url }) => (
         status === 206 && url.includes("/stream")
@@ -326,6 +376,7 @@ function registerPlaybackRegressionTests(): void {
       await captureFailure({ player, name: "direct-seek", serverLog: runtime.serverLog(), error });
     } finally {
       await player.close();
+      profile("validate range response and close browser view");
     }
   }, 45_000);
 }
