@@ -21,6 +21,7 @@ import {
   trackedOfflineDownloads,
   trackOfflineDownload,
   trackOfflineController,
+  updateOfflineDownloadList,
   offlineStore,
 } from "../offline/runtime.ts";
 import {
@@ -247,15 +248,18 @@ export function useOfflineDownloads(): OfflineDownloadsState {
     queryFn: listOfflineDownloads,
   });
   const updateDownload = useCallback((download: OfflineDownload): void => {
-    queryClient.setQueryData<readonly OfflineDownload[]>(offlineDownloadsKey, (current) => [
-      download,
-      ...(current ?? []).filter((item) => (
-        item.userId !== download.userId || item.rel !== download.rel
-      )),
-    ]);
+    queryClient.setQueryData<readonly OfflineDownload[]>(offlineDownloadsKey, (current) => (
+      updateOfflineDownloadList(current ?? [], download)
+    ));
   }, [queryClient]);
   const download = useMutation({
-    mutationFn: (variables: DownloadVariables) => downloadEpisode(variables, updateDownload),
+    mutationFn: async (variables: DownloadVariables) => {
+      try {
+        return await downloadEpisode(variables, updateDownload);
+      } finally {
+        stopTrackingOfflineController(variables.entry.rel, variables.controller);
+      }
+    },
     onSettled: () => Promise.all([
       queryClient.invalidateQueries({ queryKey: offlineDownloadsKey }),
       queryClient.invalidateQueries({ queryKey: ["library"] }),
@@ -280,9 +284,7 @@ export function useOfflineDownloads(): OfflineDownloadsState {
     const controller = new AbortController();
     trackOfflineController(entry.rel, controller);
     announceOfflineDownload(entry);
-    download.mutate({ controller, entry }, {
-      onSettled: () => stopTrackingOfflineController(entry.rel, controller),
-    });
+    download.mutate({ controller, entry });
   }, [download]);
   const cancel = useCallback((rel: string) => cancelTrackedOfflineDownload(rel), []);
   return { downloads, download, remove, start, cancel };

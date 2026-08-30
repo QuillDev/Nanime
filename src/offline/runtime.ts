@@ -18,6 +18,7 @@ export {
   trackedOfflineDownloads,
   trackOfflineController,
   trackOfflineDownload,
+  updateOfflineDownloadList,
 } from "./activity.ts";
 export { announceOfflineDownload } from "./notifications.ts";
 

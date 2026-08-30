@@ -44,6 +44,10 @@ function offlineAction(active: boolean, saved: OfflineDownload | undefined): Off
     : { icon: RotateCw, label: "Retry download" };
 }
 
+function activeOfflineDownload(saved: OfflineDownload | undefined): boolean {
+  return saved?.state === "preparing" || saved?.state === "downloading";
+}
+
 export function EpisodeActionsMenu({
   entry,
   pending,
@@ -54,7 +58,7 @@ export function EpisodeActionsMenu({
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
   const offline = useOfflineDownloads();
   const saved = offline.downloads.data?.find((item) => item.rel === entry.rel);
-  const active = offline.download.isPending && offline.download.variables.entry.rel === entry.rel;
+  const active = activeOfflineDownload(saved);
   const action = offlineAction(active, saved);
   const handleWatched = useCallback(() => {
     onSetWatched(entry.rel, !watched, target);

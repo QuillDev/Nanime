@@ -139,7 +139,7 @@ export function OfflineDownloads(): React.JSX.Element {
             <div>
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">In progress</h3>
               <ul className="flex flex-col gap-2">
-                {inProgress.map((item) => <DownloadRow key={item.id} item={item} onCancel={cancel} onRemove={remove} onRetry={retry} />)}
+                {inProgress.map((item) => <DownloadRow key={`${String(item.userId)}:${item.rel}`} item={item} onCancel={cancel} onRemove={remove} onRetry={retry} />)}
               </ul>
             </div>
           )}
@@ -147,7 +147,7 @@ export function OfflineDownloads(): React.JSX.Element {
             <div>
               {inProgress.length > 0 && <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">On this device</h3>}
               <ul className="flex flex-col gap-2">
-                {remaining.map((item) => <DownloadRow key={item.id} item={item} onCancel={cancel} onRemove={remove} onRetry={retry} />)}
+                {remaining.map((item) => <DownloadRow key={`${String(item.userId)}:${item.rel}`} item={item} onCancel={cancel} onRemove={remove} onRetry={retry} />)}
               </ul>
             </div>
           )}
