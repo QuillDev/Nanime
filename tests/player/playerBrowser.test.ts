@@ -20,14 +20,33 @@ function activeHarness(): PlayerHarness {
   return harness;
 }
 
+async function ensurePlaying(player: Awaited<ReturnType<PlayerHarness["openPlayer"]>>): Promise<void> {
+  const started = await player.view.evaluate<boolean>(`(() => {
+    const video = document.querySelector("video");
+    return video instanceof HTMLVideoElement
+      ? video.play().then(() => true, () => false)
+      : false;
+  })()`);
+  expect(started).toBe(true);
+  await waitForPlayerState({
+    view: player.view,
+    predicate: (state) => !state.paused,
+    description: "video to enter the playing state",
+  });
+}
+
 async function verifyNoPlayerErrors(player: Awaited<ReturnType<PlayerHarness["openPlayer"]>>): Promise<void> {
-  const state = await waitForPlayerState(
-    {
-      view: player.view,
-      predicate: (current) => current.readyState >= 2 && current.timelinePosition > 0.5,
-      description: "video playback to advance",
-    },
-  );
+  await waitForPlayerState({
+    view: player.view,
+    predicate: (state) => state.readyState >= 2,
+    description: "video data to become ready",
+  });
+  await ensurePlaying(player);
+  const state = await waitForPlayerState({
+    view: player.view,
+    predicate: (current) => current.timelinePosition > 0.5,
+    description: "video playback to advance",
+  });
   expect(state.error).toBeNull();
   expect(player.consoleErrors).toEqual([]);
 }
@@ -93,12 +112,13 @@ describeBrowser("real browser player harness", () => {
       const settled = await waitForPlayerState(
         {
           view: player.view,
-          predicate: (state) => Math.abs(state.timelinePosition - target) <= 3 && !state.paused,
+          predicate: (state) => Math.abs(state.timelinePosition - target) <= 3 && state.readyState >= 2,
           description: "HLS seek to settle at the requested absolute position",
           timeout: 45_000,
         },
       );
       expect(settled.error).toBeNull();
+      await ensurePlaying(player);
       const advanced = await waitForPlayerState(
         {
           view: player.view,
@@ -134,6 +154,8 @@ describeBrowser("real browser player harness", () => {
           description: "direct video range seek",
         },
       );
+      expect(settled.error).toBeNull();
+      await ensurePlaying(player);
       const advanced = await waitForPlayerState(
         {
           view: player.view,

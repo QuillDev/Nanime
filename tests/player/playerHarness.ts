@@ -151,8 +151,13 @@ async function generateFixture(mediaDirectory: string): Promise<void> {
     "-disposition:a:0", "default", "-shortest", hlsFixture,
   ]);
   await run([
-    ffmpeg, "-hide_banner", "-loglevel", "error", "-i", hlsFixture,
-    "-map", "0:v:0", "-map", "0:a:0", "-c", "copy", "-movflags", "+faststart",
+    ffmpeg, "-hide_banner", "-loglevel", "error",
+    "-f", "lavfi", "-i", `testsrc2=size=960x540:rate=24:duration=${String(FIXTURE_DURATION)}`,
+    "-f", "lavfi", "-i", `sine=frequency=660:sample_rate=48000:duration=${String(FIXTURE_DURATION)}`,
+    "-map", "0:v:0", "-map", "1:a:0",
+    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "32", "-pix_fmt", "yuv420p",
+    "-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
+    "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", "-shortest",
     directFixture,
   ]);
 }
