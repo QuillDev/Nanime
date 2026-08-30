@@ -86,6 +86,17 @@ export function audioTracks(abs: string): Promise<readonly AudioTrack[]> {
   return pending;
 }
 
+export async function selectedAudioTrack(
+  abs: string,
+  audioIndex: number | null,
+): Promise<AudioTrack | undefined | null> {
+  const tracks = await audioTracks(abs);
+  if (audioIndex === null) {
+    return tracks.find((track) => track.isDefault) ?? tracks[0];
+  }
+  return tracks.find((track) => track.index === audioIndex) ?? null;
+}
+
 export async function audioTracksResponse(abs: string, rel: string): Promise<Response> {
   const [tracks, sizes] = await Promise.all([audioTracks(abs), scannedTrackSizes(rel, abs, "audio")]);
   return Response.json(tracks.map((track) => ({
