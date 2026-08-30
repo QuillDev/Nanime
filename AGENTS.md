@@ -1,22 +1,88 @@
 # Nanime agent guide
 
-Nanime is a self-hosted anime library and streaming PWA. Bun/Elysia serves a
-React/Vite client, local media, and SQLite state. Optional integrations include
-AniList and qBittorrent; metadata also uses Jikan and TVmaze.
+Nanime is a self-hosted, local-first anime library and streaming PWA for desktop
+and mobile browsers. Bun/Elysia serves a React/Vite client, local media, and
+SQLite state. The browser client and installed PWA support resumable offline
+episode downloads through IndexedDB and a service worker. Optional integrations
+include AniList and qBittorrent; metadata also uses Jikan and TVmaze.
 
-## Rules
+## Project invariants
 
 - This is a public repository. Never commit secrets, databases, media, private
   addresses, operator paths, deployment names, or library details. Examples must
-  be portable and obviously fictitious.
-- Use Bun for the runtime and package manager. `ffmpeg` and `ffprobe` must remain
-  external executables found on `PATH`.
-- Fetch client data through TanStack Query hooks in `src/hooks/`, not React
-  effects. Preserve Eden's end-to-end route types.
+  be portable and obviously fictitious. Do not expose values from local `.env`,
+  SQLite, cache, or media files in patches, logs, screenshots, or test fixtures.
+- Use the Bun version pinned by `packageManager` and CI for the runtime, package
+  manager, scripts, and `bun:test`. Keep those pins aligned when upgrading Bun;
+  do not introduce another package manager or test framework.
+- `ffmpeg` and `ffprobe` remain external executables discovered on `PATH`.
+  Production code must not depend on a machine-specific executable location.
+- Treat `dist/` as generated output and never edit or commit it. Edit PWA assets
+  and service-worker sources in `public/`; `bun run build` produces `dist/`.
+- Keep the server loopback-bound by default. Public deployments require a TLS
+  reverse proxy, an exact `NANIME_PUBLIC_ORIGIN`, secure cookies, and explicitly
+  trusted proxy handling.
+
+## Architecture and state
+
+- Fetch server data through TanStack Query hooks in `src/hooks/`, not React
+  effects. Keep query keys, invalidation, and offline fallbacks coherent, and
+  preserve Eden's end-to-end route types.
+- SQLite is the canonical server-side state. Put schema creation and compatible
+  migrations in `server/database.ts`; existing installations must survive a
+  normal process restart and upgrade without losing user state.
+- Route playback mutations through the centralized playback mutation/audit path.
+  Playback audit entries are immutable and retain actor, origin, previous state,
+  next state, session duration, AniList target, and reversion relationships.
+  Never repair watched state by bypassing or rewriting that history.
+- Upload and mapping changes belong in the immutable library activity log.
+  State changes and their activity entries must commit atomically when they are
+  part of the same operation.
+- Manual watched/unwatched state must remain durable. Removing an item from the
+  home screen only changes its dismissal state and must not erase progress.
+  Season/series operations must use the same per-episode mutation semantics, and
+  AniList progress/completion updates must remain consistent with local state.
+- Continue Watching exposes at most one current episode per series and advances
+  completed episodes to the next unwatched episode. Fully watched shows belong
+  in the separate Watched section. Finishing a mapped series should retain the
+  AniList score prompt for connected accounts that do not already have a score.
+- Offline media lives in browser IndexedDB and is served through `public/sw.js`,
+  `public/swCore.js`, and `public/swStorage.js`. Preserve resumable chunk
+  downloads, exact byte-range responses, missing-chunk repair, per-user offline
+  identity, queued playback synchronization, and playback without a network.
+  Do not make completed downloads visible until their full chunk inventory is
+  present. Keep the shared eight-request pool global so simultaneous episode
+  downloads divide available request slots instead of multiplying concurrency
+  per episode.
+- Keep admin-only library operations—uploads, mappings, torrents, transcodes,
+  track pruning, deletion, offline artifact preparation, and user provisioning—
+  behind the existing authorization boundary.
+
+## Playback
+
+- Preserve both direct HTTP range playback and managed HLS playback. Seeking,
+  selected audio, resume offsets, manifest retries, lease ownership, capacity
+  release, episode traversal, and cleanup are correctness-sensitive behavior.
+- Keep HLS segment production demand-driven and bounded by the configured worker
+  capacity. A stopped, replaced, or abandoned player must release its lease and
+  processes without disrupting another player's session.
+- Timeline scrubbing must retain pointer capture and keep controls visible for
+  the entire drag, including vertical movement. Trickplay previews should use
+  cached sheets with the frame endpoint as a fallback and must not block normal
+  playback.
+- Playback diagnostics are opt-in. New diagnostics must be useful when copied,
+  avoid private data beyond the selected media path already shown to the user,
+  and stay out of the normal viewing experience when disabled.
+
+## Client and design
+
 - Use Tailwind CSS v4 and the existing shadcn/ui patterns. Surfaces are solid
   black with the `#ec4899` accent; do not add translucent UI.
-- Keep the server loopback-bound by default. Public deployments require a TLS
-  reverse proxy and an exact `NANIME_PUBLIC_ORIGIN`.
+- Preserve route-level lazy loading and avoid pulling admin, profile, player, or
+  HLS-only code into the initial library bundle without a concrete reason.
+- Prefer accessible native semantics, keyboard operation, visible focus, and
+  existing three-dot action-menu patterns. Avoid adding one-off context-menu
+  behavior for actions that fit those menus.
 
 ## Client capabilities
 
@@ -44,12 +110,39 @@ hover and pointer capability.
 - Canonicalize and validate media paths before filesystem access.
 - Configuration defaults must not contain operator-specific URLs or paths.
 
+## Code quality
+
+- Cyclomatic complexity is an error above 15 across the codebase. Extract
+  cohesive helpers instead of suppressing the rule or translating branches into
+  harder-to-read expressions.
+- Oxlint, React Doctor, and the anti-slop plugin are required gates. Fix root
+  causes; do not weaken rules, add blanket suppressions, or generate abstraction
+  layers that obscure straightforward domain behavior.
+- Keep browser-only code out of server modules and Node/Bun-only code out of the
+  client. Shared contracts and pure playback rules belong in `shared/` when both
+  sides genuinely consume them.
+- Preserve unrelated working-tree changes. Do not edit generated output, local
+  operator data, or broad files mechanically when a focused change is enough.
+
 ## Verification
 
-Run `bun run check` before every commit. It must have no TypeScript or oxlint
-findings and React Doctor must score 100/100. Do not suppress findings or weaken
-the checks. Run relevant `bun test` suites for behavior changes and `bun run
-build` before release.
+Run `bun run check` before every commit. It must have no TypeScript or Oxlint
+findings and React Doctor must score 100/100. Run relevant targeted `bun test`
+suites for behavior changes and `bun run build` before release. Tests must be
+deterministic, use isolated temporary state, and never depend on an operator's
+library, database, network services, or credentials.
 
 Common commands: `bun install`, `bun run dev`, `bun run start`, `bun run check`,
-`bun test`, and `bun run build`.
+`bun test`, `bun run test:player`, and `bun run build`.
+
+Run `bun run test:player` for changes to the player UI, playback hooks or
+libraries, HLS server, media routing, or direct streaming. It uses `bun:test`
+and `Bun.WebView` to exercise the production player in a real browser against
+generated media and an isolated server/database. Keep iteration fast: use
+targeted unit tests, type-checking, and linting while developing, and reserve
+the full real-browser player suite for final verification immediately before
+committing and pushing. Run it earlier only when diagnosing a browser- or
+player-specific failure that requires the real harness. Preserve the harness's
+phase profiling, Chrome prewarming, FFmpeg cache, parallel CI shards, failure
+screenshots, network observations, and fresh-process retry behavior when
+extending it.

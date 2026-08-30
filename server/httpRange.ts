@@ -57,6 +57,7 @@ interface FileResponseOptions {
   readonly mimeType: string;
   readonly etag: string;
   readonly req: Request;
+  readonly cacheControl?: string;
 }
 
 function fileRangeStream(path: string, start: number, end: number): ReadableStream<Uint8Array> {
@@ -88,7 +89,7 @@ export function rangedFileResponse(options: FileResponseOptions): Response {
   });
   const common = {
     "accept-ranges": "bytes",
-    "cache-control": "private, max-age=31536000, immutable",
+    "cache-control": options.cacheControl ?? "private, max-age=31536000, immutable",
     "content-type": mimeType,
     etag,
   };

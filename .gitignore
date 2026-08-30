@@ -9,3 +9,4 @@ dist
 .nanime.sqlite*
 .nanime-cache
 media
+test-results
