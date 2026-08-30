@@ -269,19 +269,19 @@ async function openPlayer(
     },
   };
   try {
+    await timedOperation({ operation: view.navigate(harness.origin), description: "application shell" });
     await view.cdp("Network.enable");
     observeNetwork(view, player);
-    if (options.failFirstManifest === true) {
-      await harness.failNextManifest();
-    }
     view.addEventListener<NetworkRequestEvent>("Network.requestWillBeSent", (event) => {
       const { request } = event.data;
       if (request.url.includes("/hls/index")) {
         player.manifestRequests.push(request.url);
       }
     });
-    await timedOperation({ operation: view.navigate(harness.origin), description: "application shell" });
     await timedOperation({ operation: login(view), description: "browser login" });
+    if (options.failFirstManifest === true) {
+      await harness.failNextManifest();
+    }
     const playerUrl = new URL(harness.origin);
     playerUrl.searchParams.set("episode", rel);
     await timedOperation({ operation: view.navigate(playerUrl.href), description: "player route" });
