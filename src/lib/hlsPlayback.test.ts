@@ -5,6 +5,20 @@ interface FakeHlsConfig {
   readonly enableWorker: boolean;
   readonly maxBufferLength: number;
   readonly maxMaxBufferLength: number;
+  readonly manifestLoadPolicy: {
+    readonly default: {
+      readonly errorRetry: {
+        readonly maxNumRetry: number;
+        readonly shouldRetry: (...arguments_: [
+          config: { readonly maxNumRetry: number },
+          retryCount: number,
+          isTimeout: boolean,
+          response: { readonly code: number },
+          retry: boolean,
+        ]) => boolean;
+      };
+    };
+  };
   readonly startPosition: number;
 }
 
@@ -118,6 +132,7 @@ function expectInitialAttachment(fixture: ReturnType<typeof attachedFixture>): v
     maxBufferLength: 30,
     maxMaxBufferLength: 30,
     enableWorker: true,
+    manifestLoadPolicy: expect.any(Object),
     startPosition: 1,
   });
   expect({ media: fixture.hls?.media, source: fixture.hls?.source }).toEqual({
@@ -154,6 +169,15 @@ describe("hls.js playback adapter", () => {
     hls?.emit(FakeHls.Events.MANIFEST_PARSED);
     expect(video.play).not.toHaveBeenCalled();
     expect(hls?.startLoads).toEqual([0]);
+  });
+
+  test("retries a transient missing manifest without retrying permanent client errors", () => {
+    const fixture = attachedFixture();
+    const retry = fixture.hls?.config.manifestLoadPolicy.default.errorRetry;
+    expect(retry?.shouldRetry(retry, 0, false, { code: 404 }, false)).toBe(true);
+    expect(retry?.shouldRetry(retry, 3, false, { code: 404 }, false)).toBe(false);
+    expect(retry?.shouldRetry(retry, 0, false, { code: 401 }, false)).toBe(false);
+    expect(retry?.shouldRetry(retry, 0, false, { code: 500 }, true)).toBe(true);
   });
 
   test("recovers one fatal media error before surfacing a diagnostic", () => {

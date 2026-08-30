@@ -1,4 +1,4 @@
-import Hls, { type ErrorData } from "hls.js";
+import Hls, { type ErrorData, type RetryConfig } from "hls.js";
 
 export interface HlsAttachment {
   readonly video: HTMLVideoElement;
@@ -11,6 +11,18 @@ export interface HlsAttachment {
 
 export function hlsJsSupported(): boolean {
   return Hls.isSupported();
+}
+
+const RETRYABLE_MANIFEST_STATUS = new Set([404, 425, 429, 503]);
+type ManifestRetryArguments = Parameters<NonNullable<RetryConfig["shouldRetry"]>>;
+
+export function retryTransientManifest(
+  ...arguments_: ManifestRetryArguments
+): boolean {
+  const [retryConfig, retryCount, , response, retry] = arguments_;
+  const retriesRemain = retryConfig !== null && retryConfig !== undefined &&
+    retryCount < retryConfig.maxNumRetry;
+  return retry || retriesRemain && RETRYABLE_MANIFEST_STATUS.has(response?.code ?? 0);
 }
 
 function tryPlay(video: HTMLVideoElement): void {
@@ -72,6 +84,19 @@ export function attachHls(options: HlsAttachment): (() => void) | undefined {
     maxBufferLength: 30,
     maxMaxBufferLength: 30,
     enableWorker: true,
+    manifestLoadPolicy: {
+      default: {
+        maxTimeToFirstByteMs: 10_000,
+        maxLoadTimeMs: 20_000,
+        timeoutRetry: { maxNumRetry: 2, retryDelayMs: 0, maxRetryDelayMs: 0 },
+        errorRetry: {
+          maxNumRetry: 3,
+          retryDelayMs: 250,
+          maxRetryDelayMs: 1000,
+          shouldRetry: retryTransientManifest,
+        },
+      },
+    },
     startPosition: options.resumeAt === undefined
       ? -1
       : Math.max(0, options.resumeAt - (options.timelineOffset ?? 0)),
