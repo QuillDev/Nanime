@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { Database } from "bun:sqlite";
 import { PLAYER_PROXY_ENTRYPOINT } from "./playerProxy.ts";
 
 const ADMIN_SETUP_TOKEN = "nanime-player-harness-setup-token-0001";
@@ -9,6 +10,28 @@ const FIXTURE_FOLDER = "Browser Fixture Show";
 export const HLS_FIXTURE = `${FIXTURE_FOLDER}/Browser Fixture - 01.mkv`;
 export const DIRECT_FIXTURE = `${FIXTURE_FOLDER}/Browser Fixture - 02.mp4`;
 export const FIXTURE_DURATION = 120;
+
+const FIXTURE_METADATA = {
+  provider: "jikan",
+  id: 1,
+  anilistId: null,
+  idMal: 1,
+  title: { english: FIXTURE_FOLDER, romaji: FIXTURE_FOLDER, native: null },
+  description: "Generated browser player test fixture",
+  coverImage: { extraLarge: null, large: null, color: null },
+  bannerImage: null,
+  episodes: 2,
+  duration: 2,
+  season: null,
+  seasonYear: null,
+  startDate: null,
+  format: "TV",
+  status: "FINISHED_AIRING",
+  genres: [],
+  averageScore: null,
+  siteUrl: "https://example.invalid/nanime-player-fixture",
+  streamingEpisodes: [],
+};
 
 interface PlayerState {
   readonly bufferedEnd: number;
@@ -175,6 +198,18 @@ async function createAdmin(origin: string): Promise<void> {
   }
 }
 
+function seedFixtureMetadata(databasePath: string): void {
+  const database = new Database(databasePath);
+  try {
+    database.query(`
+      INSERT INTO media_metadata (key, payload, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
+    `).run(`show:${FIXTURE_FOLDER}`, JSON.stringify(FIXTURE_METADATA), Date.now());
+  } finally {
+    database.close();
+  }
+}
+
 function browserConsole(errors: string[]) {
   return (type: string, ...arguments_: unknown[]): void => {
     if (type === "error") {
@@ -228,18 +263,12 @@ async function openPlayer(
     manifestRequests: [],
     networkResponses: [],
     view,
-    close: async () => {
-      await timedOperation({
-        operation: view.navigate("about:blank"),
-        description: "player view cleanup",
-        timeout: 3000,
-      }).catch(() => undefined);
-      await Bun.sleep(100);
+    close: () => {
       view.close();
+      return Promise.resolve();
     },
   };
   try {
-    await timedOperation({ operation: view.navigate("about:blank"), description: "browser startup" });
     await view.cdp("Network.enable");
     observeNetwork(view, player);
     if (options.failFirstManifest === true) {
@@ -338,6 +367,7 @@ export async function startPlayerHarness(): Promise<PlayerHarness> {
   }
   const backendOrigin = `http://127.0.0.1:${String(backendPort)}`;
   const origin = `http://127.0.0.1:${String(publicPort)}`;
+  const databasePath = join(temporaryRoot, "nanime.sqlite");
   const server = Bun.spawn([process.execPath, "run", "server/app.ts"], {
     cwd: process.cwd(),
     env: {
@@ -349,7 +379,7 @@ export async function startPlayerHarness(): Promise<PlayerHarness> {
       NANIME_ANILIST_CLIENT_ID: "",
       NANIME_ANILIST_CLIENT_SECRET: "",
       NANIME_ANILIST_REDIRECT_URI: "",
-      NANIME_DATABASE: join(temporaryRoot, "nanime.sqlite"),
+      NANIME_DATABASE: databasePath,
       NANIME_PUBLIC_ORIGIN: origin,
       NANIME_SECURE_COOKIES: "false",
       NANIME_TOKEN_ENCRYPTION_KEY: "",
@@ -361,6 +391,7 @@ export async function startPlayerHarness(): Promise<PlayerHarness> {
   const stdout = captureProcessOutput(server.stdout);
   const stderr = captureProcessOutput(server.stderr);
   await waitForServer(backendOrigin, server);
+  seedFixtureMetadata(databasePath);
   const proxy = await startHarnessProxy(publicPort, backendOrigin, origin);
   await createAdmin(origin);
   return {
