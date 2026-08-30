@@ -57,4 +57,8 @@ Common commands: `bun install`, `bun run dev`, `bun run start`, `bun run check`,
 Run `bun run test:player` for changes to the player UI, playback hooks or
 libraries, HLS server, media routing, or direct streaming. It uses `bun:test`
 and `Bun.WebView` to exercise the production player in a real browser against
-generated media and an isolated server/database.
+generated media and an isolated server/database. Keep iteration fast: use
+targeted unit tests, type-checking, and linting while developing, and reserve
+the full real-browser player suite for final verification immediately before
+committing and pushing. Run it earlier only when diagnosing a browser- or
+player-specific failure that requires the real harness.
