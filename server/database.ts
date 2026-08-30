@@ -2,10 +2,6 @@ import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { chmodSync } from "node:fs";
 import { resolve } from "node:path";
-import {
-  PLAYBACK_COMPLETION_RATIO,
-  PLAYBACK_COMPLETION_REMAINING_SECONDS,
-} from "../shared/playback.ts";
 
 const DATABASE_PATH = resolve(
   process.env["NANIME_DATABASE"] ?? resolve(import.meta.dir, "..", ".nanime.sqlite"),
@@ -141,6 +137,12 @@ database.run(`
     created_at INTEGER NOT NULL
   )
 `);
+const playbackAuditColumns = database
+  .query<TableColumn, []>("PRAGMA table_info(playback_audit_log)")
+  .all();
+if (!playbackAuditColumns.some((column) => column.name === "session_seconds")) {
+  database.run("ALTER TABLE playback_audit_log ADD COLUMN session_seconds REAL");
+}
 database.run(`
   CREATE INDEX IF NOT EXISTS playback_audit_user_created
   ON playback_audit_log(user_id, created_at DESC, id DESC)
@@ -199,13 +201,6 @@ const currentPlaybackColumns = database
 if (!currentPlaybackColumns.some((column) => column.name === "dismissed_at")) {
   database.run("ALTER TABLE playback_progress ADD COLUMN dismissed_at INTEGER");
 }
-database.query<void, [number, number]>(`
-  UPDATE playback_progress
-  SET completed = 0
-  WHERE completed = 1
-    AND duration > 0
-    AND position < MAX(duration * ?, duration - ?)
-`).run(PLAYBACK_COMPLETION_RATIO, PLAYBACK_COMPLETION_REMAINING_SECONDS);
 database.run(`
   CREATE TABLE IF NOT EXISTS media_metadata (
     key TEXT PRIMARY KEY,
