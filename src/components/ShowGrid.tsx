@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Download } from "lucide-react";
+import { Check, Download } from "lucide-react";
 import type { AniListMedia, ShowMetadata, TorrentStatus } from "../types.ts";
 import {
   isMovieMedia,
@@ -16,6 +16,7 @@ interface ShowCardProps {
   readonly onSelect: (show: ShowGroup) => void;
   readonly downloadPercent: number | null;
   readonly summary: string;
+  readonly watched: boolean;
 }
 
 const SHOW_BATCH_SIZE = 120;
@@ -26,6 +27,7 @@ function ShowCard({
   onSelect,
   downloadPercent,
   summary,
+  watched,
 }: ShowCardProps): React.JSX.Element {
   const handleClick = useCallback(() => {
     onSelect(show);
@@ -67,6 +69,12 @@ function ShowCard({
               />
             </span>
           )}
+          {watched && (
+            <span className="absolute right-2 top-2 inline-flex items-center gap-1.5 rounded-full bg-black/85 px-2.5 py-1 text-xs font-semibold text-primary shadow-lg">
+              <Check className="size-3.5" aria-hidden="true" />
+              Watched
+            </span>
+          )}
         </span>
         <span className="block p-3">
           <span className="block truncate text-sm font-semibold">
@@ -86,6 +94,7 @@ interface ShowGridProps {
   readonly metadata: ShowMetadata;
   readonly onSelect: (show: ShowGroup) => void;
   readonly downloads: readonly TorrentStatus[];
+  readonly watched?: boolean;
 }
 
 function showTransitionName(name: string): string {
@@ -146,11 +155,12 @@ function indexDownloads(downloads: readonly TorrentStatus[]): ReadonlyMap<string
   return indexed;
 }
 
-function ShowGridItem({ show, metadata, onSelect, downloads }: {
+function ShowGridItem({ show, metadata, onSelect, downloads, watched }: {
   readonly show: ShowGroup;
   readonly metadata: ShowMetadata;
   readonly onSelect: (show: ShowGroup) => void;
   readonly downloads: ReadonlyMap<string, DownloadTotals>;
+  readonly watched: boolean;
 }): React.JSX.Element {
   const style = useMemo(() => ({
     viewTransitionName: showTransitionName(show.name),
@@ -177,6 +187,7 @@ function ShowGridItem({ show, metadata, onSelect, downloads }: {
         onSelect={onSelect}
         downloadPercent={downloadPercent}
         summary={summary}
+        watched={watched}
       />
     </li>
   );
@@ -187,6 +198,7 @@ export function ShowGrid({
   metadata,
   onSelect,
   downloads,
+  watched = false,
 }: ShowGridProps): React.JSX.Element {
   const [limit, setLimit] = useState(SHOW_BATCH_SIZE);
   const visible = shows.slice(0, limit);
@@ -204,6 +216,7 @@ export function ShowGrid({
             metadata={metadata}
             onSelect={onSelect}
             downloads={indexedDownloads}
+            watched={watched}
           />
         ))}
       </ul>
