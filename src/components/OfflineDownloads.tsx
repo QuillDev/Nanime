@@ -113,7 +113,7 @@ export function OfflineDownloads(): React.JSX.Element {
   const remaining = items.filter((item) => item.state !== "preparing" && item.state !== "downloading");
   const { cancel, remove, retry } = useDownloadActions(offline);
   return (
-    <section className="border-b border-border py-6" aria-labelledby="offline-downloads-title">
+    <section id="offline-downloads" className="scroll-mt-20 border-b border-border py-6" aria-labelledby="offline-downloads-title">
       <div className="flex items-center gap-2">
         <Download className="size-5 text-primary" />
         <h2 id="offline-downloads-title" className="text-lg font-semibold">Offline downloads</h2>

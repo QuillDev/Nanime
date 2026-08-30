@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 function locationSnapshot(): string {
-  return `${globalThis.location.pathname}${globalThis.location.search}`;
+  return `${globalThis.location.pathname}${globalThis.location.search}${globalThis.location.hash}`;
 }
 
 function subscribeToLocation(onChange: () => void): () => void {
@@ -12,7 +12,7 @@ function subscribeToLocation(onChange: () => void): () => void {
 }
 
 function updateUrl(url: URL, replace = false): void {
-  const destination = `${url.pathname}${url.search}`;
+  const destination = `${url.pathname}${url.search}${url.hash}`;
   if (replace) {
     globalThis.history.replaceState(null, "", destination);
   } else {
@@ -83,6 +83,14 @@ export function navigateToProfile(): void {
   const url = new URL(globalThis.location.href);
   url.pathname = "/profile";
   url.search = "";
+  updateUrl(url);
+}
+
+export function navigateToDownloads(): void {
+  const url = new URL(globalThis.location.href);
+  url.pathname = "/profile";
+  url.search = "";
+  url.hash = "offline-downloads";
   updateUrl(url);
 }
 

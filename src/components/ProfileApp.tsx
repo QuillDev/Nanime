@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { LogOut } from "lucide-react";
 import { useLogout } from "../hooks/useAuth.ts";
 import type { AuthUser } from "../types.ts";
@@ -11,6 +11,11 @@ import { OfflineDownloads } from "./OfflineDownloads.tsx";
 
 export function ProfileApp({ user }: { readonly user: AuthUser }): React.JSX.Element {
   const logout = useLogout();
+  useEffect(() => {
+    if (globalThis.location.hash === "#offline-downloads") {
+      document.querySelector("#offline-downloads")?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, []);
   const handleLogout = useCallback(() => logout.mutate(), [logout]);
   return (
     <div className="min-h-screen bg-background text-foreground">

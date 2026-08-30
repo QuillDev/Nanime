@@ -12,6 +12,7 @@ import { prepareOfflineStorage } from "../offline/capacity.ts";
 import type { OfflineDownload, OfflineDownloadStore } from "../offline/types.ts";
 import {
   activeOfflineProfile,
+  announceOfflineDownload,
   cancelTrackedOfflineDownload,
   mergeOfflineDownloads,
   preparingOfflineDownload,
@@ -278,6 +279,7 @@ export function useOfflineDownloads(): OfflineDownloadsState {
   const start = useCallback((entry: MediaEntry): void => {
     const controller = new AbortController();
     trackOfflineController(entry.rel, controller);
+    announceOfflineDownload(entry);
     download.mutate({ controller, entry }, {
       onSettled: () => stopTrackingOfflineController(entry.rel, controller),
     });

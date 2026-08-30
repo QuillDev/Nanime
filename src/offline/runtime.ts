@@ -19,6 +19,7 @@ export {
   trackOfflineController,
   trackOfflineDownload,
 } from "./activity.ts";
+export { announceOfflineDownload } from "./notifications.ts";
 
 const ACTIVE_USER_KEY = "nanime.offline.active-user";
 const PLAYBACK_OUTBOX_PREFIX = "nanime.offline.playback-outbox.";
