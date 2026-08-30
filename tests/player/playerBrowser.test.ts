@@ -111,6 +111,22 @@ async function setPlaybackRate(view: Bun.WebView, rate: number): Promise<void> {
   expect(updated).toBe(true);
 }
 
+async function waitForWatchedState(view: Bun.WebView, rel: string, watched: boolean): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const persisted = await view.evaluate<boolean>(`
+      fetch("/api/progress")
+        .then(response => response.json())
+        .then(items => items.find(item => item.rel === ${JSON.stringify(rel)})?.completed === ${String(watched)})
+    `);
+    if (persisted) {
+      return;
+    }
+    await Bun.sleep(50);
+  }
+  throw new Error(`Timed out waiting for watched=${String(watched)}: ${rel}`);
+}
+
 function registerCommonJourneyTests(): void {
   test("navigates through a season, streams quickly, skips time, and traverses episodes", async () => {
     const runtime = activeHarness();
@@ -179,14 +195,13 @@ function registerCommonJourneyTests(): void {
       await clickElement(player.view, { selector: "button", text: "Browser Fixture Show" });
       await activateElement(player.view, episodeActions);
       await activateElement(player.view, { selector: "button[role='menuitem']", text: "Mark as watched" });
-      const watchedBadge = { selector: "li span", ancestorText: watchedName, text: "Watched" } as const;
-      await waitForElement(player.view, watchedBadge);
+      await waitForWatchedState(player.view, WATCHED_FIXTURE, true);
       const showUrl = await player.view.evaluate<string>("location.href");
       await player.view.navigate(showUrl);
       await activateElement(player.view, episodeActions);
       await waitForElement(player.view, { selector: "button[role='menuitem']", text: "Mark as unwatched" });
       await activateElement(player.view, { selector: "button[role='menuitem']", text: "Mark as unwatched" });
-      await waitForElementHidden(player.view, watchedBadge);
+      await waitForWatchedState(player.view, WATCHED_FIXTURE, false);
       await player.view.navigate(showUrl);
       await activateElement(player.view, episodeActions);
       expect(await elementVisible(player.view, {
