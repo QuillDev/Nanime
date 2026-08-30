@@ -43,7 +43,6 @@ export interface PlayerHarness {
   close: () => Promise<void>;
   openApp: () => Promise<PlayerView>;
   openPlayer: (rel: string, options?: { readonly failFirstManifest?: boolean }) => Promise<PlayerView>;
-  watchedState: (rel: string) => boolean | null;
 }
 
 interface ProcessOutput {
@@ -155,18 +154,6 @@ function seedFixtureMetadata(databasePath: string): void {
   }
 }
 
-function watchedState(databasePath: string, rel: string): boolean | null {
-  const database = new Database(databasePath, { readonly: true });
-  try {
-    const row = database.query<{ readonly completed: number }, [string]>(`
-      SELECT completed FROM playback_progress WHERE user_id = 1 AND rel = ?
-    `).get(rel);
-    return row === null ? null : row.completed === 1;
-  } finally {
-    database.close();
-  }
-}
-
 function browserConsole(errors: string[]) {
   return (type: string, ...arguments_: unknown[]): void => {
     if (type === "error") {
@@ -178,7 +165,7 @@ function browserConsole(errors: string[]) {
 function observeNetwork(view: Bun.WebView, player: PlayerView): void {
   view.addEventListener<NetworkResponseEvent>("Network.responseReceived", (event) => {
     const { status, url } = event.data.response;
-    if (url.includes("/hls/") || url.includes("/stream")) {
+    if (url.includes("/hls/") || url.includes("/stream") || url.includes("/api/progress/watched")) {
       player.networkResponses.push({ status, url });
     }
   });
@@ -204,7 +191,7 @@ async function openPlayer(
   rel: string,
   options: { readonly failFirstManifest?: boolean } = {},
 ): Promise<PlayerView> {
-  const player = await openAppWithRetry(harness);
+  const player = await openApp(harness);
   try {
     if (options.failFirstManifest === true) {
       await harness.failNextManifest(rel);
@@ -259,16 +246,6 @@ async function openApp(
   } catch (error: unknown) {
     view.close();
     throw error;
-  }
-}
-
-async function openAppWithRetry(
-  harness: Pick<PlayerHarness, "browserPath" | "origin">,
-): Promise<PlayerView> {
-  try {
-    return await openApp(harness);
-  } catch {
-    return await openApp(harness);
   }
 }
 
@@ -381,13 +358,12 @@ export async function startPlayerHarness(): Promise<PlayerHarness> {
     origin,
     temporaryRoot,
     serverLog: () => `${stdout.output()}\n${stderr.output()}\n${proxy.output.output()}`,
-    openApp: () => openAppWithRetry({ browserPath, origin }),
+    openApp: () => openApp({ browserPath, origin }),
     openPlayer: (rel, options) => openPlayer({
       browserPath,
       origin,
       failNextManifest: proxy.failNextManifest,
     }, rel, options),
-    watchedState: (rel) => watchedState(databasePath, rel),
     close: async () => {
       await stopProcess(proxy.process);
       await stopProcess(server);

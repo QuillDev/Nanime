@@ -111,15 +111,18 @@ async function setPlaybackRate(view: Bun.WebView, rate: number): Promise<void> {
   expect(updated).toBe(true);
 }
 
-async function waitForWatchedState(runtime: PlayerHarness, rel: string, watched: boolean): Promise<void> {
+async function waitForWatchedMutation(player: Awaited<ReturnType<PlayerHarness["openApp"]>>, count: number): Promise<void> {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
-    if (runtime.watchedState(rel) === watched) {
+    const completed = player.networkResponses.filter(({ status, url }) => (
+      status === 200 && url.includes("/api/progress/watched")
+    )).length;
+    if (completed >= count) {
       return;
     }
     await Bun.sleep(50);
   }
-  throw new Error(`Timed out waiting for watched=${String(watched)}: ${rel}`);
+  throw new Error(`Timed out waiting for watched mutation ${String(count)}`);
 }
 
 function registerCommonJourneyTests(): void {
@@ -190,13 +193,13 @@ function registerCommonJourneyTests(): void {
       await clickElement(player.view, { selector: "button", text: "Browser Fixture Show" });
       await activateElement(player.view, episodeActions);
       await activateElement(player.view, { selector: "button[role='menuitem']", text: "Mark as watched" });
-      await waitForWatchedState(runtime, WATCHED_FIXTURE, true);
+      await waitForWatchedMutation(player, 1);
       const showUrl = await player.view.evaluate<string>("location.href");
       await player.view.navigate(showUrl);
       await activateElement(player.view, episodeActions);
       await waitForElement(player.view, { selector: "button[role='menuitem']", text: "Mark as unwatched" });
       await activateElement(player.view, { selector: "button[role='menuitem']", text: "Mark as unwatched" });
-      await waitForWatchedState(runtime, WATCHED_FIXTURE, false);
+      await waitForWatchedMutation(player, 2);
       await player.view.navigate(showUrl);
       await activateElement(player.view, episodeActions);
       expect(await elementVisible(player.view, {
