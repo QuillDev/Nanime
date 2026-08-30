@@ -35,14 +35,46 @@ jobs:
           NANIME_DATABASE: /tmp/nanime-ci-tests.sqlite
       - name: Build production bundle
         run: bun run build
+
+  player-browser:
+    name: player-browser (${{ matrix.case.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - name: journey
+            pattern: navigates through a season
+          - name: watched
+            pattern: marks an episode watched
+          - name: manifest-recovery
+            pattern: recovers a transient HLS manifest
+          - name: timeline-seek
+            pattern: keeps controls visible
+          - name: direct-seek
+            pattern: direct playback accepts
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+      - name: Install locked dependencies
+        run: bun ci
+      - name: Build production bundle
+        run: bun run build
       - name: Install player harness system dependencies
         run: sudo apt-get update && sudo apt-get install --yes ffmpeg
-      - name: Run player browser harness
-        run: NANIME_PLAYER_E2E=true bun test tests/player/playerBrowser.test.ts --timeout 120000
+      - name: Run player browser shard
+        env:
+          NANIME_PLAYER_E2E: "true"
+          PLAYER_TEST_PATTERN: ${{ matrix.case.pattern }}
+        run: bun test tests/player/playerBrowser.test.ts --timeout 120000 --test-name-pattern "$PLAYER_TEST_PATTERN"
       - name: Upload player harness diagnostics
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: player-harness-diagnostics
+          name: player-harness-diagnostics-${{ matrix.case.name }}
           path: test-results
           if-no-files-found: ignore

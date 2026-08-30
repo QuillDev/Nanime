@@ -51,7 +51,7 @@ export async function generateFixture(mediaDirectory: string, ffmpeg: string): P
   await mkdir(folder, { recursive: true });
   await run([
     ffmpeg, "-hide_banner", "-loglevel", "error",
-    "-f", "lavfi", "-i", `testsrc2=size=426x240:rate=24:duration=${String(FIXTURE_DURATION)}`,
+    "-f", "lavfi", "-i", `testsrc2=size=256x144:rate=24:duration=${String(FIXTURE_DURATION)}`,
     "-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:duration=${String(FIXTURE_DURATION)}`,
     "-f", "lavfi", "-i", `sine=frequency=880:sample_rate=48000:duration=${String(FIXTURE_DURATION)}`,
     "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0",

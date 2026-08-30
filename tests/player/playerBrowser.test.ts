@@ -111,7 +111,7 @@ async function setPlaybackRate(view: Bun.WebView, rate: number): Promise<void> {
 }
 
 function registerCommonJourneyTests(): void {
-  test.concurrent("navigates through a season, streams quickly, skips time, and traverses episodes", async () => {
+  test("navigates through a season, streams quickly, skips time, and traverses episodes", async () => {
     const runtime = activeHarness();
     const player = await runtime.openApp();
     try {
@@ -124,7 +124,7 @@ function registerCommonJourneyTests(): void {
       await clickStableElement(player.view, firstEpisode);
       await waitForEpisodeRoute(player.view, COMMON_FIRST_FIXTURE);
       await ensurePlaying(player);
-      await setPlaybackRate(player.view, 4);
+      await setPlaybackRate(player.view, 16);
       const acceleratedStart = await playerState(player.view);
       expect(acceleratedStart).not.toBeNull();
       await waitForPlayerState({
@@ -165,7 +165,7 @@ function registerCommonJourneyTests(): void {
     }
   }, 60_000);
 
-  test.concurrent("marks an episode watched and unwatched durably through the real UI", async () => {
+  test("marks an episode watched and unwatched durably through the real UI", async () => {
     const runtime = activeHarness();
     const player = await runtime.openApp();
     const episodeActions = { selector: "summary", ariaLabel: "Episode actions", index: 2 } as const;
@@ -196,7 +196,7 @@ function registerCommonJourneyTests(): void {
 }
 
 function registerPlaybackRegressionTests(): void {
-  test.concurrent("recovers a transient HLS manifest 404 and plays real generated media", async () => {
+  test("recovers a transient HLS manifest 404 and plays real generated media", async () => {
     const runtime = activeHarness();
     const player = await runtime.openPlayer(HLS_FAILURE_FIXTURE, { failFirstManifest: true });
     try {
@@ -215,7 +215,7 @@ function registerPlaybackRegressionTests(): void {
     }
   }, 60_000);
 
-  test.concurrent("keeps controls visible during a real timeline drag and settles on the requested HLS seek", async () => {
+  test("keeps controls visible during a real timeline drag and settles on the requested HLS seek", async () => {
     const runtime = activeHarness();
     const player = await runtime.openPlayer(HLS_FIXTURE);
     try {
@@ -271,7 +271,7 @@ function registerPlaybackRegressionTests(): void {
     }
   }, 75_000);
 
-  test.concurrent("direct playback accepts a real range seek and continues advancing", async () => {
+  test("direct playback accepts a real range seek and continues advancing", async () => {
     const runtime = activeHarness();
     const player = await runtime.openPlayer(DIRECT_FIXTURE);
     try {
