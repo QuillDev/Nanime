@@ -36,6 +36,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.1.0",
+    "fake-indexeddb": "^6.2.5",
     "oxlint": "^1.79.0",
     "oxlint-plugin-anti-slop": "github:dmmulroy/anti-slop#6d53855",
     "oxlint-plugin-react-doctor": "latest",

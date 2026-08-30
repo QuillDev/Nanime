@@ -1,9 +1,10 @@
 // Keep this schema in lockstep with src/offline/database.ts. The worker cannot
 // import application modules because it is installed as a classic worker.
 const NANIME_OFFLINE_DATABASE = "nanime-offline-v1";
-const NANIME_OFFLINE_DATABASE_VERSION = 2;
+const NANIME_OFFLINE_DATABASE_VERSION = 3;
 const NANIME_DOWNLOAD_STORE = "downloads";
 const NANIME_MEDIA_CHUNK_STORE = "mediaChunks";
+const NANIME_MEDIA_CHUNK_INVENTORY_STORE = "mediaChunkInventory";
 const NANIME_PROFILE_STORE = "profiles";
 const NANIME_MEDIA_CHUNK_SIZE = 4 * 1024 * 1024;
 
@@ -15,6 +16,17 @@ function nanimeRequestResult(request) {
 }
 
 function nanimeEnsureOfflineStores(database) {
+  nanimeEnsurePrimaryStores(database);
+  if (!database.objectStoreNames.contains(NANIME_MEDIA_CHUNK_INVENTORY_STORE)) {
+    const inventory = database.createObjectStore(
+      NANIME_MEDIA_CHUNK_INVENTORY_STORE,
+      { keyPath: ["downloadId", "index"] },
+    );
+    inventory.createIndex("by-download", "downloadId");
+  }
+}
+
+function nanimeEnsurePrimaryStores(database) {
   if (!database.objectStoreNames.contains(NANIME_DOWNLOAD_STORE)) {
     const downloads = database.createObjectStore(NANIME_DOWNLOAD_STORE, { keyPath: "id" });
     downloads.createIndex("by-user-rel", ["userId", "rel"], { unique: true });
@@ -32,15 +44,59 @@ function nanimeEnsureOfflineStores(database) {
   }
 }
 
-function nanimeOpenOfflineDatabase(indexedDb) {
+function nanimeMigrateChunkInventory(transaction) {
+  const chunks = transaction.objectStore(NANIME_MEDIA_CHUNK_STORE);
+  const inventory = transaction.objectStore(NANIME_MEDIA_CHUNK_INVENTORY_STORE);
+  const request = chunks.openCursor();
+  request.addEventListener("success", () => {
+    const cursor = request.result;
+    if (cursor === null) {
+      return;
+    }
+    const chunk = cursor.value;
+    inventory.put({
+      downloadId: chunk.downloadId,
+      index: chunk.index,
+      byteLength: chunk.bytes.byteLength,
+    });
+    cursor.continue();
+  });
+}
+
+async function nanimeOpenOfflineDatabase(indexedDb) {
   const request = indexedDb.open(NANIME_OFFLINE_DATABASE, NANIME_OFFLINE_DATABASE_VERSION);
-  request.addEventListener("upgradeneeded", () => nanimeEnsureOfflineStores(request.result));
-  return nanimeRequestResult(request);
+  const blocked = Promise.withResolvers();
+  let wasBlocked = false;
+  request.addEventListener("upgradeneeded", (event) => {
+    nanimeEnsureOfflineStores(request.result);
+    if (event.oldVersion > 0 && event.oldVersion < 3 && request.transaction !== null) {
+      nanimeMigrateChunkInventory(request.transaction);
+    }
+  });
+  request.addEventListener("blocked", () => {
+    wasBlocked = true;
+    blocked.reject(new Error("Offline storage upgrade is blocked by another tab"));
+  }, { once: true });
+  request.addEventListener("success", () => {
+    if (wasBlocked) {
+      request.result.close();
+    }
+  });
+  const database = await Promise.race([nanimeRequestResult(request), blocked.promise]);
+  database.addEventListener("versionchange", () => database.close());
+  return database;
 }
 
 async function nanimeDatabaseValue(database, storeName, key) {
   const transaction = database.transaction(storeName, "readonly");
   return await nanimeRequestResult(transaction.objectStore(storeName).get(key));
+}
+
+async function nanimeChunkInventory(database, downloadId) {
+  const transaction = database.transaction(NANIME_MEDIA_CHUNK_INVENTORY_STORE, "readonly");
+  const index = transaction.objectStore(NANIME_MEDIA_CHUNK_INVENTORY_STORE)
+    .index("by-download");
+  return await nanimeRequestResult(index.getAll(downloadId));
 }
 
 function nanimeCloseStream(state) {
@@ -130,6 +186,18 @@ function nanimeCompleteDownload(download) {
     download.downloadedBytes === download.totalBytes;
 }
 
+function nanimeCompleteInventory(download, inventory) {
+  const expectedCount = Math.ceil(download.totalBytes / NANIME_MEDIA_CHUNK_SIZE);
+  if (inventory.length !== expectedCount) {
+    return false;
+  }
+  return inventory.every((chunk, index) => {
+    const start = index * NANIME_MEDIA_CHUNK_SIZE;
+    const expected = Math.min(NANIME_MEDIA_CHUNK_SIZE, download.totalBytes - start);
+    return chunk.index === index && chunk.byteLength === expected;
+  });
+}
+
 async function nanimeDownloadIsActive(database, download) {
   const profile = await nanimeDatabaseValue(database, NANIME_PROFILE_STORE, download.userId);
   return profile !== undefined && profile.active === true;
@@ -160,10 +228,18 @@ async function nanimeLoadOfflineMedia(downloadId) {
   if (!nanimeCompleteDownload(download)) {
     return nanimeUnavailableMedia(database);
   }
-  if (!await nanimeDownloadIsActive(database, download)) {
+  if (!await nanimeAvailableInventory(database, download, downloadId)) {
     return nanimeUnavailableMedia(database);
   }
   return nanimeOfflineMedia(database, download, downloadId);
+}
+
+async function nanimeAvailableInventory(database, download, downloadId) {
+  if (!await nanimeDownloadIsActive(database, download)) {
+    return false;
+  }
+  const inventory = await nanimeChunkInventory(database, downloadId);
+  return nanimeCompleteInventory(download, inventory);
 }
 
 globalThis.NanimeOfflineStorage = Object.freeze({
@@ -172,7 +248,9 @@ globalThis.NanimeOfflineStorage = Object.freeze({
   DOWNLOAD_STORE: NANIME_DOWNLOAD_STORE,
   MEDIA_CHUNK_SIZE: NANIME_MEDIA_CHUNK_SIZE,
   MEDIA_CHUNK_STORE: NANIME_MEDIA_CHUNK_STORE,
+  MEDIA_CHUNK_INVENTORY_STORE: NANIME_MEDIA_CHUNK_INVENTORY_STORE,
   PROFILE_STORE: NANIME_PROFILE_STORE,
+  completeInventory: nanimeCompleteInventory,
   loadOfflineMedia: nanimeLoadOfflineMedia,
   storedMediaStream: nanimeStoredMediaStream,
 });

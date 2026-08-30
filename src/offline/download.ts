@@ -1,202 +1,40 @@
-import { isOfflineDownloadAvailable } from "./database.ts";
 import type {
   DownloadOfflineMediaOptions,
   OfflineDownload,
-  OfflineDownloadStore,
-  OfflineMediaSource,
 } from "./types.ts";
+import { transferMissingChunks } from "./downloadTransfer.ts";
 import {
-  fetchOfflineMediaParts,
-  offlineMediaPartVersion,
-  OFFLINE_MEDIA_CHUNK_BYTES,
-  type OfflineMediaPart,
-} from "./ranges.ts";
+  prepareOfflineDownload,
+  type PreparedDownload,
+  validOfflineSource,
+} from "./downloadPreparation.ts";
 
-export { OFFLINE_MEDIA_CHUNK_BYTES, OFFLINE_MEDIA_PARALLEL_REQUESTS } from "./ranges.ts";
+export { OFFLINE_MEDIA_CHUNK_BYTES } from "./chunks.ts";
+export { OFFLINE_MEDIA_PARALLEL_REQUESTS } from "./pool.ts";
 
-function validSource(source: OfflineMediaSource): boolean {
-  return Number.isSafeInteger(source.size) && source.size > 0 && source.mediaUrl !== "" &&
-    source.contentType.startsWith("video/");
+interface ActiveDownload {
+  readonly controller: AbortController;
+  readonly fingerprint: string;
+  readonly promise: Promise<OfflineDownload>;
+  readonly progressListeners: Set<NonNullable<DownloadOfflineMediaOptions["onProgress"]>>;
 }
 
-function createDownload(
-  options: DownloadOfflineMediaOptions,
-  existing: OfflineDownload | null,
-): OfflineDownload {
-  const now = (options.now ?? Date.now)();
-  const { entry, source, userId } = options;
-  const reusable = existing !== null && existing.totalBytes === source.size &&
-    existing.sourceUrl === source.mediaUrl && existing.sourceVersion === source.version;
-  return {
-    ...entry,
-    id: reusable ? existing.id : crypto.randomUUID(),
-    userId,
-    state: "downloading",
-    sourceUrl: source.mediaUrl,
-    sourceVersion: source.version,
-    contentType: source.contentType,
-    totalBytes: source.size,
-    downloadedBytes: reusable ? existing.downloadedBytes : 0,
-    duration: source.duration ?? existing?.duration ?? null,
-    createdAt: reusable ? existing.createdAt : now,
-    updatedAt: now,
-    error: null,
-  };
-}
-
-function appendBytes(left: Uint8Array, right: Uint8Array): Uint8Array {
-  const combined = new Uint8Array(left.byteLength + right.byteLength);
-  combined.set(left);
-  combined.set(right, left.byteLength);
-  return combined;
-}
-
-function storedBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-}
-
-interface PersistContext {
-  readonly now: () => number;
-  readonly onProgress: DownloadOfflineMediaOptions["onProgress"];
-  readonly store: OfflineDownloadStore;
-}
-
-interface PendingWrite {
-  readonly chunkIndex: number;
-  readonly current: OfflineDownload;
-  readonly firstChunkExistingBytes: number;
-  readonly firstChunkIndex: number;
-  readonly pending: Uint8Array;
-}
-
-async function writePendingChunks(
-  context: PersistContext,
-  write: PendingWrite,
-): Promise<OfflineDownload> {
-  if (write.pending.byteLength === 0) {
-    return write.current;
-  }
-  const length = Math.min(OFFLINE_MEDIA_CHUNK_BYTES, write.pending.byteLength);
-  const chunk = write.pending.slice(0, length);
-  const replacedBytes = write.chunkIndex === write.firstChunkIndex
-    ? write.firstChunkExistingBytes
-    : 0;
-  const next: OfflineDownload = {
-    ...write.current,
-    downloadedBytes: write.current.downloadedBytes + length - replacedBytes,
-    updatedAt: context.now(),
-  };
-  await context.store.writeChunk({
-    downloadId: next.id,
-    index: write.chunkIndex,
-    bytes: storedBuffer(chunk),
-    download: next,
-  });
-  context.onProgress?.(next);
-  return writePendingChunks(context, {
-    chunkIndex: write.chunkIndex + 1,
-    current: next,
-    firstChunkExistingBytes: write.firstChunkExistingBytes,
-    firstChunkIndex: write.firstChunkIndex,
-    pending: write.pending.slice(length),
-  });
-}
-
-async function persistBytes(
-  context: PersistContext,
-  download: OfflineDownload,
-  bytes: Uint8Array,
-): Promise<OfflineDownload> {
-  const index = Math.floor(download.downloadedBytes / OFFLINE_MEDIA_CHUNK_BYTES);
-  const withinChunk = download.downloadedBytes % OFFLINE_MEDIA_CHUNK_BYTES;
-  const stored = withinChunk === 0
-    ? new ArrayBuffer(0)
-    : await context.store.getChunk(download.id, index) ?? new ArrayBuffer(0);
-  const existing = new Uint8Array(stored);
-  if (existing.byteLength !== withinChunk) {
-    throw new Error("Offline media chunk is inconsistent with its download record");
-  }
-  return writePendingChunks(context, {
-    chunkIndex: index,
-    current: download,
-    firstChunkExistingBytes: existing.byteLength,
-    firstChunkIndex: index,
-    pending: appendBytes(existing, bytes),
-  });
-}
-
-async function persistMediaParts(
-  context: PersistContext,
-  download: OfflineDownload,
-  parts: readonly OfflineMediaPart[],
-): Promise<OfflineDownload> {
-  const [part, ...remaining] = parts;
-  if (part === undefined) {
-    return download;
-  }
-  const next = await persistBytes(context, download, part.bytes);
-  return persistMediaParts(context, next, remaining);
-}
-
-async function consumeParallelRanges(
-  options: DownloadOfflineMediaOptions,
-  download: OfflineDownload,
-): Promise<OfflineDownload> {
-  if (download.downloadedBytes === download.totalBytes) {
-    return download;
-  }
-  const request = options.fetch ?? fetch;
-  const parts = await fetchOfflineMediaParts({ download, request, signal: options.signal });
-  const context: PersistContext = {
-    store: options.store,
-    now: options.now ?? Date.now,
-    onProgress: options.onProgress,
-  };
-  const versioned = {
-    ...download,
-    sourceVersion: offlineMediaPartVersion(parts, download.sourceVersion),
-  };
-  const next = await persistMediaParts(context, versioned, parts);
-  return consumeParallelRanges(options, next);
-}
+const activeDownloads = new Map<string, ActiveDownload>();
 
 function failureState(error: unknown): "failed" | "paused" {
   return error instanceof DOMException && error.name === "AbortError" ? "paused" : "failed";
-}
-
-function sameCompleteDownload(
-  download: OfflineDownload | null,
-  source: OfflineMediaSource,
-): download is OfflineDownload {
-  return download !== null && isOfflineDownloadAvailable(download) &&
-    download.sourceUrl === source.mediaUrl && download.sourceVersion === source.version &&
-    download.totalBytes === source.size;
-}
-
-async function prepareDownload(
-  options: DownloadOfflineMediaOptions,
-  previous: OfflineDownload | null,
-): Promise<OfflineDownload> {
-  const download = createDownload(options, previous);
-  if (previous !== null && previous.id !== download.id) {
-    await options.store.removeDownload(previous.id);
-  }
-  await options.store.putDownload(download);
-  options.onProgress?.(download);
-  return download;
 }
 
 async function completeDownload(
   options: DownloadOfflineMediaOptions,
   download: OfflineDownload,
 ): Promise<OfflineDownload> {
-  const complete: OfflineDownload = {
-    ...download,
-    state: "complete",
+  const complete = await options.store.completeDownload({
+    downloadId: download.id,
+    sourceUrl: download.sourceUrl,
+    totalBytes: download.totalBytes,
     updatedAt: (options.now ?? Date.now)(),
-    error: null,
-  };
-  await options.store.putDownload(complete);
+  });
   options.onProgress?.(complete);
   return complete;
 }
@@ -206,40 +44,192 @@ async function recordFailure(
   fallback: OfflineDownload,
   error: unknown,
 ): Promise<void> {
-  const current = await options.store.findDownload(options.userId, options.entry.rel) ?? fallback;
-  const failed: OfflineDownload = {
-    ...current,
+  const failed = await options.store.failDownload({
+    downloadId: fallback.id,
+    sourceUrl: fallback.sourceUrl,
+    totalBytes: fallback.totalBytes,
     state: failureState(error),
     updatedAt: (options.now ?? Date.now)(),
     error: error instanceof Error ? error.message : "Offline media download failed",
-  };
-  await options.store.putDownload(failed);
-  options.onProgress?.(failed);
+  });
+  if (failed !== null) {
+    options.onProgress?.(failed);
+  }
 }
 
 async function transferDownload(
   options: DownloadOfflineMediaOptions,
-  download: OfflineDownload,
+  prepared: PreparedDownload,
 ): Promise<OfflineDownload> {
   try {
-    const consumed = await consumeParallelRanges(options, download);
-    return await completeDownload(options, consumed);
+    await transferMissingChunks(options, prepared.download, prepared.missing);
+    return await completeDownload(options, prepared.download);
   } catch (error: unknown) {
-    await recordFailure(options, download, error);
+    await recordFailure(options, prepared.download, error);
     throw error;
   }
 }
 
-export async function downloadOfflineMedia(
+async function performDownload(
   options: DownloadOfflineMediaOptions,
 ): Promise<OfflineDownload> {
-  if (!validSource(options.source)) {
+  if (!validOfflineSource(options.source)) {
     throw new Error("Offline media source is invalid");
   }
   const previous = await options.store.findDownload(options.userId, options.entry.rel);
-  if (sameCompleteDownload(previous, options.source)) {
-    return previous;
+  const prepared = await prepareOfflineDownload(options, previous);
+  return transferDownload(options, prepared);
+}
+
+function activeDownloadKey(options: DownloadOfflineMediaOptions): string {
+  return `${String(options.userId)}\0${options.entry.rel}`;
+}
+
+async function clearActiveDownload(
+  key: string,
+  active: ActiveDownload,
+): Promise<void> {
+  try {
+    await active.promise;
+  } catch {
+    // The caller owns the result; this observer only releases coordination state.
+  } finally {
+    if (activeDownloads.get(key) === active) {
+      activeDownloads.delete(key);
+    }
   }
-  const download = await prepareDownload(options, previous);
-  return transferDownload(options, download);
+}
+
+function sourceFingerprint(options: DownloadOfflineMediaOptions): string {
+  const { mediaUrl, size, version } = options.source;
+  return `${mediaUrl}\0${String(size)}\0${version ?? ""}`;
+}
+
+async function continueAfterActiveDownload(
+  active: ActiveDownload,
+  options: DownloadOfflineMediaOptions,
+): Promise<OfflineDownload> {
+  try {
+    await waitForActiveDownload(active.promise, options.signal);
+  } catch {
+    if (options.signal?.aborted === true) {
+      throw new DOMException("The offline download was cancelled", "AbortError");
+    }
+    // A replacement generation can proceed after the old attempt settles.
+  }
+  if (options.signal?.aborted === true) {
+    throw new DOMException("The offline download was cancelled", "AbortError");
+  }
+  return downloadOfflineMedia(options);
+}
+
+async function waitForActiveDownload(
+  active: Promise<OfflineDownload>,
+  signal: AbortSignal | undefined,
+): Promise<OfflineDownload> {
+  if (signal === undefined) {
+    return active;
+  }
+  const aborted = Promise.withResolvers<never>();
+  const abort = () => aborted.reject(
+    new DOMException("The offline download was cancelled", "AbortError"));
+  if (signal.aborted) {
+    abort();
+  } else {
+    signal.addEventListener("abort", abort, { once: true });
+  }
+  try {
+    return await Promise.race([active, aborted.promise]);
+  } finally {
+    signal.removeEventListener("abort", abort);
+  }
+}
+
+function publishActiveProgress(
+  listeners: ReadonlySet<NonNullable<DownloadOfflineMediaOptions["onProgress"]>>,
+  download: OfflineDownload,
+): void {
+  for (const listener of listeners) {
+    notifyProgressListener(listener, download);
+  }
+}
+
+function notifyProgressListener(
+  listener: NonNullable<DownloadOfflineMediaOptions["onProgress"]>,
+  download: OfflineDownload,
+): void {
+  try {
+    listener(download);
+  } catch {
+    // A view callback cannot compromise the shared durable transfer.
+  }
+}
+
+async function subscribeToActiveDownload(
+  active: ActiveDownload,
+  options: DownloadOfflineMediaOptions,
+): Promise<OfflineDownload> {
+  const unsubscribe = subscribeToProgressAndCancel(active, options);
+  try {
+    return await active.promise;
+  } finally {
+    unsubscribe();
+  }
+}
+
+function subscribeToProgressAndCancel(
+  active: ActiveDownload,
+  options: DownloadOfflineMediaOptions,
+): () => void {
+  const listener = options.onProgress;
+  const cancel = () => active.controller.abort();
+  if (listener !== undefined) {
+    active.progressListeners.add(listener);
+  }
+  if (options.signal?.aborted === true) {
+    cancel();
+  } else {
+    options.signal?.addEventListener("abort", cancel, { once: true });
+  }
+  return () => {
+    options.signal?.removeEventListener("abort", cancel);
+    if (listener !== undefined) {
+      active.progressListeners.delete(listener);
+    }
+  };
+}
+
+function startActiveDownload(options: DownloadOfflineMediaOptions): ActiveDownload {
+  const controller = new AbortController();
+  const progressListeners = new Set<NonNullable<DownloadOfflineMediaOptions["onProgress"]>>();
+  const coordinated = {
+    ...options,
+    signal: controller.signal,
+    onProgress: (download: OfflineDownload) => publishActiveProgress(progressListeners, download),
+  };
+  return {
+    controller,
+    fingerprint: sourceFingerprint(options),
+    progressListeners,
+    promise: performDownload(coordinated),
+  };
+}
+
+export function downloadOfflineMedia(
+  options: DownloadOfflineMediaOptions,
+): Promise<OfflineDownload> {
+  if (options.signal?.aborted === true) {
+    return Promise.reject(new DOMException("The offline download was cancelled", "AbortError"));
+  }
+  const key = activeDownloadKey(options);
+  const active = activeDownloads.get(key);
+  if (active !== undefined) {
+    return active.fingerprint === sourceFingerprint(options)
+      ? subscribeToActiveDownload(active, options)
+      : continueAfterActiveDownload(active, options);
+  }
+  const next = startActiveDownload(options);
+  activeDownloads.set(key, next);
+  void clearActiveDownload(key, next);
+  return subscribeToActiveDownload(next, options);
 }

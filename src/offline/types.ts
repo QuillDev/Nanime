@@ -42,6 +42,12 @@ export interface OfflineMediaChunk {
   readonly bytes: ArrayBuffer;
 }
 
+export interface OfflineChunkMetadata {
+  readonly downloadId: string;
+  readonly index: number;
+  readonly byteLength: number;
+}
+
 export interface OfflineProfile {
   readonly user: AuthUser;
   readonly active: boolean;
@@ -60,8 +66,13 @@ export interface OfflineStorageEstimate {
 }
 
 export interface OfflineDownloadStore {
+  readonly completeDownload: (transition: OfflineDownloadTransition) => Promise<OfflineDownload>;
+  readonly failDownload: (
+    transition: OfflineDownloadFailure,
+  ) => Promise<OfflineDownload | null>;
   readonly findDownload: (userId: number, rel: string) => Promise<OfflineDownload | null>;
   readonly getChunk: (downloadId: string, index: number) => Promise<ArrayBuffer | null>;
+  readonly listChunkMetadata: (downloadId: string) => Promise<readonly OfflineChunkMetadata[]>;
   readonly listDownloads: (
     userId: number,
     completedOnly?: boolean,
@@ -72,7 +83,20 @@ export interface OfflineDownloadStore {
   readonly getLatestProfile: () => Promise<OfflineProfile | null>;
   readonly setActiveProfile: (userId: number | null) => Promise<void>;
   readonly removeDownload: (downloadId: string) => Promise<void>;
-  readonly writeChunk: (write: OfflineChunkWrite) => Promise<void>;
+  readonly removeChunks: (downloadId: string, indexes: readonly number[]) => Promise<void>;
+  readonly writeChunk: (write: OfflineChunkWrite) => Promise<OfflineDownload>;
+}
+
+export interface OfflineDownloadTransition {
+  readonly downloadId: string;
+  readonly sourceUrl: string;
+  readonly totalBytes: number;
+  readonly updatedAt: number;
+}
+
+export interface OfflineDownloadFailure extends OfflineDownloadTransition {
+  readonly error: string;
+  readonly state: "failed" | "paused";
 }
 
 export interface DownloadOfflineMediaOptions {
@@ -90,5 +114,6 @@ export interface OfflineChunkWrite {
   readonly downloadId: string;
   readonly index: number;
   readonly bytes: ArrayBuffer;
-  readonly download: OfflineDownload;
+  readonly sourceVersion: string | null;
+  readonly updatedAt: number;
 }

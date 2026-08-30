@@ -7,6 +7,28 @@ void storageModule;
 
 const worker = globalThis.NanimeOfflineWorker;
 const storage = globalThis.NanimeOfflineStorage;
+
+describe("offline chunk inventory", () => {
+  test("requires every exact chunk before exposing a completed download", () => {
+    const chunkSize = storage.MEDIA_CHUNK_SIZE;
+    const download = { totalBytes: chunkSize * 2 + 3 };
+    const complete = [
+      { index: 0, byteLength: chunkSize },
+      { index: 1, byteLength: chunkSize },
+      { index: 2, byteLength: 3 },
+    ];
+
+    expect(storage.DATABASE_VERSION).toBe(3);
+    expect(storage.completeInventory(download, complete)).toBe(true);
+    expect(storage.completeInventory(download, complete.filter((chunk) => chunk.index !== 1)))
+      .toBe(false);
+    expect(storage.completeInventory(download, [
+      complete[0],
+      { index: 1, byteLength: 2 },
+      complete[2],
+    ])).toBe(false);
+  });
+});
 const ORIGIN = "https://nanime.example";
 
 function mediaSource(bytes, contentType = "video/mp4") {
