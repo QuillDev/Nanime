@@ -52,4 +52,9 @@ the checks. Run relevant `bun test` suites for behavior changes and `bun run
 build` before release.
 
 Common commands: `bun install`, `bun run dev`, `bun run start`, `bun run check`,
-`bun test`, and `bun run build`.
+`bun test`, `bun run test:player`, and `bun run build`.
+
+Run `bun run test:player` for changes to the player UI, playback hooks or
+libraries, HLS server, media routing, or direct streaming. It uses `bun:test`
+and `Bun.WebView` to exercise the production player in a real browser against
+generated media and an isolated server/database.

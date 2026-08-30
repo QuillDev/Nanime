@@ -2,6 +2,7 @@
   "name": "nanime",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "bun@1.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +13,7 @@
     "lint:plugins": "bun build node_modules/oxlint-plugin-anti-slop/src/index.ts --target=node --format=esm --outfile=node_modules/.cache/nanime/anti-slop.mjs && bun -e 'import source from \"oxlint-plugin-anti-slop\"; import bundled from \"./node_modules/.cache/nanime/anti-slop.mjs\"; if (source.rules === undefined || bundled.rules === undefined) process.exit(1)'",
     "doctor": "NANIME_DATABASE=/tmp/nanime-tooling.sqlite NANIME_ADMIN_SETUP_TOKEN=nanime-tooling-token-with-thirty-two-characters react-doctor --yes --blocking warning",
     "check": "bun run typecheck && bun run lint && bun run doctor",
+    "test:player": "bun run build && NANIME_PLAYER_E2E=true bun test tests/player/playerBrowser.test.ts --timeout 120000",
     "start": "bun run server/app.ts"
   },
   "dependencies": {

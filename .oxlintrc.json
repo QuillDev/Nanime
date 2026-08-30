@@ -93,6 +93,16 @@
         "eslint/max-statements": ["error", { "max": 40 }],
         "eslint/max-lines": ["error", { "max": 500 }]
       }
+    },
+    {
+      "files": ["tests/player/**/*.ts"],
+      "env": { "browser": false, "node": true },
+      "rules": {
+        "import/no-nodejs-modules": "off",
+        "eslint/no-await-in-loop": "off",
+        "eslint/max-statements": ["error", { "max": 40 }],
+        "eslint/max-lines": ["error", { "max": 500 }]
+      }
     }
   ]
 }
