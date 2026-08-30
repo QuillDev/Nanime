@@ -39,10 +39,18 @@ async function releaseSafely(lease: HlsPlaybackLease): Promise<void> {
 
 export function attachManagedHls(options: HlsAttachment, playerId: string): () => void {
   const lease: HlsPlaybackLease = { playerId, leaseId: crypto.randomUUID() };
-  const leasedOptions = { ...options, url: leasedHlsUrl(options.url, lease) };
   const lifecycle = attachmentLifecycle(() => {
     void releaseSafely(lease);
   });
+  const leasedOptions = {
+    ...options,
+    url: leasedHlsUrl(options.url, lease),
+    onError: (message: string) => {
+      if (lifecycle.active()) {
+        options.onError(message);
+      }
+    },
+  };
   void (async (): Promise<void> => {
     try {
       const module = await import("./hlsPlayback.ts");
