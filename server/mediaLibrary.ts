@@ -3,6 +3,8 @@ import { dirname, extname, join, relative } from "node:path";
 import type { LibraryStatus, MediaEntry } from "../shared/types.ts";
 import { database } from "./database.ts";
 
+export { libraryActivityResponse } from "./libraryActivity.ts";
+
 interface MediaRow {
   readonly rel: string;
   readonly name: string;

@@ -6,6 +6,7 @@ import { LinkedAccounts } from "./LinkedAccounts.tsx";
 import { MediaHeader } from "./MediaHeader.tsx";
 import { PlaybackPreferences } from "./PlaybackPreferences.tsx";
 import { PlaybackHistory } from "./PlaybackHistory.tsx";
+import { LibraryActivity } from "./LibraryActivity.tsx";
 
 export function ProfileApp({ user }: { readonly user: AuthUser }): React.JSX.Element {
   const logout = useLogout();
@@ -35,6 +36,7 @@ export function ProfileApp({ user }: { readonly user: AuthUser }): React.JSX.Ele
         )}
         <PlaybackPreferences />
         <PlaybackHistory />
+        {user.isAdmin && <LibraryActivity />}
         <LinkedAccounts />
       </main>
     </div>

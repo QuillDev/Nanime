@@ -1,15 +1,13 @@
 import { History, RotateCcw } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback } from "react";
 import type { PlaybackAuditEvent, PlaybackAuditOrigin, PlaybackProgress } from "../types.ts";
 import { usePlaybackHistory, useRestorePlaybackHistory } from "../hooks/usePlaybackHistory.ts";
+import { formatDuration } from "../format.ts";
 
 const actionLabels = {
   completed: "Finished watching",
-  dismissed: "Removed from Continue Watching",
-  "media-removed": "Removed with media",
   "playback-started": "Started watching",
   "playback-stopped": "Stopped watching",
-  "progress-checkpoint": "Recorded playback progress",
   restored: "Restored an earlier state",
   "snapshot-imported": "Recorded existing state",
   watched: "Marked watched",
@@ -41,7 +39,8 @@ function playbackSummary(progress: PlaybackProgress | null): string {
   const percent = progress.duration > 0
     ? Math.round(progress.position / progress.duration * 100)
     : 0;
-  return `${String(percent)}% watched${progress.dismissedAt === null ? "" : " · hidden from home"}`;
+  const position = `${formatDuration(progress.position)} / ${formatDuration(progress.duration)}`;
+  return `${position} · ${String(percent)}%${progress.dismissedAt === null ? "" : " · hidden from home"}`;
 }
 
 function HistoryEvent({ event }: { readonly event: PlaybackAuditEvent }): React.JSX.Element {
@@ -58,19 +57,26 @@ function HistoryEvent({ event }: { readonly event: PlaybackAuditEvent }): React.
           <p className="mt-1 text-xs text-muted-foreground">
             {playbackSummary(event.previous)} → {playbackSummary(event.next)}
           </p>
+          {event.sessionSeconds !== null && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Session duration: {formatDuration(event.sessionSeconds)}
+            </p>
+          )}
           <p className="mt-1 text-xs text-muted-foreground">
             {new Date(event.createdAt).toLocaleString()} · {originLabels[event.origin]} · {event.actorUsername}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleRestore}
-          disabled={restore.isPending}
-          className="inline-flex shrink-0 items-center gap-2 rounded-md bg-secondary px-3 py-2 text-xs font-semibold text-secondary-foreground hover:bg-accent disabled:text-muted-foreground"
-        >
-          <RotateCcw className="size-3.5" />
-          Restore previous
-        </button>
+        {(event.action === "completed" || event.action === "watched" || event.action === "unwatched") && (
+          <button
+            type="button"
+            onClick={handleRestore}
+            disabled={restore.isPending}
+            className="inline-flex shrink-0 items-center gap-2 rounded-md bg-secondary px-3 py-2 text-xs font-semibold text-secondary-foreground hover:bg-accent disabled:text-muted-foreground"
+          >
+            <RotateCcw className="size-3.5" />
+            Restore previous
+          </button>
+        )}
       </div>
       {restore.error !== null && (
         <p className="mt-2 select-text text-xs text-destructive">{restore.error.message}</p>
@@ -79,31 +85,14 @@ function HistoryEvent({ event }: { readonly event: PlaybackAuditEvent }): React.
   );
 }
 
-function meaningfulEvent(event: PlaybackAuditEvent): boolean {
-  return event.action !== "progress-checkpoint";
-}
-
 export function PlaybackHistory(): React.JSX.Element {
   const history = usePlaybackHistory();
-  const [showAutomatic, setShowAutomatic] = useState(false);
-  const events = useMemo(() => (
-    showAutomatic ? history.data ?? [] : (history.data ?? []).filter((event) => meaningfulEvent(event))
-  ), [history.data, showAutomatic]);
-  const handleAutomaticToggle = useCallback(() => setShowAutomatic((shown) => !shown), []);
+  const events = history.data ?? [];
   return (
     <section className="border-b border-border py-6" aria-labelledby="playback-history-title">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <History className="size-5 text-primary" />
-          <h2 id="playback-history-title" className="text-lg font-semibold">Playback history</h2>
-        </div>
-        <button
-          type="button"
-          onClick={handleAutomaticToggle}
-          className="text-xs font-medium text-muted-foreground hover:text-foreground"
-        >
-          {showAutomatic ? "Hide automatic saves" : "Show automatic saves"}
-        </button>
+      <div className="flex items-center gap-2">
+        <History className="size-5 text-primary" />
+        <h2 id="playback-history-title" className="text-lg font-semibold">Playback history</h2>
       </div>
       <p className="mt-2 text-sm text-muted-foreground">
         Watched-state changes are retained permanently. Restoring creates another history entry.

@@ -33,11 +33,8 @@ export interface PlaybackProgress {
 
 export type PlaybackAuditAction =
   | "completed"
-  | "dismissed"
-  | "media-removed"
   | "playback-started"
   | "playback-stopped"
-  | "progress-checkpoint"
   | "restored"
   | "snapshot-imported"
   | "watched"
@@ -66,7 +63,36 @@ export interface PlaybackAuditEvent {
   readonly anilistMediaId: number | null;
   readonly episode: number | null;
   readonly totalEpisodes: number | null;
+  readonly sessionSeconds: number | null;
   readonly revertsEventId: number | null;
+  readonly createdAt: number;
+}
+
+export interface UploadActivityState {
+  readonly kind: "upload";
+  readonly path: string;
+  readonly size: number;
+}
+
+export interface MappingActivityState {
+  readonly kind: "mapping";
+  readonly key: string;
+  readonly provider: string;
+  readonly mediaId: number;
+  readonly anilistId: number | null;
+  readonly title: string;
+}
+
+export type LibraryActivityState = MappingActivityState | UploadActivityState;
+
+export interface LibraryActivityEvent {
+  readonly id: number;
+  readonly actorUserId: number;
+  readonly actorUsername: string;
+  readonly action: "mapping-updated" | "media-uploaded";
+  readonly subject: string;
+  readonly previous: LibraryActivityState | null;
+  readonly next: LibraryActivityState;
   readonly createdAt: number;
 }
 

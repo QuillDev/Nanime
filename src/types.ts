@@ -9,6 +9,9 @@ export type {
   AniListListEntry,
   AuthUser,
   LibraryStatus,
+  LibraryActivityEvent,
+  LibraryActivityState,
+  MappingActivityState,
   MediaEntry,
   MetadataRefreshStatus,
   NyaaSearchResult,
@@ -22,6 +25,7 @@ export type {
   TorrentStatus,
   TranscodePreset,
   TvmazeEpisode,
+  UploadActivityState,
 } from "../shared/types.ts";
 
 export interface SubtitleTrack {

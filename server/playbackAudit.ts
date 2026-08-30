@@ -33,6 +33,7 @@ interface AuditRow {
   readonly anilist_media_id: number | null;
   readonly episode: number | null;
   readonly total_episodes: number | null;
+  readonly session_seconds: number | null;
   readonly reverts_event_id: number | null;
   readonly created_at: number;
 }
@@ -44,6 +45,7 @@ interface PlaybackMutation {
   readonly action: PlaybackAuditAction;
   readonly origin: PlaybackAuditOrigin;
   readonly revertsEventId?: number | null;
+  readonly sessionSeconds?: number | null;
   readonly recordAudit?: boolean;
   readonly anilistTarget?: {
     readonly mediaId: number;
@@ -80,17 +82,18 @@ const deleteProgress = database.query<void, [number, string]>(`
 `);
 const insertAudit = database.query<void, [
   number, number | null, string, string, PlaybackAuditAction, PlaybackAuditOrigin,
-  string | null, string | null, number | null, number | null, number | null, number | null, number,
+  string | null, string | null, number | null, number | null, number | null, number | null,
+  number | null, number,
 ]>(`
   INSERT INTO playback_audit_log (
     user_id, actor_user_id, actor_username, rel, action, origin,
     previous_state, next_state, anilist_media_id, episode, total_episodes,
-    reverts_event_id, created_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    session_seconds, reverts_event_id, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const listAudit = database.query<AuditRow, [number, number]>(`
   SELECT id, user_id, actor_user_id, actor_username, rel, action, origin,
-    previous_state, next_state, anilist_media_id, episode, total_episodes,
+    previous_state, next_state, anilist_media_id, episode, total_episodes, session_seconds,
     reverts_event_id, created_at
   FROM playback_audit_log
   WHERE user_id = ?
@@ -99,7 +102,7 @@ const listAudit = database.query<AuditRow, [number, number]>(`
 `);
 const listAuditForMedia = database.query<AuditRow, [number, string, number]>(`
   SELECT id, user_id, actor_user_id, actor_username, rel, action, origin,
-    previous_state, next_state, anilist_media_id, episode, total_episodes,
+    previous_state, next_state, anilist_media_id, episode, total_episodes, session_seconds,
     reverts_event_id, created_at
   FROM playback_audit_log
   WHERE user_id = ? AND rel = ?
@@ -108,18 +111,10 @@ const listAuditForMedia = database.query<AuditRow, [number, string, number]>(`
 `);
 const getAudit = database.query<AuditRow, [number, number]>(`
   SELECT id, user_id, actor_user_id, actor_username, rel, action, origin,
-    previous_state, next_state, anilist_media_id, episode, total_episodes,
+    previous_state, next_state, anilist_media_id, episode, total_episodes, session_seconds,
     reverts_event_id, created_at
   FROM playback_audit_log
   WHERE id = ? AND user_id = ?
-`);
-const latestPlaybackState = database.query<{ readonly next_state: string }, [number, string]>(`
-  SELECT next_state
-  FROM playback_audit_log
-  WHERE user_id = ? AND rel = ? AND next_state IS NOT NULL
-    AND action IN ('completed', 'playback-started', 'playback-stopped', 'progress-checkpoint')
-  ORDER BY created_at DESC, id DESC
-  LIMIT 1
 `);
 const auditCount = database.query<{ readonly count: number }, []>(`
   SELECT COUNT(*) AS count FROM playback_audit_log
@@ -173,6 +168,7 @@ function eventFromRow(row: AuditRow): PlaybackAuditEvent {
     anilistMediaId: row.anilist_media_id,
     episode: row.episode,
     totalEpisodes: row.total_episodes,
+    sessionSeconds: row.session_seconds,
     revertsEventId: row.reverts_event_id,
     createdAt: row.created_at,
   };
@@ -213,6 +209,7 @@ const commitMutation = database.transaction((mutation: PlaybackMutation) => {
       mutation.anilistTarget?.mediaId ?? null,
       mutation.anilistTarget?.episode ?? null,
       mutation.anilistTarget?.totalEpisodes ?? null,
+      mutation.sessionSeconds ?? null,
       mutation.revertsEventId ?? null,
       createdAt,
     );
@@ -235,6 +232,7 @@ const importExistingSnapshots = database.transaction(() => {
       "migration",
       null,
       storedState(progress),
+      null,
       null,
       null,
       null,
@@ -270,29 +268,6 @@ export function playbackAuditEvent(userId: number, id: number): PlaybackAuditEve
   return row === null ? null : eventFromRow(row);
 }
 
-export function shouldRecordPlaybackCheckpoint(
-  options: {
-    readonly userId: number;
-    readonly rel: string;
-    readonly position: number;
-    readonly duration: number;
-  },
-): boolean {
-  const { userId, rel, position, duration } = options;
-  const row = latestPlaybackState.get(userId, rel);
-  if (row === null) {
-    return true;
-  }
-  const previous = parsedState(row.next_state);
-  if (previous === null) {
-    return true;
-  }
-  const positionChanged = Math.abs(position - previous.position) >= 300;
-  const previousRatio = previous.duration > 0 ? previous.position / previous.duration : 0;
-  const currentRatio = duration > 0 ? position / duration : 0;
-  return positionChanged || Math.abs(currentRatio - previousRatio) >= 0.1;
-}
-
 export function restorePlaybackAuditEvent(
   event: PlaybackAuditEvent,
   actor: PlaybackActor,
@@ -304,6 +279,7 @@ export function restorePlaybackAuditEvent(
     action: "restored",
     origin: "history",
     revertsEventId: event.id,
+    sessionSeconds: null,
     anilistTarget: event.anilistMediaId === null || event.episode === null
       ? null
       : {
@@ -327,8 +303,9 @@ export function removePlaybackForMedia(
         userId: owner.user_id,
         actor,
         rel: owner.rel,
-        action: "media-removed",
+        action: "playback-stopped",
         origin: "media-library",
+        recordAudit: false,
         next: () => null,
       });
     }

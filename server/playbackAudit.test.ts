@@ -9,9 +9,7 @@ afterAll(async () => {
   await rm(temporaryDirectory, { recursive: true });
 });
 
-test("keeps semantic playback history immutable and restorable", async () => {
-  const databasePath = join(temporaryDirectory, "audit.sqlite");
-  const script = String.raw`
+const auditScript = String.raw`
     import { database } from "./server/database.ts";
     database.query("INSERT INTO users (username, is_admin, created_at) VALUES (?, 0, ?)")
       .run("viewer", Date.now());
@@ -23,8 +21,8 @@ test("keeps semantic playback history immutable and restorable", async () => {
       playbackAuditForUser,
       playbackProgressForUser,
       restorePlaybackAuditEvent,
-      shouldRecordPlaybackCheckpoint,
     } = await import("./server/playbackAudit.ts");
+    const { recordMappingActivity, recordUploadActivity } = await import("./server/libraryActivity.ts");
     const actor = { id: user.id, username: user.username };
     const initial = {
       rel: "Example/episode-01.mkv",
@@ -43,20 +41,23 @@ test("keeps semantic playback history immutable and restorable", async () => {
       anilistTarget: { mediaId: 42, episode: 1, totalEpisodes: 12 },
       next: () => initial,
     });
-    const smallCheckpoint = shouldRecordPlaybackCheckpoint({
-      userId: user.id, rel: initial.rel, position: 60, duration: 1200,
-    });
-    const meaningfulCheckpoint = shouldRecordPlaybackCheckpoint({
-      userId: user.id, rel: initial.rel, position: 301, duration: 1200,
+    mutatePlayback({
+      userId: user.id,
+      actor,
+      rel: initial.rel,
+      action: "playback-stopped",
+      origin: "player",
+      recordAudit: false,
+      next: (previous) => ({ ...previous, position: 60, updatedAt: Date.now() }),
     });
     mutatePlayback({
       userId: user.id,
       actor,
       rel: initial.rel,
-      action: "progress-checkpoint",
+      action: "playback-stopped",
       origin: "player",
-      recordAudit: false,
-      next: (previous) => ({ ...previous, position: 60, updatedAt: Date.now() }),
+      sessionSeconds: 90,
+      next: (previous) => previous,
     });
     mutatePlayback({
       userId: user.id,
@@ -70,15 +71,31 @@ test("keeps semantic playback history immutable and restorable", async () => {
     const watchedEvent = playbackAuditForUser(user.id, 10, initial.rel)[0];
     const restored = restorePlaybackAuditEvent(watchedEvent, actor);
     const events = playbackAuditForUser(user.id, 10, initial.rel);
+    recordUploadActivity(actor, "Example/uploaded.mkv", 2048);
+    const mapped = {
+      provider: "anilist",
+      id: 42,
+      anilistId: 42,
+      title: { english: "Example", romaji: "Example" },
+    };
+    recordMappingActivity({
+      actor,
+      key: "show:Example",
+      previous: undefined,
+      next: mapped,
+      write: () => database.query("INSERT INTO media_metadata (key, payload, updated_at) VALUES (?, ?, ?)")
+        .run("show:Example", JSON.stringify(mapped), Date.now()),
+    });
     let updateBlocked = false;
     let deleteBlocked = false;
+    let activityDeleteBlocked = false;
     try { database.run("UPDATE playback_audit_log SET action = 'unwatched'"); }
     catch { updateBlocked = true; }
     try { database.run("DELETE FROM playback_audit_log"); }
     catch { deleteBlocked = true; }
+    try { database.run("DELETE FROM library_activity_log"); }
+    catch { activityDeleteBlocked = true; }
     console.log(JSON.stringify({
-      smallCheckpoint,
-      meaningfulCheckpoint,
       restored,
       current: playbackProgressForUser(user.id),
       events,
@@ -86,10 +103,15 @@ test("keeps semantic playback history immutable and restorable", async () => {
       importedCount: database.query("SELECT COUNT(*) AS count FROM playback_audit_log WHERE action = 'snapshot-imported'").get().count,
       updateBlocked,
       deleteBlocked,
+      activityDeleteBlocked,
+      libraryActions: database.query("SELECT action FROM library_activity_log ORDER BY id").all(),
     }));
-  `;
+`;
+
+test("keeps semantic playback history immutable and restorable", async () => {
+  const databasePath = join(temporaryDirectory, "audit.sqlite");
   const child = Bun.spawn({
-    cmd: [process.execPath, "--eval", script],
+    cmd: [process.execPath, "--eval", auditScript],
     cwd: process.cwd(),
     env: {
       ...process.env,
@@ -107,34 +129,40 @@ test("keeps semantic playback history immutable and restorable", async () => {
   expect(stderr).toBe("");
   expect(exitCode).toBe(0);
   const result = JSON.parse(stdout) as {
-    readonly smallCheckpoint: boolean;
-    readonly meaningfulCheckpoint: boolean;
     readonly restored: { readonly completed: boolean };
     readonly current: readonly { readonly completed: boolean }[];
     readonly events: readonly {
       readonly action: string;
       readonly anilistMediaId: number | null;
       readonly revertsEventId: number | null;
+      readonly sessionSeconds: number | null;
     }[];
     readonly eventCount: number;
     readonly importedCount: number;
     readonly updateBlocked: boolean;
     readonly deleteBlocked: boolean;
+    readonly activityDeleteBlocked: boolean;
+    readonly libraryActions: readonly { readonly action: string }[];
   };
-  expect(result.smallCheckpoint).toBe(false);
-  expect(result.meaningfulCheckpoint).toBe(true);
   expect(result.restored.completed).toBe(false);
   expect(result.current).toHaveLength(2);
   expect(result.current.find((progress) => !progress.completed)?.completed).toBe(false);
   expect(result.events.map((event) => event.action)).toEqual([
     "restored",
     "watched",
+    "playback-stopped",
     "playback-started",
   ]);
-  expect(result.events[0]?.revertsEventId).toBe(3);
+  expect(result.events[0]?.revertsEventId).toBe(4);
   expect(result.events[1]?.anilistMediaId).toBe(42);
-  expect(result.eventCount).toBe(4);
+  expect(result.events[2]?.sessionSeconds).toBe(90);
+  expect(result.eventCount).toBe(5);
   expect(result.importedCount).toBe(1);
   expect(result.updateBlocked).toBe(true);
   expect(result.deleteBlocked).toBe(true);
+  expect(result.activityDeleteBlocked).toBe(true);
+  expect(result.libraryActions.map((event) => event.action)).toEqual([
+    "media-uploaded",
+    "mapping-updated",
+  ]);
 });

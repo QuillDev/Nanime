@@ -11,6 +11,7 @@ import {
   credentialsSchema,
   mediaEntrySchema,
   libraryStatusSchema,
+  libraryActivityEventSchema,
   metadataRefreshStatusSchema,
   mediaScanSchema,
   nyaaSearchResultSchema,
@@ -118,6 +119,7 @@ const playbackUpdateSchema = schema.object({
   episode: schema.optional(schema.integer({ minimum: 1 })),
   totalEpisodes: optionalEpisodeCountSchema,
   event: schema.optional(playbackEventSchema),
+  sessionSeconds: schema.optional(schema.number({ minimum: 0 })),
 });
 const playbackDismissSchema = schema.object({ rel: schema.string({ minLength: 1 }) });
 const playbackWatchedSchema = schema.object({
@@ -136,6 +138,9 @@ const nullablePlaybackProgressSchema = schema.union([
   playbackProgressSchema,
   schema.nullValue(),
 ]);
+const libraryActivityQuerySchema = schema.object({
+  limit: schema.optional(schema.string()),
+});
 const aniListUpdateSchema = schema.object({
   status: schema.optional(schema.string()),
   progress: schema.optional(schema.integer({ minimum: 0 })),
@@ -232,6 +237,10 @@ export const app = new Elysia({ name: "nanime" })
   })
   .get("/api/library/status", ({ request, server }) => handle(request, server), {
     response: libraryStatusSchema,
+  })
+  .get("/api/library/activity", ({ request, server }) => handle(request, server), {
+    query: libraryActivityQuerySchema,
+    response: schema.array(libraryActivityEventSchema),
   })
   .post("/api/library/refresh", ({ request, server }) => handle(request, server), {
     response: libraryStatusSchema,

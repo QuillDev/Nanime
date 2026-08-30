@@ -28,6 +28,7 @@ import { torrentsResponse } from "./torrents.ts";
 import { mediaAdminResponse } from "./mediaAdmin.ts";
 import {
   libraryStatusResponse,
+  libraryActivityResponse,
   listMedia,
   refreshLibraryResponse,
 } from "./mediaLibrary.ts";
@@ -323,6 +324,7 @@ const DIRECT_ADMIN_ROUTES = new Set([
   "GET /api/anilist/search",
   "GET /api/jikan/search",
   "GET /api/library/status",
+  "GET /api/library/activity",
   "GET /api/metadata/refresh",
   "POST /api/anilist/link",
   "POST /api/jikan/link",
@@ -332,16 +334,17 @@ const DIRECT_ADMIN_ROUTES = new Set([
 ]);
 
 function directAdminResponse(context: RouteContext): Response | Promise<Response> {
-  const { pathname, url, req } = context;
+  const { pathname, url, req, user } = context;
   switch (`${req.method} ${pathname}`) {
     case "GET /api/library/status": { return libraryStatusResponse(); }
     case "POST /api/library/refresh": { return refreshLibraryResponse({ mediaDir: MEDIA_DIR, videoExtensions: VIDEO_EXTS, directPlayExtensions: DIRECT_PLAY }); }
     case "GET /api/anilist/search": { return searchAniListResponse(url); }
-    case "POST /api/anilist/link": { return linkAniListResponse(req); }
+    case "POST /api/anilist/link": { return linkAniListResponse(req, user); }
     case "GET /api/jikan/search": { return searchJikanResponse(url); }
-    case "POST /api/jikan/link": { return linkJikanResponse(req); }
+    case "POST /api/jikan/link": { return linkJikanResponse(req, user); }
     case "GET /api/metadata/refresh": { return metadataRefreshStatusResponse(); }
-    case "PUT /api/metadata/anilist-id": { return updateMetadataAniListIdResponse(req); }
+    case "PUT /api/metadata/anilist-id": { return updateMetadataAniListIdResponse(req, user); }
+    case "GET /api/library/activity": { return libraryActivityResponse(url); }
     case "POST /api/metadata/refresh": { return startMetadataRefreshResponse(); }
     default: { return new Response("Not found", { status: 404 }); }
   }

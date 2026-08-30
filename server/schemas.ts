@@ -81,9 +81,8 @@ export const playbackAuditEventSchema = object({
   actorUsername: string(),
   rel: string(),
   action: union([
-    literal("completed"), literal("dismissed"), literal("media-removed"),
-    literal("playback-started"), literal("playback-stopped"),
-    literal("progress-checkpoint"), literal("restored"),
+    literal("completed"), literal("playback-started"), literal("playback-stopped"),
+    literal("restored"),
     literal("snapshot-imported"), literal("watched"), literal("unwatched"),
   ]),
   origin: union([
@@ -96,7 +95,35 @@ export const playbackAuditEventSchema = object({
   anilistMediaId: nullableNumber,
   episode: nullableNumber,
   totalEpisodes: nullableNumber,
+  sessionSeconds: nullableNumber,
   revertsEventId: nullableNumber,
+  createdAt: number(),
+});
+const mappingActivityStateSchema = object({
+  kind: literal("mapping"),
+  key: string(),
+  provider: string(),
+  mediaId: number(),
+  anilistId: nullableNumber,
+  title: string(),
+});
+const uploadActivityStateSchema = object({
+  kind: literal("upload"),
+  path: string(),
+  size: number(),
+});
+const libraryActivityStateSchema = union([
+  mappingActivityStateSchema,
+  uploadActivityStateSchema,
+]);
+export const libraryActivityEventSchema = object({
+  id: number(),
+  actorUserId: number(),
+  actorUsername: string(),
+  action: union([literal("mapping-updated"), literal("media-uploaded")]),
+  subject: string(),
+  previous: union([libraryActivityStateSchema, nullValue()]),
+  next: libraryActivityStateSchema,
   createdAt: number(),
 });
 

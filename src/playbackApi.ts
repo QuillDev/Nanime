@@ -19,6 +19,7 @@ export interface PlaybackProgressUpdate {
   readonly episode?: number;
   readonly totalEpisodes?: number | null;
   readonly event?: "completed" | "heartbeat" | "seeked" | "started" | "stopped";
+  readonly sessionSeconds?: number;
 }
 
 export interface PlaybackWatchedUpdate {

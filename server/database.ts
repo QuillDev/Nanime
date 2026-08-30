@@ -136,6 +136,7 @@ database.run(`
     anilist_media_id INTEGER,
     episode INTEGER,
     total_episodes INTEGER,
+    session_seconds REAL,
     reverts_event_id INTEGER,
     created_at INTEGER NOT NULL
   )
@@ -160,6 +161,36 @@ database.run(`
   BEFORE DELETE ON playback_audit_log
   BEGIN
     SELECT RAISE(ABORT, 'playback audit entries are immutable');
+  END
+`);
+database.run(`
+  CREATE TABLE IF NOT EXISTS library_activity_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_user_id INTEGER NOT NULL,
+    actor_username TEXT NOT NULL,
+    action TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    previous_state TEXT,
+    next_state TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )
+`);
+database.run(`
+  CREATE INDEX IF NOT EXISTS library_activity_created
+  ON library_activity_log(created_at DESC, id DESC)
+`);
+database.run(`
+  CREATE TRIGGER IF NOT EXISTS library_activity_log_no_update
+  BEFORE UPDATE ON library_activity_log
+  BEGIN
+    SELECT RAISE(ABORT, 'library activity entries are immutable');
+  END
+`);
+database.run(`
+  CREATE TRIGGER IF NOT EXISTS library_activity_log_no_delete
+  BEFORE DELETE ON library_activity_log
+  BEGIN
+    SELECT RAISE(ABORT, 'library activity entries are immutable');
   END
 `);
 const currentPlaybackColumns = database

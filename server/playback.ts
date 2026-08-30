@@ -7,7 +7,6 @@ import {
   playbackProgressForUser,
   removePlaybackForMedia,
   restorePlaybackAuditEvent,
-  shouldRecordPlaybackCheckpoint,
   type PlaybackActor,
 } from "./playbackAudit.ts";
 
@@ -20,6 +19,7 @@ interface PlaybackUpdate {
   readonly episode?: unknown;
   readonly totalEpisodes?: unknown;
   readonly event?: unknown;
+  readonly sessionSeconds?: unknown;
 }
 
 type PlaybackSaveEvent = "completed" | "heartbeat" | "seeked" | "started" | "stopped";
@@ -57,8 +57,9 @@ export async function dismissPlaybackProgress(req: Request, actor: PlaybackActor
     userId: actor.id,
     actor,
     rel: body.rel,
-    action: "dismissed",
+    action: "playback-stopped",
     origin: "home",
+    recordAudit: false,
     next: (previous) => previous === null
       ? null
       : { ...previous, dismissedAt: Date.now(), updatedAt: Date.now() },
@@ -144,6 +145,7 @@ export async function updatePlaybackProgress(
   const { rel, duration, completed } = body;
   const auditTarget = playbackTargetIdentity(body);
   const saveEvent = playbackSaveEvent(body.event, completed);
+  const sessionSeconds = validNumber(body.sessionSeconds) ? body.sessionSeconds : null;
   const progress = mutatePlayback({
     userId: actor.id,
     actor,
@@ -151,12 +153,9 @@ export async function updatePlaybackProgress(
     action: playbackAuditAction(saveEvent),
     origin: "player",
     anilistTarget: auditTarget,
-    recordAudit: saveEvent !== "heartbeat" || shouldRecordPlaybackCheckpoint({
-      userId: actor.id,
-      rel,
-      position,
-      duration,
-    }),
+    sessionSeconds,
+    recordAudit: saveEvent === "started" || saveEvent === "completed" ||
+      saveEvent === "stopped" && sessionSeconds !== null,
     next: () => ({
       rel,
       position,
@@ -190,7 +189,7 @@ function playbackAuditAction(event: PlaybackSaveEvent) {
   if (event === "stopped") {
     return "playback-stopped" as const;
   }
-  return event === "completed" ? "completed" as const : "progress-checkpoint" as const;
+  return event === "completed" ? "completed" as const : "playback-stopped" as const;
 }
 
 function watchedOrigin(value: unknown): WatchedOrigin {
