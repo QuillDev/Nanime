@@ -27,6 +27,12 @@ interface PlaybackUpdateOptions {
   readonly sync?: (target: AniListPlaybackTarget) => Promise<void>;
 }
 
+interface PlaybackSyncFields {
+  readonly anilistMediaId?: unknown;
+  readonly episode?: unknown;
+  readonly totalEpisodes?: unknown;
+}
+
 const listProgress = database.query<PlaybackRow, [number]>(`
   SELECT rel, position, duration, completed, updated_at, dismissed_at
   FROM playback_progress
@@ -132,21 +138,7 @@ export async function setPlaybackWatchedState(
     progress.completed ? 1 : 0,
     progress.updatedAt,
   );
-  if (
-    options.sync !== undefined &&
-    Number.isInteger(body.anilistMediaId) && (body.anilistMediaId as number) > 0 &&
-    Number.isInteger(body.episode) && (body.episode as number) > 0 &&
-    (body.totalEpisodes === null ||
-      Number.isInteger(body.totalEpisodes) && (body.totalEpisodes as number) > 0)
-  ) {
-    await options.sync({
-      mediaId: body.anilistMediaId as number,
-      episode: body.episode as number,
-      totalEpisodes: body.totalEpisodes as number | null,
-      completed: body.watched,
-      allowDecrease: true,
-    }).catch(() => undefined);
-  }
+  await syncPlayback(options, playbackSyncTarget(body, progress.completed, true));
   return Response.json(progress);
 }
 
@@ -191,19 +183,36 @@ export async function updatePlaybackProgress(
     progress.completed ? 1 : 0,
     progress.updatedAt,
   );
-  if (
-    options.sync !== undefined &&
-    Number.isInteger(body.anilistMediaId) && (body.anilistMediaId as number) > 0 &&
-    Number.isInteger(body.episode) && (body.episode as number) > 0 &&
-    (body.totalEpisodes === null ||
-      Number.isInteger(body.totalEpisodes) && (body.totalEpisodes as number) > 0)
-  ) {
-    await options.sync({
-      mediaId: body.anilistMediaId as number,
-      episode: body.episode as number,
-      totalEpisodes: body.totalEpisodes as number | null,
-      completed: progress.completed,
-    }).catch(() => undefined);
-  }
+  await syncPlayback(options, playbackSyncTarget(body, progress.completed, false));
   return Response.json(progress);
+}
+
+function playbackSyncTarget(
+  fields: PlaybackSyncFields,
+  completed: boolean,
+  allowDecrease: boolean,
+): AniListPlaybackTarget | null {
+  if (!Number.isInteger(fields.anilistMediaId) || (fields.anilistMediaId as number) <= 0 ||
+    !Number.isInteger(fields.episode) || (fields.episode as number) <= 0 ||
+    fields.totalEpisodes !== null && (
+      !Number.isInteger(fields.totalEpisodes) || (fields.totalEpisodes as number) <= 0
+    )) {
+    return null;
+  }
+  return {
+    mediaId: fields.anilistMediaId as number,
+    episode: fields.episode as number,
+    totalEpisodes: fields.totalEpisodes as number | null,
+    completed,
+    allowDecrease,
+  };
+}
+
+async function syncPlayback(
+  options: PlaybackUpdateOptions,
+  target: AniListPlaybackTarget | null,
+): Promise<void> {
+  if (options.sync !== undefined && target !== null) {
+    await options.sync(target).catch(() => undefined);
+  }
 }

@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import type { MetadataRefreshStatus } from "../shared/types.ts";
 import { database } from "./database.ts";
 import { aniListGraphQl } from "./anilistClient.ts";
-import { jsonObject } from "./json.ts";
+import { jsonObject, type JsonObject } from "./json.ts";
 import type { AnimeMetadata, MetadataStore } from "./metadataTypes.ts";
 import { fetchJikanMedia, searchJikan } from "./jikan.ts";
 import { matchTvmaze, plainText } from "./tvmaze.ts";
@@ -90,25 +90,39 @@ function mediaDate(value: unknown): AnimeMetadata["startDate"] {
   };
 }
 
+function validMediaIdentity(
+  media: JsonObject,
+  title: JsonObject | null,
+  coverImage: JsonObject | null,
+): boolean {
+  return typeof media["id"] === "number" &&
+    nullableNumber(media["idMal"]) &&
+    nullableString(title?.["english"]) && typeof title?.["romaji"] === "string" &&
+    nullableString(title["native"]) &&
+    nullableString(coverImage?.["extraLarge"]) && nullableString(coverImage?.["large"]) &&
+    nullableString(coverImage?.["color"]);
+}
+
+function validMediaDetails(media: JsonObject): boolean {
+  return nullableString(media["description"]) && nullableString(media["bannerImage"]) &&
+    typeof media["siteUrl"] === "string" && nullableNumber(media["episodes"]) &&
+    nullableNumber(media["duration"]) && nullableString(media["season"]) &&
+    nullableNumber(media["seasonYear"]) && nullableString(media["format"]) &&
+    nullableString(media["status"]) && nullableNumber(media["averageScore"]);
+}
+
+function validMediaCollections(media: JsonObject): boolean {
+  return Array.isArray(media["genres"]) &&
+    media["genres"].every((genre) => typeof genre === "string") &&
+    Array.isArray(media["streamingEpisodes"]);
+}
+
 function mediaFromUnknown(value: unknown): AnimeMetadata | null {
   const media = jsonObject(value);
   const title = jsonObject(media?.["title"]);
   const coverImage = jsonObject(media?.["coverImage"]);
-  if (
-    typeof media?.["id"] !== "number" ||
-    !nullableNumber(media["idMal"]) ||
-    !nullableString(title?.["english"]) || typeof title?.["romaji"] !== "string" ||
-    !nullableString(title["native"]) ||
-    !nullableString(coverImage?.["extraLarge"]) || !nullableString(coverImage?.["large"]) ||
-    !nullableString(coverImage?.["color"]) || !nullableString(media["description"]) ||
-    !nullableString(media["bannerImage"]) || typeof media["siteUrl"] !== "string" ||
-    !nullableNumber(media["episodes"]) || !nullableNumber(media["duration"]) ||
-    !nullableString(media["season"]) || !nullableNumber(media["seasonYear"]) ||
-    !nullableString(media["format"]) || !nullableString(media["status"]) ||
-    !nullableNumber(media["averageScore"]) ||
-    !Array.isArray(media["genres"]) || !media["genres"].every((genre) => typeof genre === "string") ||
-    !Array.isArray(media["streamingEpisodes"])
-  ) {
+  if (media === null || !validMediaIdentity(media, title, coverImage) ||
+    !validMediaDetails(media) || !validMediaCollections(media)) {
     return null;
   }
   const provider = media["provider"] === "jikan" ? "jikan" : "anilist";

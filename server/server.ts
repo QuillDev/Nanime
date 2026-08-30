@@ -67,7 +67,6 @@ const MIME = new Map(Object.entries({
   ".flv": "video/x-flv", ".mpg": "video/mpeg", ".mpeg": "video/mpeg",
   ".ogv": "video/ogg", ".3gp": "video/3gpp",
 } as const));
-
 const thumbnailCache = new Map<string, Promise<ArrayBuffer | null>>();
 let activeThumbnailJobs = 0;
 async function safePath(rel: string | null): Promise<string | null> {
@@ -203,7 +202,7 @@ async function serveStatic(pathname: string): Promise<Response> {
 }
 
 async function handleMedia(context: RouteContext): Promise<Response> {
-  const { pathname, url, req, user } = context;
+  const { pathname, url, user } = context;
   if (pathname === "/hls/seg") {
     return hlsSegmentResponse(
       url.searchParams.get("session"),
@@ -215,6 +214,11 @@ async function handleMedia(context: RouteContext): Promise<Response> {
   if (abs === null || !VIDEO_EXTS.has(extname(abs).toLowerCase())) {
     return new Response("Not found", { status: 404 });
   }
+  return resolvedMediaResponse(context, abs);
+}
+
+async function resolvedMediaResponse(context: RouteContext, abs: string): Promise<Response> {
+  const { pathname, url, req } = context;
   if (pathname === "/stream") {
     return streamFile(abs, req);
   }
@@ -231,6 +235,11 @@ async function handleMedia(context: RouteContext): Promise<Response> {
   if (pathname === "/api/audio-tracks" && req.method === "GET") {
     return audioTracksResponse(abs, url.searchParams.get("path") ?? "");
   }
+  return timedMediaResponse(context, abs);
+}
+
+async function timedMediaResponse(context: RouteContext, abs: string): Promise<Response> {
+  const { pathname, url, user } = context;
   if (pathname === "/subtitle") {
     const index = Number(url.searchParams.get("index") ?? "");
     const offset = Number(url.searchParams.get("offset") ?? "0");
@@ -273,9 +282,13 @@ interface RouteContext {
   readonly req: Request;
   readonly user: AuthUser;
 }
-
 async function libraryRoute(context: RouteContext): Promise<Response | null> {
-  const { pathname, url, req, user } = context;
+  const information = await libraryInformationRoute(context);
+  return information ?? playbackRoute(context);
+}
+
+async function libraryInformationRoute(context: RouteContext): Promise<Response | null> {
+  const { pathname, url, req } = context;
   if (pathname === "/api/list" && req.method === "GET") {
     return Response.json(await listMedia({
       mediaDir: MEDIA_DIR,
@@ -300,6 +313,11 @@ async function libraryRoute(context: RouteContext): Promise<Response | null> {
     }
     return trickplayManifestResponse(abs, await probeDuration(abs));
   }
+  return null;
+}
+
+function playbackRoute(context: RouteContext): Response | Promise<Response> | null {
+  const { pathname, req, user } = context;
   if (pathname === "/api/progress" && req.method === "GET") {
     return playbackProgressResponse(user.id);
   }
@@ -324,60 +342,42 @@ async function libraryRoute(context: RouteContext): Promise<Response | null> {
   return null;
 }
 
+const DIRECT_ADMIN_ROUTES = new Set([
+  "GET /api/anilist/search",
+  "GET /api/jikan/search",
+  "GET /api/library/status",
+  "GET /api/metadata/refresh",
+  "POST /api/anilist/link",
+  "POST /api/jikan/link",
+  "POST /api/library/refresh",
+  "POST /api/metadata/refresh",
+  "PUT /api/metadata/anilist-id",
+]);
+
+function directAdminResponse(context: RouteContext): Response | Promise<Response> {
+  const { pathname, url, req } = context;
+  switch (`${req.method} ${pathname}`) {
+    case "GET /api/library/status": { return libraryStatusResponse(); }
+    case "POST /api/library/refresh": { return refreshLibraryResponse({ mediaDir: MEDIA_DIR, videoExtensions: VIDEO_EXTS, directPlayExtensions: DIRECT_PLAY }); }
+    case "GET /api/anilist/search": { return searchAniListResponse(url); }
+    case "POST /api/anilist/link": { return linkAniListResponse(req); }
+    case "GET /api/jikan/search": { return searchJikanResponse(url); }
+    case "POST /api/jikan/link": { return linkJikanResponse(req); }
+    case "GET /api/metadata/refresh": { return metadataRefreshStatusResponse(); }
+    case "PUT /api/metadata/anilist-id": { return updateMetadataAniListIdResponse(req); }
+    case "POST /api/metadata/refresh": { return startMetadataRefreshResponse(); }
+    default: { return new Response("Not found", { status: 404 }); }
+  }
+}
+
 async function administrationRoute(context: RouteContext): Promise<Response | null> {
   const { pathname, url, req, user } = context;
-  if (pathname === "/api/library/status" && req.method === "GET") {
-    return user.isAdmin
-      ? libraryStatusResponse()
-      : new Response("Forbidden", { status: 403 });
-  }
-  if (pathname === "/api/library/refresh" && req.method === "POST") {
-    return user.isAdmin
-      ? refreshLibraryResponse({
-          mediaDir: MEDIA_DIR,
-          videoExtensions: VIDEO_EXTS,
-          directPlayExtensions: DIRECT_PLAY,
-        })
-      : new Response("Forbidden", { status: 403 });
-  }
   const aniListUser = await aniListUserResponse(pathname, req, user);
   if (aniListUser !== null) {
     return aniListUser;
   }
-  if (pathname === "/api/anilist/search" && req.method === "GET") {
-    return user.isAdmin
-      ? searchAniListResponse(url)
-      : new Response("Forbidden", { status: 403 });
-  }
-  if (pathname === "/api/anilist/link" && req.method === "POST") {
-    return user.isAdmin
-      ? linkAniListResponse(req)
-      : new Response("Forbidden", { status: 403 });
-  }
-  if (pathname === "/api/jikan/search" && req.method === "GET") {
-    return user.isAdmin
-      ? searchJikanResponse(url)
-      : new Response("Forbidden", { status: 403 });
-  }
-  if (pathname === "/api/jikan/link" && req.method === "POST") {
-    return user.isAdmin
-      ? linkJikanResponse(req)
-      : new Response("Forbidden", { status: 403 });
-  }
-  if (pathname === "/api/metadata/refresh" && req.method === "GET") {
-    return user.isAdmin
-      ? metadataRefreshStatusResponse()
-      : new Response("Forbidden", { status: 403 });
-  }
-  if (pathname === "/api/metadata/anilist-id" && req.method === "PUT") {
-    return user.isAdmin
-      ? updateMetadataAniListIdResponse(req)
-      : new Response("Forbidden", { status: 403 });
-  }
-  if (pathname === "/api/metadata/refresh" && req.method === "POST") {
-    return user.isAdmin
-      ? startMetadataRefreshResponse()
-      : new Response("Forbidden", { status: 403 });
+  if (DIRECT_ADMIN_ROUTES.has(`${req.method} ${pathname}`)) {
+    return user.isAdmin ? directAdminResponse(context) : new Response("Forbidden", { status: 403 });
   }
   if (pathname === "/api/users" || pathname.startsWith("/api/users/")) {
     const requestedUserId = pathname === "/api/users" ? null : Number(pathname.slice(11));

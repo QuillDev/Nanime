@@ -86,6 +86,63 @@ function currentOAuthError(): string | undefined {
   return result === null ? undefined : OAUTH_ERRORS.get(result);
 }
 
+interface CredentialInputsProps {
+  readonly setupMode: boolean;
+  readonly username: string;
+  readonly password: string;
+  readonly confirmation: string;
+  readonly setupToken: string;
+  readonly onUsernameChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  readonly onPasswordChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  readonly onConfirmationChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  readonly onSetupTokenChange: (event: ChangeEvent<HTMLInputElement>) => void;
+}
+
+function CredentialInputs(props: CredentialInputsProps): React.JSX.Element {
+  return (
+    <>
+      <label htmlFor="login-username" className="mb-4 block text-sm font-medium">
+        Username
+        <Input id="login-username" autoComplete="username" value={props.username} onChange={props.onUsernameChange} className="mt-2" />
+      </label>
+      {props.setupMode && (
+        <label htmlFor="login-setup-token" className="mb-4 block text-sm font-medium">
+          One-time setup code
+          <Input type="password" id="login-setup-token" autoComplete="one-time-code" value={props.setupToken} onChange={props.onSetupTokenChange} className="mt-2" />
+        </label>
+      )}
+      <label htmlFor="login-password" className="mb-4 block text-sm font-medium">
+        {props.setupMode ? "Create password" : "Password"}
+        <Input type="password" id="login-password" minLength={props.setupMode ? 15 : undefined} autoComplete={props.setupMode ? "new-password" : "current-password"} value={props.password} onChange={props.onPasswordChange} className="mt-2" />
+      </label>
+      {props.setupMode && (
+        <label htmlFor="login-confirmation" className="mb-4 block text-sm font-medium">
+          Confirm password
+          <Input type="password" id="login-confirmation" minLength={15} autoComplete="new-password" value={props.confirmation} onChange={props.onConfirmationChange} className="mt-2" />
+        </label>
+      )}
+    </>
+  );
+}
+
+function AniListLoginOption({ enabled, setupMode }: {
+  readonly enabled: boolean;
+  readonly setupMode: boolean;
+}): React.JSX.Element | null {
+  if (setupMode || !enabled) {
+    return null;
+  }
+  return (
+    <>
+      <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" /></div>
+      <a href="/api/auth/anilist/start" className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-background px-4 py-2.5 text-sm font-semibold hover:bg-accent">
+        <Link2 className="size-4 text-primary" />
+        Sign in with AniList
+      </a>
+    </>
+  );
+}
+
 export function LoginScreen(): React.JSX.Element {
   const { fields, setupMode, error, pending, handleSubmit, handleModeChange } = useLoginForm();
   const [username, handleUsernameChange] = fields.username;
@@ -109,55 +166,7 @@ export function LoginScreen(): React.JSX.Element {
             </p>
           </div>
         </div>
-        <label htmlFor="login-username" className="mb-4 block text-sm font-medium">
-          Username
-          <Input
-            id="login-username"
-            autoComplete="username"
-            value={username}
-            onChange={handleUsernameChange}
-            className="mt-2"
-          />
-        </label>
-        {setupMode && (
-          <label htmlFor="login-setup-token" className="mb-4 block text-sm font-medium">
-            One-time setup code
-            <Input
-              type="password"
-              id="login-setup-token"
-              autoComplete="one-time-code"
-              value={setupToken}
-              onChange={handleSetupTokenChange}
-              className="mt-2"
-            />
-          </label>
-        )}
-        <label htmlFor="login-password" className="mb-4 block text-sm font-medium">
-          {setupMode ? "Create password" : "Password"}
-          <Input
-            type="password"
-            id="login-password"
-            minLength={setupMode ? 15 : undefined}
-            autoComplete={setupMode ? "new-password" : "current-password"}
-            value={password}
-            onChange={handlePasswordChange}
-            className="mt-2"
-          />
-        </label>
-        {setupMode && (
-          <label htmlFor="login-confirmation" className="mb-4 block text-sm font-medium">
-            Confirm password
-            <Input
-              type="password"
-              id="login-confirmation"
-              minLength={15}
-              autoComplete="new-password"
-              value={confirmation}
-              onChange={handleConfirmationChange}
-              className="mt-2"
-            />
-            </label>
-        )}
+        <CredentialInputs setupMode={setupMode} username={username} password={password} confirmation={confirmation} setupToken={setupToken} onUsernameChange={handleUsernameChange} onPasswordChange={handlePasswordChange} onConfirmationChange={handleConfirmationChange} onSetupTokenChange={handleSetupTokenChange} />
         {setupMode && password !== confirmation && confirmation !== "" && (
           <p className="mb-4 text-sm text-destructive">Passwords do not match.</p>
         )}
@@ -181,22 +190,7 @@ export function LoginScreen(): React.JSX.Element {
         >
           {setupMode ? "Back to sign in" : "Activate a provisioned account"}
         </button>
-        {!setupMode && aniListConfig.data?.enabled === true && (
-          <>
-            <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground">
-              <span className="h-px flex-1 bg-border" />
-              or
-              <span className="h-px flex-1 bg-border" />
-            </div>
-            <a
-              href="/api/auth/anilist/start"
-              className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-background px-4 py-2.5 text-sm font-semibold hover:bg-accent"
-            >
-              <Link2 className="size-4 text-primary" />
-              Sign in with AniList
-            </a>
-          </>
-        )}
+        <AniListLoginOption enabled={aniListConfig.data?.enabled === true} setupMode={setupMode} />
       </form>
     </main>
   );

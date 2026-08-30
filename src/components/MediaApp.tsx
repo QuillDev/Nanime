@@ -69,6 +69,54 @@ function usePreparedEpisode(index: LibraryIndex, rel: string | null) {
   return { navigation, mediaDuration };
 }
 
+interface LibraryContentProps {
+  readonly library: ReturnType<typeof useLibrary>;
+  readonly index: LibraryIndex;
+  readonly progress: ReturnType<typeof usePlaybackProgress>;
+  readonly route: ReturnType<typeof useMediaRoute>;
+  readonly user: AuthUser;
+  readonly onSelect: (entry: MediaEntry) => void;
+  readonly onShowSelect: (show: ShowGroup) => void;
+}
+
+function LibraryContent({ library, index, progress, route, user, onSelect, onShowSelect }: LibraryContentProps): React.JSX.Element {
+  if (library.status === "pending" || library.status === "success" && index.metadataPending) {
+    return <LibrarySkeleton />;
+  }
+  if (library.status === "error") {
+    return <p className="py-16 text-center text-destructive">Failed to load library: {library.error.message}</p>;
+  }
+  if (index.metadataError !== null) {
+    return <p className="py-16 text-center text-destructive">Failed to load metadata: {index.metadataError.message}</p>;
+  }
+  return (
+    <Library entries={library.data} shows={index.shows} unmappedShows={index.unmappedShows} metadata={index.metadata} query={route.query} progress={progress.data ?? EMPTY_PROGRESS} selectedShowName={route.showName} onSelect={onSelect} onShowSelect={onShowSelect} onShowsBack={navigateToShows} canManageMappings={user.isAdmin} />
+  );
+}
+
+function PlayerLayer({
+  navigation,
+  progress,
+  mediaDuration,
+}: {
+  readonly navigation: ReturnType<typeof useEpisodeNavigation>;
+  readonly progress: ReturnType<typeof usePlaybackProgress>;
+  readonly mediaDuration: ReturnType<typeof useMediaDuration>;
+}): React.JSX.Element | null {
+  if (navigation.selected === null || progress.status === "pending") {
+    return null;
+  }
+  const initialProgress = progress.data?.[navigation.selected.rel];
+  const knownDuration = mediaDuration.status === "success"
+    ? mediaDuration.data
+    : initialProgress?.duration ?? 0;
+  return (
+    <Suspense fallback={PLAYER_LOADING}>
+      <Player key={navigation.selected.rel} entry={navigation.selected} episodeDisplay={navigation.display} anilistTarget={navigation.target} nextAvailable={navigation.next !== null} previousAvailable={navigation.previous !== null} initialProgress={initialProgress} knownDuration={knownDuration} onClose={closeEpisode} onNext={navigation.handleNext} onPrevious={navigation.handlePrevious} />
+    </Suspense>
+  );
+}
+
 export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
   const library = useLibrary();
   const playbackProgress = usePlaybackProgress();
@@ -97,54 +145,9 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
         onShowSelect={handleShowSelect}
       />
       <main className="mx-auto max-w-7xl px-6 py-6">
-        {(library.status === "pending" || library.status === "success" && index.metadataPending) && (
-          <LibrarySkeleton />
-        )}
-        {library.status === "error" && (
-          <p className="py-16 text-center text-destructive">
-            Failed to load library: {library.error.message}
-          </p>
-        )}
-        {library.status === "success" && index.metadataError !== null && (
-          <p className="py-16 text-center text-destructive">
-            Failed to load metadata: {index.metadataError.message}
-          </p>
-        )}
-        {library.status === "success" && !index.metadataPending && index.metadataError === null && (
-          <Library
-            entries={library.data}
-            shows={index.shows}
-            unmappedShows={index.unmappedShows}
-            metadata={index.metadata}
-            query={route.query}
-            progress={playbackProgress.data ?? EMPTY_PROGRESS}
-            selectedShowName={route.showName}
-            onSelect={handleSelect}
-            onShowSelect={handleShowSelect}
-            onShowsBack={navigateToShows}
-            canManageMappings={user.isAdmin}
-          />
-        )}
+        <LibraryContent library={library} index={index} progress={playbackProgress} route={route} user={user} onSelect={handleSelect} onShowSelect={handleShowSelect} />
       </main>
-      {navigation.selected !== null && playbackProgress.status !== "pending" && (
-        <Suspense fallback={PLAYER_LOADING}>
-          <Player
-            key={navigation.selected.rel}
-            entry={navigation.selected}
-            episodeDisplay={navigation.display}
-            anilistTarget={navigation.target}
-            nextAvailable={navigation.next !== null}
-            previousAvailable={navigation.previous !== null}
-            initialProgress={playbackProgress.data?.[navigation.selected.rel]}
-            knownDuration={mediaDuration.status === "success"
-              ? mediaDuration.data
-              : playbackProgress.data?.[navigation.selected.rel]?.duration ?? 0}
-            onClose={closeEpisode}
-            onNext={navigation.handleNext}
-            onPrevious={navigation.handlePrevious}
-          />
-        </Suspense>
-      )}
+      <PlayerLayer navigation={navigation} progress={playbackProgress} mediaDuration={mediaDuration} />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { database } from "./database.ts";
 import { createSessionRedirect, type AuthUser } from "./auth.ts";
 import { aniListGraphQl, type GraphQlVariables } from "./anilistClient.ts";
 import { jsonObject } from "./json.ts";
+import { loadOAuthConfig } from "./anilistOAuthConfig.ts";
 import type {
   AniListAccountRow,
   AniListListEntry,
@@ -25,7 +26,6 @@ import type {
 } from "./anilistAccountTypes.ts";
 
 export type { AniListListEntry, AniListPlaybackTarget } from "./anilistAccountTypes.ts";
-
 const ANILIST_AUTHORIZE_URL = "https://anilist.co/api/v2/oauth/authorize";
 const ANILIST_TOKEN_URL = "https://anilist.co/api/v2/oauth/token";
 const OAUTH_STATE_LIFETIME_MS = 10 * 60 * 1000;
@@ -33,7 +33,6 @@ const MAX_OAUTH_STATES = 10_000;
 const ANILIST_REQUEST_TIMEOUT_MS = 15_000;
 const SECURE_COOKIES = process.env["NANIME_SECURE_COOKIES"] !== "false";
 const STATE_COOKIE = "nanime_anilist_oauth";
-
 const insertOAuthState = database.query<void, [string, number | null, number, number]>(`
   INSERT INTO anilist_oauth_states (state_hash, user_id, expires_at, created_at)
   VALUES (?, ?, ?, ?)
@@ -102,43 +101,7 @@ const upsertSyncProgress = database.query<void, [number, number, number, string,
 `);
 
 deleteExpiredOAuthStates.run(Date.now());
-
-function oauthConfig(): OAuthConfig | null {
-  const clientId = process.env["NANIME_ANILIST_CLIENT_ID"] ?? "";
-  const clientSecret = process.env["NANIME_ANILIST_CLIENT_SECRET"] ?? "";
-  const redirectUri = process.env["NANIME_ANILIST_REDIRECT_URI"] ?? "";
-  const encodedKey = process.env["NANIME_TOKEN_ENCRYPTION_KEY"] ?? "";
-  if ([clientId, clientSecret, redirectUri, encodedKey].every((value) => value === "")) {
-    return null;
-  }
-  if ([clientId, clientSecret, redirectUri, encodedKey].some((value) => value === "")) {
-    throw new Error("All AniList OAuth environment variables must be configured together");
-  }
-  const tokenKey = Buffer.from(encodedKey, "base64");
-  if (!/^[A-Za-z\d+/]{43}=$/u.test(encodedKey) || tokenKey.byteLength !== 32) {
-    throw new Error("NANIME_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key");
-  }
-  const redirect = URL.parse(redirectUri);
-  if (redirect === null) {
-    throw new Error("NANIME_ANILIST_REDIRECT_URI must be an absolute URL");
-  }
-  if (redirect.protocol !== "https:" && SECURE_COOKIES) {
-    throw new Error("AniList OAuth requires an HTTPS redirect when secure cookies are enabled");
-  }
-  if (
-    redirect.pathname !== "/api/auth/anilist/callback" ||
-    redirect.search !== "" ||
-    redirect.hash !== ""
-  ) {
-    throw new Error("NANIME_ANILIST_REDIRECT_URI must use the AniList callback path");
-  }
-  const publicOrigin = (process.env["NANIME_PUBLIC_ORIGIN"] ?? "").replace(/\/$/u, "");
-  if (publicOrigin !== "" && publicOrigin !== redirect.origin) {
-    throw new Error("AniList redirect and NANIME_PUBLIC_ORIGIN must use the same origin");
-  }
-  return { clientId, clientSecret, redirectUri: redirect.href, tokenKey, appOrigin: redirect.origin };
-}
-const OAUTH_CONFIG = oauthConfig();
+const OAUTH_CONFIG = loadOAuthConfig(SECURE_COOKIES);
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -245,6 +208,45 @@ export function startAniListAuthResponse(user: AuthUser | null): Response {
   });
 }
 
+interface AccountUpdate {
+  readonly userId: number;
+  readonly viewer: ViewerData["Viewer"];
+  readonly token: Awaited<ReturnType<typeof exchangeCode>>;
+  readonly config: OAuthConfig;
+}
+
+function storeAccount({ userId, viewer, token, config }: AccountUpdate): void {
+  const now = Date.now();
+  upsertAccount.run(userId, viewer.id, viewer.name, viewer.avatar.large,
+    encryptToken(token.token, config), token.expiresAt, now, now);
+}
+
+function finishAniListSignIn(
+  viewer: ViewerData["Viewer"],
+  token: Awaited<ReturnType<typeof exchangeCode>>,
+  config: OAuthConfig,
+): Response {
+  const account = findAccountByAniListId.get(viewer.id);
+  if (account === null) {
+    return appRedirect(config, "not-linked");
+  }
+  storeAccount({ userId: account.user_id, viewer, token, config });
+  return createSessionRedirect(account.user_id, config.appOrigin);
+}
+
+function finishAniListLink({ userId, viewer, token, config }: AccountUpdate): Response {
+  const existing = findAccountByAniListId.get(viewer.id);
+  if (existing !== null && existing.user_id !== userId) {
+    return appRedirect(config, "already-linked");
+  }
+  const currentAccount = findAccount.get(userId);
+  if (currentAccount !== null && currentAccount.anilist_id !== viewer.id) {
+    deleteSyncProgress.run(userId);
+  }
+  storeAccount({ userId, viewer, token, config });
+  return appRedirect(config, "connected");
+}
+
 export async function aniListCallbackResponse(req: Request): Promise<Response> {
   const config = OAUTH_CONFIG;
   if (config === null) {
@@ -274,43 +276,9 @@ export async function aniListCallbackResponse(req: Request): Promise<Response> {
     );
     const viewer = viewerData.Viewer;
     if (storedState.user_id === null) {
-      const account = findAccountByAniListId.get(viewer.id);
-      if (account === null) {
-        return appRedirect(config, "not-linked");
-      }
-      const now = Date.now();
-      upsertAccount.run(
-        account.user_id,
-        viewer.id,
-        viewer.name,
-        viewer.avatar.large,
-        encryptToken(token.token, config),
-        token.expiresAt,
-        now,
-        now,
-      );
-      return createSessionRedirect(account.user_id, config.appOrigin);
+      return finishAniListSignIn(viewer, token, config);
     }
-    const existing = findAccountByAniListId.get(viewer.id);
-    if (existing !== null && existing.user_id !== storedState.user_id) {
-      return appRedirect(config, "already-linked");
-    }
-    const now = Date.now();
-    const currentAccount = findAccount.get(storedState.user_id);
-    if (currentAccount !== null && currentAccount.anilist_id !== viewer.id) {
-      deleteSyncProgress.run(storedState.user_id);
-    }
-    upsertAccount.run(
-      storedState.user_id,
-      viewer.id,
-      viewer.name,
-      viewer.avatar.large,
-      encryptToken(token.token, config),
-      token.expiresAt,
-      now,
-      now,
-    );
-    return appRedirect(config, "connected");
+    return finishAniListLink({ userId: storedState.user_id, viewer, token, config });
   } catch {
     return appRedirect(config, "failed");
   }
@@ -467,34 +435,66 @@ export async function syncAniListPlayback(userId: number, target: AniListPlaybac
     return;
   }
   const desiredProgress = target.completed ? target.episode : Math.max(0, target.episode - 1);
-  const desiredStatus = target.completed && target.totalEpisodes !== null &&
-      target.episode >= target.totalEpisodes
-    ? "COMPLETED"
-    : "CURRENT";
-  let previous = findSyncProgress.get(userId, target.mediaId);
-  if (previous === null) {
-    const remote = await fetchListEntry(account.token, target.mediaId);
-    previous = remote === null ? null : { progress: remote.progress, status: remote.status };
-    if (remote !== null) {
-      upsertSyncProgress.run(userId, target.mediaId, remote.progress, remote.status, Date.now());
-    }
-  }
+  const desiredStatus = playbackStatus(target);
+  const previous = await previousSyncProgress(userId, target.mediaId, account.token);
   if (target.allowDecrease === true && !target.completed) {
-    if (previous === null || previous.progress !== target.episode) {
-      return;
-    }
-    const result = await saveListEntry(account.token, target.mediaId,
-      { progress: desiredProgress, status: "CURRENT" });
-    upsertSyncProgress.run(userId, target.mediaId, result.progress, result.status, Date.now());
+    await decreaseSyncProgress({ userId, target, token: account.token, previous, desiredProgress });
     return;
   }
   const progress = Math.max(previous?.progress ?? 0, desiredProgress);
-  if (previous !== null && previous.progress >= desiredProgress && (
-    previous.status === "COMPLETED" || previous.status === desiredStatus
-  )) {
+  if (syncProgressCurrent(previous, desiredProgress, desiredStatus)) {
     return;
   }
   const status = previous?.status === "COMPLETED" ? "COMPLETED" : desiredStatus;
   const result = await saveListEntry(account.token, target.mediaId, { progress, status });
+  upsertSyncProgress.run(userId, target.mediaId, result.progress, result.status, Date.now());
+}
+
+function syncProgressCurrent(
+  previous: SyncRow | null,
+  desiredProgress: number,
+  desiredStatus: AniListListEntry["status"],
+): boolean {
+  return previous !== null && previous.progress >= desiredProgress &&
+    (previous.status === "COMPLETED" || previous.status === desiredStatus);
+}
+
+function playbackStatus(target: AniListPlaybackTarget): AniListListEntry["status"] {
+  return target.completed && target.totalEpisodes !== null && target.episode >= target.totalEpisodes
+    ? "COMPLETED"
+    : "CURRENT";
+}
+
+async function previousSyncProgress(
+  userId: number,
+  mediaId: number,
+  token: string,
+): Promise<SyncRow | null> {
+  const saved = findSyncProgress.get(userId, mediaId);
+  if (saved !== null) {
+    return saved;
+  }
+  const remote = await fetchListEntry(token, mediaId);
+  if (remote !== null) {
+    upsertSyncProgress.run(userId, mediaId, remote.progress, remote.status, Date.now());
+  }
+  return remote === null ? null : { progress: remote.progress, status: remote.status };
+}
+
+interface DecreaseSyncOptions {
+  readonly userId: number;
+  readonly target: AniListPlaybackTarget;
+  readonly token: string;
+  readonly previous: SyncRow | null;
+  readonly desiredProgress: number;
+}
+
+async function decreaseSyncProgress(options: DecreaseSyncOptions): Promise<void> {
+  const { userId, target, token, previous, desiredProgress } = options;
+  if (previous === null || previous.progress !== target.episode) {
+    return;
+  }
+  const result = await saveListEntry(token, target.mediaId,
+    { progress: desiredProgress, status: "CURRENT" });
   upsertSyncProgress.run(userId, target.mediaId, result.progress, result.status, Date.now());
 }

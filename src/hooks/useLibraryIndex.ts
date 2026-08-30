@@ -96,30 +96,46 @@ interface EntryTargetOptions {
   readonly displays: Map<string, EpisodeDisplay>;
 }
 
-function indexSeasonEntry(options: EntryTargetOptions): void {
-  const { entry, media, movie, seasonNumber: number, showMedia, targets, displays } = options;
+function entryDisplay(options: EntryTargetOptions): EpisodeDisplay {
+  const { entry, media, movie, seasonNumber: number, showMedia } = options;
   const episode = episodeNumber(entry);
   const details = movie ? undefined : episodeMetadata(entry, media, { showMedia, season: number });
-  displays.set(entry.rel, {
+  return {
     number: movie ? null : episode,
     title: movie && media !== undefined
       ? media.title.english ?? media.title.romaji
       : details?.title ?? entry.name.replace(/\.[^.]+$/u, ""),
-  });
+  };
+}
+
+function entryPlaybackTarget(options: EntryTargetOptions): AniListPlaybackTarget | null {
+  const { entry, media, movie } = options;
+  const episode = episodeNumber(entry);
   if (movie && media?.anilistId !== null && media?.anilistId !== undefined) {
-    targets.set(entry.rel, {
+    return {
       mediaId: media.anilistId,
       episode: 1,
       totalEpisodes: 1,
       title: mediaTitle(media),
-    });
-  } else if (episode !== null && media?.anilistId !== null && media?.anilistId !== undefined) {
-    targets.set(entry.rel, {
+    };
+  }
+  if (episode !== null && media?.anilistId !== null && media?.anilistId !== undefined) {
+    return {
       mediaId: media.anilistId,
       episode,
       totalEpisodes: media.episodes,
       title: mediaTitle(media),
-    });
+    };
+  }
+  return null;
+}
+
+function indexSeasonEntry(options: EntryTargetOptions): void {
+  const { entry, targets, displays } = options;
+  displays.set(entry.rel, entryDisplay(options));
+  const target = entryPlaybackTarget(options);
+  if (target !== null) {
+    targets.set(entry.rel, target);
   }
 }
 

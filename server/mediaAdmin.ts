@@ -56,17 +56,26 @@ export function mediaAdminResponse(
   pathname: string,
   options: MediaAdminOptions,
 ): Response | Promise<Response> | null {
-  const supported = ADMIN_ROUTE_KEYS.has(`${req.method} ${pathname}`) ||
-    pathname === "/api/media/uploads" ||
-    pathname.startsWith("/api/media/uploads/") ||
-    pathname === "/api/transcodes" ||
-    pathname.startsWith("/api/transcodes/");
-  if (!supported) {
+  if (!isMediaAdminRoute(req.method, pathname)) {
     return null;
   }
   if (!options.isAdmin) {
     return new Response("Forbidden", { status: 403 });
   }
+  return dispatchMediaAdmin(req, pathname, options);
+}
+
+function isMediaAdminRoute(method: string, pathname: string): boolean {
+  return ADMIN_ROUTE_KEYS.has(`${method} ${pathname}`) || pathname === "/api/media/uploads" ||
+    pathname.startsWith("/api/media/uploads/") || pathname === "/api/transcodes" ||
+    pathname.startsWith("/api/transcodes/");
+}
+
+function dispatchCoreMediaAdmin(
+  req: Request,
+  pathname: string,
+  options: MediaAdminOptions,
+): Response | Promise<Response> | null {
   if (pathname === "/api/storage" && req.method === "GET") {
     return storageResponse(options.mediaRoot);
   }
@@ -74,16 +83,25 @@ export function mediaAdminResponse(
     return deleteMediaResponse(req, options.mediaDir, options.videoExtensions);
   }
   if (pathname === "/api/audio-tracks" && req.method === "DELETE") {
-    return deleteAudioTrackResponse(req, {
-      ...options,
-      invalidateSubtitles: invalidateSubtitleTracks,
-    });
+    return deleteAudioTrackResponse(req, { ...options, invalidateSubtitles: invalidateSubtitleTracks });
   }
   if (pathname === "/api/media/prune-tracks" && req.method === "POST") {
     return pruneTracksResponse(req, options);
   }
   if (pathname === "/api/media/scans" && (req.method === "GET" || req.method === "POST")) {
     return mediaScanResponse(req, options);
+  }
+  return null;
+}
+
+function dispatchMediaAdmin(
+  req: Request,
+  pathname: string,
+  options: MediaAdminOptions,
+): Response | Promise<Response> {
+  const core = dispatchCoreMediaAdmin(req, pathname, options);
+  if (core !== null) {
+    return core;
   }
   if (pathname === "/api/media/uploads" || pathname.startsWith("/api/media/uploads/")) {
     return mediaUploadResponse(req, pathname, options);

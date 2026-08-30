@@ -75,6 +75,30 @@ interface EpisodeCardProps {
   readonly seasonNumber: number;
 }
 
+interface EpisodeProgressView {
+  readonly percent: number;
+  readonly show: boolean;
+  readonly watched: boolean;
+}
+
+function episodeProgressView(
+  entry: MediaEntry,
+  progress: PlaybackProgressMap,
+): EpisodeProgressView {
+  const item = progress[entry.rel];
+  if (item === undefined) {
+    return { percent: 0, show: false, watched: false };
+  }
+  const percent = item.duration <= 0
+    ? 0
+    : Math.min(100, Math.max(0, item.position / item.duration * 100));
+  return {
+    percent,
+    show: item.completed || hasMeaningfulPlaybackProgress(item.position),
+    watched: item.completed,
+  };
+}
+
 function EpisodeCard({
   entry,
   media,
@@ -95,13 +119,7 @@ function EpisodeCard({
   const number = movie ? null : episodeNumber(entry);
   const target = episodePlaybackTarget(entry, media);
   const title = movie ? mediaTitle(media) : details?.title ?? entry.name;
-  const episodeProgress = progress[entry.rel];
-  const showProgress = episodeProgress !== undefined && (
-    episodeProgress.completed || hasMeaningfulPlaybackProgress(episodeProgress.position)
-  );
-  const progressPercent = episodeProgress === undefined || episodeProgress.duration <= 0
-    ? 0
-    : Math.min(100, Math.max(0, episodeProgress.position / episodeProgress.duration * 100));
+  const progressView = episodeProgressView(entry, progress);
 
   return (
     <li className="flex rounded-lg border border-border bg-card transition-colors focus-within:ring-2 focus-within:ring-ring hover:border-primary">
@@ -120,17 +138,17 @@ function EpisodeCard({
               source={details?.thumbnail}
               className="w-full"
             />
-            {episodeProgress?.completed === true && (
+            {progressView.watched && (
               <span className="absolute inset-0 flex items-center justify-center bg-black/60 text-xs font-semibold uppercase tracking-wider text-white">
                 Watched
               </span>
             )}
           </span>
-          {showProgress && (
+          {progressView.show && (
             <progress
               aria-label="Episode progress"
               max={100}
-              value={episodeProgress.completed ? 100 : progressPercent}
+              value={progressView.watched ? 100 : progressView.percent}
               className="playback-progress block h-1 w-full overflow-hidden"
             />
           )}
@@ -151,7 +169,7 @@ function EpisodeCard({
       <EpisodeStatusMenu
         pending={pending}
         rel={entry.rel}
-        watched={episodeProgress?.completed === true}
+        watched={progressView.watched}
         onSetWatched={onSetWatched}
         target={target}
       />

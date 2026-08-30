@@ -21,6 +21,18 @@ interface ShowCardProps {
 
 const SHOW_BATCH_SIZE = 120;
 
+function movieFacts(media: AniListMedia | undefined): readonly (string | number)[] {
+  const facts: (string | number)[] = ["Movie"];
+  const year = media?.startDate?.year ?? media?.seasonYear;
+  if (year !== null && year !== undefined) {
+    facts.push(year);
+  }
+  if (media?.duration !== null && media?.duration !== undefined) {
+    facts.push(`${String(media.duration)} min`);
+  }
+  return facts;
+}
+
 function ShowCard({
   show,
   media,
@@ -35,13 +47,7 @@ function ShowCard({
   const [preview] = show.entries;
   const cover = media?.coverImage.large ?? media?.coverImage.extraLarge;
   const movie = isMovieMedia(media);
-  const movieFacts = [
-    "Movie",
-    media?.startDate?.year ?? media?.seasonYear,
-    media?.duration === null || media?.duration === undefined
-      ? null
-      : `${String(media.duration)} min`,
-  ].filter((fact) => fact !== null);
+  const facts = movieFacts(media);
 
   return (
     <div>
@@ -81,7 +87,7 @@ function ShowCard({
             {media === undefined ? show.name : mediaTitle(media)}
           </span>
           <span className="mt-1 block truncate text-xs text-muted-foreground">
-            {movie ? movieFacts.join(" · ") : summary}
+            {movie ? facts.join(" · ") : summary}
           </span>
         </span>
       </button>

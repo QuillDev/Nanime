@@ -114,11 +114,9 @@ function firstErrorMessage(payload: GraphQlResponse<unknown>): string | null {
   return typeof message === "string" && message !== "" ? message : null;
 }
 
-async function request<T>(options: AniListRequestOptions): Promise<T> {
-  assertRequestAllowed();
-  let response: Response | null = null;
+async function fetchAniListResponse(options: AniListRequestOptions): Promise<Response> {
   try {
-    response = await fetch(ANILIST_GRAPHQL_URL, {
+    return await fetch(ANILIST_GRAPHQL_URL, {
       method: "POST",
       headers: requestHeaders(options.token),
       body: JSON.stringify({ query: options.query, variables: options.variables }),
@@ -131,14 +129,15 @@ async function request<T>(options: AniListRequestOptions): Promise<T> {
       : "Could not reach AniList";
     throw new AniListUpstreamError(message, 503, DEFAULT_OUTAGE_COOLDOWN_MS);
   }
+}
 
-  const now = Date.now();
+async function assertSuccessfulResponse(response: Response, now: number): Promise<void> {
   const headerCooldown = rateLimitResetMs(response.headers, now);
   if (headerCooldown !== null && headerCooldown > 0) {
     openCircuit(headerCooldown);
   }
   if (!response.ok) {
-    const errorPayload = await response.json().catch((): null => null) as GraphQlResponse<T> | null;
+    const errorPayload = await response.json().catch((): null => null) as GraphQlResponse<unknown> | null;
     const message = errorPayload === null
       ? `AniList returned an invalid response (HTTP ${String(response.status)})`
       : firstErrorMessage(errorPayload) ?? `AniList returned HTTP ${String(response.status)}`;
@@ -151,6 +150,9 @@ async function request<T>(options: AniListRequestOptions): Promise<T> {
     }
     throw new AniListUpstreamError(message, 502);
   }
+}
+
+async function responseData<T>(response: Response): Promise<T> {
   const payload = await response.json().catch((): null => null) as GraphQlResponse<T> | null;
   if (payload?.data === undefined) {
     throw new AniListUpstreamError(
@@ -161,6 +163,14 @@ async function request<T>(options: AniListRequestOptions): Promise<T> {
     );
   }
   return payload.data;
+}
+
+async function request<T>(options: AniListRequestOptions): Promise<T> {
+  assertRequestAllowed();
+  const response = await fetchAniListResponse(options);
+  const now = Date.now();
+  await assertSuccessfulResponse(response, now);
+  return responseData<T>(response);
 }
 
 function requestHeaders(token: string | undefined): Headers {

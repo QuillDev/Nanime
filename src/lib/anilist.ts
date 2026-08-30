@@ -33,6 +33,16 @@ function episodeTitle(title: string): string {
   return title.replace(/^Episode\s+\d+\s*-\s*/iu, "").trim();
 }
 
+function episodeMetadataTitle(
+  entry: MediaEntry,
+  aniListEpisode: { readonly title: string } | undefined,
+  tvmazeEpisode: TvmazeEpisode | undefined,
+): string {
+  return aniListEpisode === undefined
+    ? tvmazeEpisode?.title ?? entry.name
+    : episodeTitle(aniListEpisode.title);
+}
+
 function tvmazeEpisodeNumber(
   episodes: readonly TvmazeEpisode[],
   season: number,
@@ -89,9 +99,7 @@ export function episodeMetadata(
     return null;
   }
   return {
-    title: aniListEpisode === undefined
-      ? tvmazeEpisode?.title ?? entry.name
-      : episodeTitle(aniListEpisode.title),
+    title: episodeMetadataTitle(entry, aniListEpisode, tvmazeEpisode),
     thumbnail: aniListEpisode?.thumbnail ?? tvmazeEpisode?.thumbnail ?? null,
     summary: tvmazeEpisode?.summary ?? null,
     airDate: tvmazeEpisode?.airDate ?? null,
