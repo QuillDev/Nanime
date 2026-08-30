@@ -191,7 +191,7 @@ async function openPlayer(
   rel: string,
   options: { readonly failFirstManifest?: boolean } = {},
 ): Promise<PlayerView> {
-  const player = await openApp(harness);
+  const player = await openAppWithRetry(harness);
   try {
     if (options.failFirstManifest === true) {
       await harness.failNextManifest(rel);
@@ -246,6 +246,16 @@ async function openApp(
   } catch (error: unknown) {
     view.close();
     throw error;
+  }
+}
+
+async function openAppWithRetry(
+  harness: Pick<PlayerHarness, "browserPath" | "origin">,
+): Promise<PlayerView> {
+  try {
+    return await openApp(harness);
+  } catch {
+    return await openApp(harness);
   }
 }
 
@@ -358,7 +368,7 @@ export async function startPlayerHarness(): Promise<PlayerHarness> {
     origin,
     temporaryRoot,
     serverLog: () => `${stdout.output()}\n${stderr.output()}\n${proxy.output.output()}`,
-    openApp: () => openApp({ browserPath, origin }),
+    openApp: () => openAppWithRetry({ browserPath, origin }),
     openPlayer: (rel, options) => openPlayer({
       browserPath,
       origin,
