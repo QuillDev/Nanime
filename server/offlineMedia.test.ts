@@ -79,4 +79,24 @@ describe("offline media byte ranges", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  test("allows direct streams to require revalidation", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "nanime-direct-range-"));
+    const path = join(directory, "fixture.mp4");
+    try {
+      await Bun.write(path, Uint8Array.from({ length: 32 }, (_, index) => index));
+      const response = rangedFileResponse({
+        path,
+        mimeType: "video/mp4",
+        etag: '"direct-fixture"',
+        req: new Request("http://nanime.test/stream", { headers: { range: "bytes=8-15" } }),
+        cacheControl: "private, no-cache",
+      });
+      expect(response.status).toBe(206);
+      expect(response.headers.get("cache-control")).toBe("private, no-cache");
+      expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([8, 9, 10, 11, 12, 13, 14, 15]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });

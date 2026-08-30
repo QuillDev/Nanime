@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import type { Server } from "bun";
 import {
@@ -26,6 +26,7 @@ import {
   trickplayMediaResponse,
   hlsReleaseRouteResponse,
   mediaRequest,
+  rangedFileResponse,
 } from "./mediaRouting.ts";
 import { torrentsResponse } from "./torrents.ts";
 import { mediaAdminResponse } from "./mediaAdmin.ts";
@@ -104,43 +105,15 @@ async function mediaExists(rel: string): Promise<boolean> {
 function contentType(abs: string): string {
   return MIME.get(extname(abs).toLowerCase()) ?? "application/octet-stream";
 }
-function streamFile(abs: string, req: Request): Response {
-  const file = Bun.file(abs);
-  const { size } = file;
-  const type = contentType(abs);
-  const range = req.headers.get("range");
-  const match = range === null ? null : /bytes=(?<start>\d*)-(?<end>\d*)/u.exec(range);
-
-  if (match?.groups) {
-    const startRaw = match.groups["start"] ?? "";
-    const endRaw = match.groups["end"] ?? "";
-    const start = startRaw === "" ? 0 : Number(startRaw);
-    const requestedEnd = endRaw === "" ? size - 1 : Number(endRaw);
-    const end = requestedEnd >= size ? size - 1 : requestedEnd;
-
-    if (start > end || start >= size) {
-      return new Response("Range Not Satisfiable", {
-        status: 416,
-        headers: { "content-range": `bytes */${String(size)}` },
-      });
-    }
-    return new Response(file.slice(start, end + 1), {
-      status: 206,
-      headers: {
-        "content-type": type,
-        "content-range": `bytes ${String(start)}-${String(end)}/${String(size)}`,
-        "accept-ranges": "bytes",
-        "content-length": String(end - start + 1),
-      },
-    });
-  }
-
-  return new Response(file, {
-    headers: {
-      "content-type": type,
-      "accept-ranges": "bytes",
-      "content-length": String(size),
-    },
+async function streamFile(abs: string, req: Request): Promise<Response> {
+  const information = await stat(abs);
+  const etag = `"direct-${String(information.size)}-${String(Math.trunc(information.mtimeMs))}"`;
+  return rangedFileResponse({
+    path: abs,
+    mimeType: contentType(abs),
+    etag,
+    req,
+    cacheControl: "private, no-cache",
   });
 }
 
