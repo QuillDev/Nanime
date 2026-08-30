@@ -3,11 +3,16 @@ import type {
   DownloadOfflineMediaOptions,
   OfflineDownload,
   OfflineDownloadStore,
-  OfflineMediaFetcher,
   OfflineMediaSource,
 } from "./types.ts";
+import {
+  fetchOfflineMediaParts,
+  offlineMediaPartVersion,
+  OFFLINE_MEDIA_CHUNK_BYTES,
+  type OfflineMediaPart,
+} from "./ranges.ts";
 
-export const OFFLINE_MEDIA_CHUNK_BYTES = 4 * 1024 * 1024;
+export { OFFLINE_MEDIA_CHUNK_BYTES, OFFLINE_MEDIA_PARALLEL_REQUESTS } from "./ranges.ts";
 
 function validSource(source: OfflineMediaSource): boolean {
   return Number.isSafeInteger(source.size) && source.size > 0 && source.mediaUrl !== "" &&
@@ -37,58 +42,6 @@ function createDownload(
     updatedAt: now,
     error: null,
   };
-}
-
-function responseVersion(response: Response): string | null {
-  return response.headers.get("etag");
-}
-
-function contentRangeStart(response: Response): number | null {
-  const value = response.headers.get("content-range");
-  const match = value === null ? null : /^bytes (?<start>\d+)-\d+\/\d+$/u.exec(value);
-  return match?.groups === undefined ? null : Number(match.groups["start"]);
-}
-
-function matchingResumeResponse(response: Response, download: OfflineDownload): boolean {
-  const version = responseVersion(response);
-  return response.status === 206 && contentRangeStart(response) === download.downloadedBytes &&
-    (download.sourceVersion === null || version === null || version === download.sourceVersion);
-}
-
-function mediaRequestInit(download: OfflineDownload, signal: AbortSignal | undefined): RequestInit {
-  const headers = new Headers();
-  if (download.downloadedBytes > 0) {
-    headers.set("range", `bytes=${String(download.downloadedBytes)}-`);
-    if (download.sourceVersion !== null) {
-      headers.set("if-range", download.sourceVersion);
-    }
-  }
-  return signal === undefined ? { headers } : { headers, signal };
-}
-
-function validateMediaResponse(response: Response, download: OfflineDownload): string | null {
-  if (download.downloadedBytes > 0 && !matchingResumeResponse(response, download)) {
-    throw new Error("Offline media changed while the download was paused");
-  }
-  if (!response.ok || response.body === null) {
-    throw new Error(`Offline media download failed with HTTP ${String(response.status)}`);
-  }
-  const version = responseVersion(response) ?? download.sourceVersion;
-  if (download.downloadedBytes === 0 && download.sourceVersion !== null &&
-    version !== null && version !== download.sourceVersion) {
-    throw new Error("Offline media version does not match the prepared download");
-  }
-  return version;
-}
-
-async function fetchMedia(
-  request: OfflineMediaFetcher,
-  download: OfflineDownload,
-  signal: AbortSignal | undefined,
-): Promise<{ readonly download: OfflineDownload; readonly response: Response }> {
-  const response = await request(download.sourceUrl, mediaRequestInit(download, signal));
-  const version = validateMediaResponse(response, download);
-  return { download: { ...download, sourceVersion: version }, response };
 }
 
 function appendBytes(left: Uint8Array, right: Uint8Array): Uint8Array {
@@ -172,39 +125,39 @@ async function persistBytes(
   });
 }
 
-async function readMediaStream(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
+async function persistMediaParts(
   context: PersistContext,
   download: OfflineDownload,
+  parts: readonly OfflineMediaPart[],
 ): Promise<OfflineDownload> {
-  const result = await reader.read();
-  if (result.done) {
+  const [part, ...remaining] = parts;
+  if (part === undefined) {
     return download;
   }
-  const next = result.value.byteLength === 0
-    ? download
-    : await persistBytes(context, download, result.value);
-  return readMediaStream(reader, context, next);
+  const next = await persistBytes(context, download, part.bytes);
+  return persistMediaParts(context, next, remaining);
 }
 
-async function consumeResponse(
+async function consumeParallelRanges(
   options: DownloadOfflineMediaOptions,
-  initial: OfflineDownload,
-  response: Response,
+  download: OfflineDownload,
 ): Promise<OfflineDownload> {
-  const stream = response.body as ReadableStream<Uint8Array>;
+  if (download.downloadedBytes === download.totalBytes) {
+    return download;
+  }
+  const request = options.fetch ?? fetch;
+  const parts = await fetchOfflineMediaParts({ download, request, signal: options.signal });
   const context: PersistContext = {
     store: options.store,
     now: options.now ?? Date.now,
     onProgress: options.onProgress,
   };
-  const download = await readMediaStream(stream.getReader(), context, initial);
-  if (download.downloadedBytes !== download.totalBytes) {
-    throw new Error(
-      `Offline media ended at ${String(download.downloadedBytes)} of ${String(download.totalBytes)} bytes`,
-    );
-  }
-  return download;
+  const versioned = {
+    ...download,
+    sourceVersion: offlineMediaPartVersion(parts, download.sourceVersion),
+  };
+  const next = await persistMediaParts(context, versioned, parts);
+  return consumeParallelRanges(options, next);
 }
 
 function failureState(error: unknown): "failed" | "paused" {
@@ -269,8 +222,7 @@ async function transferDownload(
   download: OfflineDownload,
 ): Promise<OfflineDownload> {
   try {
-    const fetched = await fetchMedia(options.fetch ?? fetch, download, options.signal);
-    const consumed = await consumeResponse(options, fetched.download, fetched.response);
+    const consumed = await consumeParallelRanges(options, download);
     return await completeDownload(options, consumed);
   } catch (error: unknown) {
     await recordFailure(options, download, error);

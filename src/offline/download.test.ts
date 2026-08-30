@@ -133,33 +133,45 @@ function savedDownload(overrides: Partial<OfflineDownload> = {}): OfflineDownloa
 
 async function completeChunkedDownload() {
   const store = new MemoryOfflineStore();
-  const size = OFFLINE_MEDIA_CHUNK_BYTES + 3;
-  const parts = [
-    new Uint8Array(OFFLINE_MEDIA_CHUNK_BYTES - 2).fill(1),
-    new Uint8Array([2, 3, 4, 5, 6]),
-  ];
+  const size = OFFLINE_MEDIA_CHUNK_BYTES * 3 + 3;
   const states: string[] = [];
+  let activeRequests = 0;
+  let maximumActiveRequests = 0;
+  const request = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const header = new Headers(init?.headers).get("range") ?? "";
+    const match = /^bytes=(?<start>\d+)-(?<end>\d+)$/u.exec(header);
+    const start = Number(match?.groups?.["start"]);
+    const end = Number(match?.groups?.["end"]);
+    activeRequests += 1;
+    maximumActiveRequests = Math.max(maximumActiveRequests, activeRequests);
+    await Promise.resolve();
+    activeRequests -= 1;
+    return streamResponse([new Uint8Array(end - start + 1).fill(1)], {
+      status: 206,
+      headers: { "content-range": `bytes ${String(start)}-${String(end)}/${String(size)}`, etag: '"source-v1"' },
+    });
+  });
   const result = await downloadOfflineMedia({
     userId: 7,
     entry: ENTRY,
     source: source(size),
     store,
-    fetch: mock(() => Promise.resolve(streamResponse(parts, {
-      headers: { etag: '"source-v1"' },
-    }))),
+    fetch: request,
     onProgress: (download) => states.push(download.state),
   });
-  return { result, size, states, store };
+  return { maximumActiveRequests, request, result, size, states, store };
 }
 
 describe("offline media download manager", () => {
-  test("stores arbitrary response boundaries as fixed-size chunks and publishes only completion", async () => {
-    const { result, size, states, store } = await completeChunkedDownload();
+  test("fetches bounded ranges concurrently and commits fixed-size chunks in order", async () => {
+    const { maximumActiveRequests, request, result, size, states, store } = await completeChunkedDownload();
 
     expect(isOfflineDownloadAvailable(result)).toBe(true);
     expect(result.downloadedBytes).toBe(size);
+    expect(maximumActiveRequests).toBe(4);
+    expect(request).toHaveBeenCalledTimes(4);
     expect(store.chunks.get(`${result.id}:0`)?.byteLength).toBe(OFFLINE_MEDIA_CHUNK_BYTES);
-    expect(store.chunks.get(`${result.id}:1`)?.byteLength).toBe(3);
+    expect(store.chunks.get(`${result.id}:3`)?.byteLength).toBe(3);
     expect(states.at(-1)).toBe("complete");
     expect(await store.listDownloads(7, true)).toEqual([result]);
   });
@@ -170,7 +182,7 @@ describe("offline media download manager", () => {
     await store.putDownload(paused);
     store.chunks.set(`${paused.id}:0`, new Uint8Array([1, 2, 3]).buffer);
     const request = mock((_input: RequestInfo | URL, init?: RequestInit) => {
-      expect(new Headers(init?.headers).get("range")).toBe("bytes=3-");
+      expect(new Headers(init?.headers).get("range")).toBe("bytes=3-5");
       expect(new Headers(init?.headers).get("if-range")).toBe('"source-v1"');
       return Promise.resolve(streamResponse([new Uint8Array([4, 5, 6])], {
         status: 206,
