@@ -5,7 +5,7 @@ import type {
   ShowMetadata,
 } from "../types.ts";
 
-export type OfflineDownloadState = "complete" | "downloading" | "failed" | "paused";
+export type OfflineDownloadState = "complete" | "downloading" | "failed" | "paused" | "preparing";
 
 export interface OfflineMediaSource {
   readonly contentType: string;
@@ -30,6 +30,7 @@ export interface OfflineDownload extends MediaEntry {
   readonly totalBytes: number;
   readonly downloadedBytes: number;
   readonly duration: number | null;
+  readonly preparationProgress?: number | undefined;
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly error: string | null;

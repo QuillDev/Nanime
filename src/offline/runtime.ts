@@ -9,6 +9,17 @@ import { IndexedDbOfflineStore, offlineMediaUrl } from "./database.ts";
 import type { OfflineDownload, OfflineProfile } from "./types.ts";
 import type { PlaybackProgressUpdate } from "../playbackApi.ts";
 
+export {
+  cancelTrackedOfflineDownload,
+  mergeOfflineDownloads,
+  preparingOfflineDownload,
+  stopTrackingOfflineController,
+  stopTrackingOfflineDownload,
+  trackedOfflineDownloads,
+  trackOfflineController,
+  trackOfflineDownload,
+} from "./activity.ts";
+
 const ACTIVE_USER_KEY = "nanime.offline.active-user";
 const PLAYBACK_OUTBOX_PREFIX = "nanime.offline.playback-outbox.";
 let store: IndexedDbOfflineStore | null | undefined = undefined;

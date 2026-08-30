@@ -62,7 +62,7 @@ export function EpisodeActionsMenu({
   }, [entry.rel, onSetWatched, target, watched]);
   const handleOffline = useCallback(() => {
     if (active) {
-      offline.cancel();
+      offline.cancel(entry.rel);
     } else if (saved?.state === "complete") {
       offline.remove.mutate(saved);
     } else {

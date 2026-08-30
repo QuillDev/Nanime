@@ -5,12 +5,23 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import type { MediaEntry, OfflineMediaArtifact, SubtitleTrack } from "../types.ts";
 import { downloadOfflineMedia } from "../offline/download.ts";
 import { prepareOfflineStorage } from "../offline/capacity.ts";
-import type { OfflineDownload } from "../offline/types.ts";
-import { activeOfflineProfile, offlineStore } from "../offline/runtime.ts";
+import type { OfflineDownload, OfflineDownloadStore } from "../offline/types.ts";
+import {
+  activeOfflineProfile,
+  cancelTrackedOfflineDownload,
+  mergeOfflineDownloads,
+  preparingOfflineDownload,
+  stopTrackingOfflineDownload,
+  stopTrackingOfflineController,
+  trackedOfflineDownloads,
+  trackOfflineDownload,
+  trackOfflineController,
+  offlineStore,
+} from "../offline/runtime.ts";
 import {
   subtitleUrl,
   thumbnailUrl,
@@ -62,10 +73,12 @@ function waitForPreparation(signal: AbortSignal): Promise<void> {
 async function readyArtifact(
   initial: OfflineMediaArtifact,
   signal: AbortSignal,
+  onProgress: (artifact: OfflineMediaArtifact) => void,
 ): Promise<OfflineMediaArtifact> {
+  onProgress(initial);
   if (initial.status === "queued" || initial.status === "preparing") {
     await waitForPreparation(signal);
-    return readyArtifact(await fetchOfflineMediaArtifact(initial.id), signal);
+    return readyArtifact(await fetchOfflineMediaArtifact(initial.id), signal, onProgress);
   }
   if (initial.status !== "ready" || initial.mediaUrl === null || initial.sizeBytes === null) {
     throw new Error(initial.error ?? "Offline episode preparation failed");
@@ -75,7 +88,11 @@ async function readyArtifact(
 
 async function listOfflineDownloads(): Promise<readonly OfflineDownload[]> {
   const [store, profile] = [offlineStore(), await activeOfflineProfile()];
-  return store === null || profile === null ? [] : store.listDownloads(profile.user.id);
+  if (store === null || profile === null) {
+    return [];
+  }
+  const stored = await store.listDownloads(profile.user.id);
+  return mergeOfflineDownloads(stored, trackedOfflineDownloads(profile.user.id));
 }
 
 interface DownloadVariables {
@@ -83,9 +100,13 @@ interface DownloadVariables {
   readonly entry: MediaEntry;
 }
 
-async function preparedSource(entry: MediaEntry, signal: AbortSignal) {
+async function preparedSource(
+  entry: MediaEntry,
+  signal: AbortSignal,
+  onProgress: (artifact: OfflineMediaArtifact) => void,
+) {
   const initial = await prepareOfflineMedia(entry.rel);
-  const artifact = await readyArtifact(initial, signal);
+  const artifact = await readyArtifact(initial, signal, onProgress);
   const { mediaUrl, sizeBytes } = artifact;
   if (mediaUrl === null || sizeBytes === null) {
     throw new Error("Prepared offline episode is missing its media file");
@@ -111,6 +132,92 @@ async function cacheAssetsSafely(entry: MediaEntry): Promise<void> {
   }
 }
 
+interface DownloadActivity {
+  current: OfflineDownload;
+}
+
+type ProgressPublisher = (download: OfflineDownload) => void;
+
+function publishDownload(
+  activity: DownloadActivity,
+  onProgress: ProgressPublisher,
+  download: OfflineDownload,
+): void {
+  activity.current = download;
+  trackOfflineDownload(download);
+  onProgress(download);
+}
+
+function recordPreparationFailure(
+  activity: DownloadActivity,
+  publish: ProgressPublisher,
+  error: unknown,
+): void {
+  if (activity.current.state !== "preparing") {
+    return;
+  }
+  publish({
+    ...activity.current,
+    state: error instanceof DOMException && error.name === "AbortError" ? "paused" : "failed",
+    updatedAt: Date.now(),
+    error: error instanceof Error ? error.message : "Offline episode preparation failed",
+  });
+}
+
+function stopCompletedActivity(activity: DownloadActivity): void {
+  if (activity.current.state !== "preparing" && activity.current.sourceUrl !== "") {
+    stopTrackingOfflineDownload(activity.current);
+  }
+}
+
+async function transferPreparedEpisode(options: {
+  readonly activity: DownloadActivity;
+  readonly controller: AbortController;
+  readonly entry: MediaEntry;
+  readonly publish: ProgressPublisher;
+  readonly store: OfflineDownloadStore;
+  readonly userId: number;
+}): Promise<OfflineDownload> {
+  const { activity, controller, entry, publish, store, userId } = options;
+  const source = await preparedSource(entry, controller.signal, (artifact) => {
+    publish({
+      ...activity.current,
+      preparationProgress: artifact.progress,
+      updatedAt: Date.now(),
+    });
+  });
+  const download = await downloadOfflineMedia({
+    entry,
+    source,
+    store,
+    userId,
+    signal: controller.signal,
+    onProgress: publish,
+  });
+  await cacheAssetsSafely(entry);
+  return download;
+}
+
+async function runDownload(options: {
+  readonly onProgress: ProgressPublisher;
+  readonly store: OfflineDownloadStore;
+  readonly userId: number;
+  readonly variables: DownloadVariables;
+}): Promise<OfflineDownload> {
+  const { onProgress, store, userId, variables } = options;
+  const activity = { current: preparingOfflineDownload(variables.entry, userId) };
+  const publish = (download: OfflineDownload): void => publishDownload(activity, onProgress, download);
+  publish(activity.current);
+  try {
+    return await transferPreparedEpisode({ ...variables, activity, publish, store, userId });
+  } catch (error: unknown) {
+    recordPreparationFailure(activity, publish, error);
+    throw error;
+  } finally {
+    stopCompletedActivity(activity);
+  }
+}
+
 async function downloadEpisode(
   variables: DownloadVariables,
   onProgress: (download: OfflineDownload) => void,
@@ -121,17 +228,7 @@ async function downloadEpisode(
     throw new Error("Offline storage is unavailable in this browser");
   }
   preloadPlayer();
-  const source = await preparedSource(entry, controller.signal);
-  const download = await downloadOfflineMedia({
-    entry,
-    source,
-    store,
-    userId: profile.user.id,
-    signal: controller.signal,
-    onProgress,
-  });
-  await cacheAssetsSafely(entry);
-  return download;
+  return runDownload({ variables: { controller, entry }, store, userId: profile.user.id, onProgress });
 }
 
 export interface OfflineDownloadsState {
@@ -139,12 +236,11 @@ export interface OfflineDownloadsState {
   readonly download: UseMutationResult<OfflineDownload, Error, DownloadVariables>;
   readonly remove: UseMutationResult<void, Error, OfflineDownload>;
   readonly start: (entry: MediaEntry) => void;
-  readonly cancel: () => void;
+  readonly cancel: (rel: string) => void;
 }
 
 export function useOfflineDownloads(): OfflineDownloadsState {
   const queryClient = useQueryClient();
-  const controllerRef = useRef<AbortController | null>(null);
   const downloads = useQuery({
     queryKey: offlineDownloadsKey,
     queryFn: listOfflineDownloads,
@@ -152,18 +248,21 @@ export function useOfflineDownloads(): OfflineDownloadsState {
   const updateDownload = useCallback((download: OfflineDownload): void => {
     queryClient.setQueryData<readonly OfflineDownload[]>(offlineDownloadsKey, (current) => [
       download,
-      ...(current ?? []).filter((item) => item.id !== download.id),
+      ...(current ?? []).filter((item) => (
+        item.userId !== download.userId || item.rel !== download.rel
+      )),
     ]);
   }, [queryClient]);
   const download = useMutation({
     mutationFn: (variables: DownloadVariables) => downloadEpisode(variables, updateDownload),
-    onSettled: () => {
-      controllerRef.current = null;
-      return queryClient.invalidateQueries({ queryKey: ["library"] });
-    },
+    onSettled: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: offlineDownloadsKey }),
+      queryClient.invalidateQueries({ queryKey: ["library"] }),
+    ]),
   });
   const remove = useMutation({
     mutationFn: async (item: OfflineDownload): Promise<void> => {
+      stopTrackingOfflineDownload(item);
       const store = offlineStore();
       if (store !== null) {
         await store.removeDownload(item.id);
@@ -178,9 +277,11 @@ export function useOfflineDownloads(): OfflineDownloadsState {
   });
   const start = useCallback((entry: MediaEntry): void => {
     const controller = new AbortController();
-    controllerRef.current = controller;
-    download.mutate({ controller, entry });
+    trackOfflineController(entry.rel, controller);
+    download.mutate({ controller, entry }, {
+      onSettled: () => stopTrackingOfflineController(entry.rel, controller),
+    });
   }, [download]);
-  const cancel = useCallback(() => controllerRef.current?.abort(), []);
+  const cancel = useCallback((rel: string) => cancelTrackedOfflineDownload(rel), []);
   return { downloads, download, remove, start, cancel };
 }
