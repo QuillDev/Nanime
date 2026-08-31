@@ -5,6 +5,7 @@ import { formatSize } from "../format.ts";
 import { useOfflineDownloads } from "../hooks/useOfflineDownloads.ts";
 import { prepareOfflineStorage } from "../offline/capacity.ts";
 import type { OfflineDownload } from "../offline/types.ts";
+import { ProfileEmptyState, ProfileSection } from "./ProfileSection.tsx";
 
 function downloadPercent(item: OfflineDownload): number {
   if (item.state === "preparing") {
@@ -60,7 +61,7 @@ function DownloadRow({ item, onCancel, onRemove, onRetry }: {
   const roundedPercent = Math.round(percent);
   const status = downloadStatus(item, roundedPercent);
   return (
-    <li className="rounded-lg border border-border bg-card p-4">
+    <li className="px-4 py-4 sm:px-5">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="truncate font-medium" title={item.name}>{item.name}</p>
@@ -101,7 +102,17 @@ function useDownloadActions(offline: ReturnType<typeof useOfflineDownloads>) {
   return { cancel, remove, retry };
 }
 
-export function OfflineDownloads(): React.JSX.Element {
+function storageDescription(storage: Awaited<ReturnType<typeof prepareOfflineStorage>> | undefined): string {
+  if (storage === undefined) {
+    return "Episodes saved in this browser.";
+  }
+  const capacity = storage.availableBytes === null
+    ? "Storage availability unknown"
+    : `${formatSize(storage.availableBytes)} available`;
+  return `${capacity} · ${storage.persisted ? "Protected storage" : "Browser-managed storage"}`;
+}
+
+export function OfflineDownloads({ className }: { readonly className?: string }): React.JSX.Element {
   const offline = useOfflineDownloads();
   const storage = useQuery({
     queryKey: ["offline-storage"],
@@ -113,46 +124,36 @@ export function OfflineDownloads(): React.JSX.Element {
   const remaining = items.filter((item) => item.state !== "preparing" && item.state !== "downloading");
   const { cancel, remove, retry } = useDownloadActions(offline);
   return (
-    <section id="offline-downloads" className="scroll-mt-20 border-b border-border py-6" aria-labelledby="offline-downloads-title">
-      <div className="flex items-center gap-2">
-        <Download className="size-5 text-primary" />
-        <h2 id="offline-downloads-title" className="text-lg font-semibold">Offline downloads</h2>
-      </div>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Download an episode from its three-dot menu, then play and seek without reaching the server.
-      </p>
-      {storage.data !== undefined && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          {storage.data.availableBytes === null
-            ? "Browser storage availability is not reported on this device."
-            : `${formatSize(storage.data.availableBytes)} currently available in browser storage.`}
-          {storage.data.persisted ? " Storage protection is enabled." : " Downloads may be removed under device storage pressure."}
-        </p>
-      )}
+    <ProfileSection
+      className={className}
+      description={storageDescription(storage.data)}
+      icon={Download}
+      id="offline-downloads-title"
+      title="Downloads"
+    >
+      <span id="offline-downloads" className="block scroll-mt-20" />
       {items.length === 0 ? (
-        <p className="mt-4 rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-          No episodes are stored on this device.
-        </p>
+        <ProfileEmptyState>No episodes saved on this device.</ProfileEmptyState>
       ) : (
-        <div className="mt-4 space-y-5">
+        <div className="divide-y divide-border">
           {inProgress.length > 0 && (
-            <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">In progress</h3>
-              <ul className="flex flex-col gap-2">
+            <div className="pb-1">
+              <h3 className="px-4 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground sm:px-5">In progress</h3>
+              <ul className="divide-y divide-border">
                 {inProgress.map((item) => <DownloadRow key={`${String(item.userId)}:${item.rel}`} item={item} onCancel={cancel} onRemove={remove} onRetry={retry} />)}
               </ul>
             </div>
           )}
           {remaining.length > 0 && (
-            <div>
-              {inProgress.length > 0 && <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">On this device</h3>}
-              <ul className="flex flex-col gap-2">
+            <div className="pb-1">
+              {inProgress.length > 0 && <h3 className="px-4 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground sm:px-5">On this device</h3>}
+              <ul className="divide-y divide-border">
                 {remaining.map((item) => <DownloadRow key={`${String(item.userId)}:${item.rel}`} item={item} onCancel={cancel} onRemove={remove} onRetry={retry} />)}
               </ul>
             </div>
           )}
         </div>
       )}
-    </section>
+    </ProfileSection>
   );
 }

@@ -19,6 +19,7 @@ const nullableNumber = union([number(), nullValue()]);
 
 export const authUserSchema = object({
   id: number(), username: string(), isAdmin: boolean(),
+  preferredAudioLanguage: union([literal("en"), literal("ja"), nullValue()]),
 });
 export const aniListAuthConfigSchema = object({ enabled: boolean() });
 const aniListAccountDetailsSchema = object({

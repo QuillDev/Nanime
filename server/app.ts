@@ -45,7 +45,6 @@ function requestWithBody(req: Request, body: string | FormData): Request {
     signal: req.signal,
   });
 }
-
 function jsonRequest(req: Request, body: unknown): Request {
   return requestWithBody(req, JSON.stringify(body));
 }
@@ -140,6 +139,7 @@ const playbackHistoryQuerySchema = schema.object({
   limit: schema.optional(schema.string()),
   rel: schema.optional(schema.string()),
 });
+const preferredAudioLanguageSchema = schema.union([schema.literal("en"), schema.literal("ja"), schema.nullValue()]);
 const nullablePlaybackProgressSchema = schema.union([
   playbackProgressSchema,
   schema.nullValue(),
@@ -225,6 +225,14 @@ export const app = new Elysia({ name: "nanime" })
     handle(jsonRequest(request, body), server)
   ), { body: setupCredentialsSchema, response: authUserSchema })
   .post("/api/auth/logout", ({ request, server }) => handle(request, server))
+  .put("/api/auth/preferences", ({ request, server, body }) => (
+    handle(jsonRequest(request, body), server)
+  ), {
+    body: schema.object({
+      audioLanguage: preferredAudioLanguageSchema,
+    }),
+    response: authUserSchema,
+  })
   .get("/api/list", ({ request, server }) => handle(request, server), {
     response: schema.array(mediaEntrySchema),
   })
@@ -489,5 +497,4 @@ export const app = new Elysia({ name: "nanime" })
   .all("*", ({ request, server }) => handle(request, server));
 
 export type App = typeof app;
-
 app.listen(serverOptions);

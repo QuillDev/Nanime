@@ -5,6 +5,7 @@ import { detachTorrentsForFiles } from "./torrents.ts";
 import { scannedTrackSizes } from "./scanCache.ts";
 import { probeStreams } from "./ffprobe.ts";
 import { jsonObject, type JsonObject } from "./json.ts";
+import { audioLanguageMatches } from "../shared/audioLanguage.ts";
 
 export interface AudioTrack {
   readonly index: number;
@@ -86,15 +87,27 @@ export function audioTracks(abs: string): Promise<readonly AudioTrack[]> {
   return pending;
 }
 
+export function chooseAudioTrack(
+  tracks: readonly AudioTrack[],
+  audioIndex: number | null,
+  preferredLanguage: string | null = null,
+): AudioTrack | undefined | null {
+  if (audioIndex !== null) {
+    return tracks.find((track) => track.index === audioIndex) ?? null;
+  }
+  const preferred = preferredLanguage === null
+    ? undefined
+    : tracks.find((track) => audioLanguageMatches(track.language, preferredLanguage));
+  return preferred ?? tracks.find((track) => track.isDefault) ?? tracks[0];
+}
+
 export async function selectedAudioTrack(
   abs: string,
   audioIndex: number | null,
+  preferredLanguage: string | null = null,
 ): Promise<AudioTrack | undefined | null> {
   const tracks = await audioTracks(abs);
-  if (audioIndex === null) {
-    return tracks.find((track) => track.isDefault) ?? tracks[0];
-  }
-  return tracks.find((track) => track.index === audioIndex) ?? null;
+  return chooseAudioTrack(tracks, audioIndex, preferredLanguage);
 }
 
 export async function audioTracksResponse(abs: string, rel: string): Promise<Response> {

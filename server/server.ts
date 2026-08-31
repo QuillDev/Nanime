@@ -251,6 +251,7 @@ async function timedMediaResponse(context: RouteContext, abs: string): Promise<R
       userId: user.id,
       leaseId: url.searchParams.get("lease"),
       playerId: url.searchParams.get("player"),
+      preferredAudioLanguage: user.preferredAudioLanguage,
       hardwareAcceleration: HWACCEL,
       vaapiDevice: VAAPI_DEVICE,
     });
@@ -371,7 +372,11 @@ async function administrationRoute(context: RouteContext): Promise<Response | nu
 }
 
 async function authenticatedRoute(context: RouteContext): Promise<Response> {
-  const offline = offlineMediaRouteResponse(context.req, context.pathname, OFFLINE_MEDIA_OPTIONS);
+  const offline = offlineMediaRouteResponse(
+    context.req,
+    context.pathname,
+    { ...OFFLINE_MEDIA_OPTIONS, preferredAudioLanguage: context.user.preferredAudioLanguage },
+  );
   if (offline !== null) {
     return await offline;
   }

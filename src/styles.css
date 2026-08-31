@@ -200,6 +200,16 @@
     padding: 0.5rem;
   }
 
+  .mobile-nav-label {
+    display: none;
+  }
+
+  @media (width >= 40rem) {
+    .mobile-nav-label {
+      display: inline;
+    }
+  }
+
   .mobile-nav-item:hover,
   .mobile-nav-item[data-active="true"] {
     background-color: var(--accent);
@@ -333,6 +343,10 @@
       gap: 0.25rem;
       min-height: 2.75rem;
       min-width: 2.75rem;
+    }
+
+    .mobile-nav-label {
+      display: inline;
     }
 
     [data-slot="dialog-content"]:has([data-player-controls-visible="false"])

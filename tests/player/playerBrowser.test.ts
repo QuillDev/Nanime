@@ -157,7 +157,76 @@ async function waitForWatchedMutation(player: Awaited<ReturnType<PlayerHarness["
   throw new Error(`Timed out waiting for watched mutation ${String(count)}`);
 }
 
+async function waitForAccountAudioLanguage(
+  view: Bun.WebView,
+  expected: "en" | "ja" | null,
+): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const language = await view.evaluate<string | null>(
+      "fetch('/api/auth/me').then(response => response.json()).then(user => user.preferredAudioLanguage)",
+    );
+    if (language === expected) {
+      return;
+    }
+    await Bun.sleep(50);
+  }
+  throw new Error(`Timed out waiting for account audio language: ${String(expected)}`);
+}
+
 function registerCommonJourneyTests(): void {
+  test("persists Japanese as the account audio default and starts the matching HLS track", async () => {
+    const profile = testProfile("account audio preference");
+    const runtime = activeHarness();
+    const player = await runtime.openApp();
+    profile("open application");
+    try {
+      await player.view.navigate(`${runtime.origin}/profile`);
+      await waitForElement(player.view, { selector: "select", ariaLabel: "Default audio language" });
+      const changed = await player.view.evaluate<boolean>(`(() => {
+        const select = document.querySelector("select[aria-label='Default audio language']");
+        if (!(select instanceof HTMLSelectElement)) return false;
+        select.value = "ja";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      })()`);
+      expect(changed).toBe(true);
+      await waitForAccountAudioLanguage(player.view, "ja");
+      profile("save Japanese account preference");
+
+      await player.view.navigate(`${runtime.origin}/profile`);
+      await waitForElement(player.view, { selector: "select", ariaLabel: "Default audio language" });
+      const persisted = await player.view.evaluate<string>(
+        "document.querySelector(\"select[aria-label='Default audio language']\")?.value ?? ''",
+      );
+      expect(persisted).toBe("ja");
+      profile("reload persisted preference");
+
+      const playerUrl = new URL(runtime.origin);
+      playerUrl.searchParams.set("episode", HLS_FIXTURE);
+      await player.view.navigate(playerUrl.href);
+      await verifyNoPlayerErrors(player);
+      await showPlayerControls(player.view);
+      await clickElement(player.view, { selector: "button", ariaLabel: "Playback settings" });
+      await waitForElement(player.view, { selector: "#player-audio-track" });
+      const audioLabel = await player.view.evaluate<string>(`(() => {
+        const select = document.querySelector("#player-audio-track");
+        return select instanceof HTMLSelectElement
+          ? select.selectedOptions[0]?.textContent ?? ""
+          : "";
+      })()`);
+      expect(audioLabel.toLowerCase()).toContain("jpn");
+      expect(player.manifestRequests.length).toBeGreaterThan(0);
+      profile("stream preferred Japanese track");
+    } catch (error: unknown) {
+      await captureFailure({ player, name: "account-audio-preference", serverLog: runtime.serverLog(), error });
+    } finally {
+      await player.view.evaluate<number>("fetch('/api/auth/preferences', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ audioLanguage: null }) }).then(response => response.status)").catch(() => undefined);
+      await player.close();
+      profile("reset preference and close browser view");
+    }
+  }, 45_000);
+
   test("navigates through a season, streams quickly, skips time, and traverses episodes", async () => {
     const profile = testProfile("journey");
     const runtime = activeHarness();

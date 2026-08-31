@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import type { PlaybackAuditEvent, PlaybackAuditOrigin, PlaybackProgress } from "../types.ts";
 import { usePlaybackHistory, useRestorePlaybackHistory } from "../hooks/usePlaybackHistory.ts";
 import { formatDuration } from "../format.ts";
+import { ProfileEmptyState, ProfileSection } from "./ProfileSection.tsx";
 
 const actionLabels = {
   completed: "Finished watching",
@@ -47,8 +48,8 @@ function HistoryEvent({ event }: { readonly event: PlaybackAuditEvent }): React.
   const restore = useRestorePlaybackHistory();
   const handleRestore = useCallback(() => restore.mutate(event.id), [event.id, restore]);
   return (
-    <li className="border-b border-border py-4 last:border-b-0">
-      <div className="flex items-start justify-between gap-4">
+    <li className="px-4 py-4 sm:px-5">
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
         <div className="min-w-0">
           <p className="font-medium">{actionLabels[event.action]}</p>
           <p className="mt-1 truncate text-sm text-muted-foreground" title={event.rel}>
@@ -63,7 +64,7 @@ function HistoryEvent({ event }: { readonly event: PlaybackAuditEvent }): React.
             </p>
           )}
           <p className="mt-1 text-xs text-muted-foreground">
-            {new Date(event.createdAt).toLocaleString()} · {originLabels[event.origin]} · {event.actorUsername}
+            {new Date(event.createdAt).toLocaleString()} · {originLabels[event.origin]}
           </p>
         </div>
         {(event.action === "completed" || event.action === "watched" || event.action === "unwatched") && (
@@ -71,10 +72,10 @@ function HistoryEvent({ event }: { readonly event: PlaybackAuditEvent }): React.
             type="button"
             onClick={handleRestore}
             disabled={restore.isPending}
-            className="inline-flex shrink-0 items-center gap-2 rounded-md bg-secondary px-3 py-2 text-xs font-semibold text-secondary-foreground hover:bg-accent disabled:text-muted-foreground"
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-secondary px-2.5 text-xs font-medium text-secondary-foreground hover:bg-accent disabled:text-muted-foreground"
           >
             <RotateCcw className="size-3.5" />
-            Restore previous
+            Undo
           </button>
         )}
       </div>
@@ -85,30 +86,47 @@ function HistoryEvent({ event }: { readonly event: PlaybackAuditEvent }): React.
   );
 }
 
-export function PlaybackHistory(): React.JSX.Element {
+function HistoryList({ events }: { readonly events: readonly PlaybackAuditEvent[] }): React.JSX.Element {
+  return (
+    <ul className="divide-y divide-border">
+      {events.map((event) => <HistoryEvent key={event.id} event={event} />)}
+    </ul>
+  );
+}
+
+export function PlaybackHistory({ className }: { readonly className?: string }): React.JSX.Element {
   const history = usePlaybackHistory();
   const events = history.data ?? [];
+  const recent = events.slice(0, 5);
+  const older = events.slice(5);
   return (
-    <section className="border-b border-border py-6" aria-labelledby="playback-history-title">
-      <div className="flex items-center gap-2">
-        <History className="size-5 text-primary" />
-        <h2 id="playback-history-title" className="text-lg font-semibold">Playback history</h2>
-      </div>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Watched-state changes are retained permanently. Restoring creates another history entry.
-      </p>
-      {history.isPending && <p className="py-5 text-sm text-muted-foreground">Loading history…</p>}
+    <ProfileSection
+      className={className}
+      description="Recent watched-state changes."
+      icon={History}
+      id="playback-history-title"
+      title="Playback history"
+    >
+      {history.isPending && <p className="px-4 py-6 text-sm text-muted-foreground sm:px-5">Loading…</p>}
       {history.error !== null && (
-        <p className="py-5 select-text text-sm text-destructive">{history.error.message}</p>
+        <p className="select-text px-4 py-6 text-sm text-destructive sm:px-5">{history.error.message}</p>
       )}
       {history.status === "success" && events.length === 0 && (
-        <p className="py-5 text-sm text-muted-foreground">No playback actions recorded yet.</p>
+        <ProfileEmptyState>No playback changes yet.</ProfileEmptyState>
       )}
       {events.length > 0 && (
-        <ul className="mt-3">
-          {events.map((event) => <HistoryEvent key={event.id} event={event} />)}
-        </ul>
+        <>
+          <HistoryList events={recent} />
+          {older.length > 0 && (
+            <details className="group border-t border-border">
+              <summary className="cursor-pointer px-4 py-3 text-center text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground sm:px-5">
+                Show {older.length} older {older.length === 1 ? "change" : "changes"}
+              </summary>
+              <HistoryList events={older} />
+            </details>
+          )}
+        </>
       )}
-    </section>
+    </ProfileSection>
   );
 }

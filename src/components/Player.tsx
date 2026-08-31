@@ -4,6 +4,7 @@ import type {
   EpisodeDisplay,
   MediaEntry,
   PlaybackProgress,
+  PreferredAudioLanguage,
 } from "../types.ts";
 import { usePlayerProgress } from "../hooks/usePlayerProgress.ts";
 import { useVideoSource } from "../hooks/useVideoSource.ts";
@@ -31,6 +32,7 @@ interface PlayerProps {
   readonly onPrevious: () => void;
   readonly anilistTarget: AniListPlaybackTarget | null;
   readonly knownDuration: number;
+  readonly preferredAudioLanguage: PreferredAudioLanguage | null;
 }
 
 export function Player({
@@ -44,6 +46,7 @@ export function Player({
   onPrevious,
   anilistTarget,
   knownDuration,
+  preferredAudioLanguage,
 }: PlayerProps): React.JSX.Element {
   const resumeAt = initialProgress?.completed === false &&
     hasMeaningfulPlaybackProgress(initialProgress.position)
@@ -60,7 +63,8 @@ export function Player({
     handleTimelineSeek,
     timelineOffset,
     playbackPosition,
-  } = useVideoSource(entry, resumeAt);
+    playbackMode,
+  } = useVideoSource(entry, resumeAt, preferredAudioLanguage);
   const progress = usePlayerProgress({
     anilistTarget,
     entry,
@@ -94,6 +98,8 @@ export function Player({
         <CopyableErrorBoundary title="The player encountered an error" onRecover={onClose}>
           <PlayerSurface
             entry={entry}
+            preferredAudioLanguage={preferredAudioLanguage}
+            playbackMode={playbackMode}
             episodeDisplay={episodeDisplay}
             timelineOffset={timelineOffset}
             knownDuration={knownDuration}

@@ -14,7 +14,9 @@ import {
   logout,
   provisionUser,
   setupPassword,
+  updatePlaybackPreferences,
 } from "../api.ts";
+import type { PreferredAudioLanguage } from "../../shared/audioLanguage.ts";
 import {
   navigateAfterAuthentication,
   navigateToLogin,
@@ -79,6 +81,18 @@ export function useLogout(): UseMutationResult<void, Error, void> {
       navigateToLogin();
       return cancellation;
     },
+  });
+}
+
+export function usePlaybackPreferences(): UseMutationResult<
+  AuthUser,
+  Error,
+  PreferredAudioLanguage | null
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updatePlaybackPreferences,
+    onSuccess: (user) => queryClient.setQueryData(authKey, user),
   });
 }
 
