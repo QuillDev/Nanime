@@ -5,6 +5,8 @@ import type {
   TvmazeMatch,
 } from "../shared/types.ts";
 
+export type { PreferredAudioLanguage } from "../shared/audioLanguage.ts";
+
 export type {
   AniListListEntry,
   AuthUser,
@@ -144,7 +146,7 @@ export type AniListWatchStatus =
   | "PAUSED"
   | "REPEATING";
 
-export interface ProvisionedUser extends AuthUser {
+export interface ProvisionedUser extends Omit<AuthUser, "preferredAudioLanguage"> {
   readonly passwordSet: boolean;
 }
 

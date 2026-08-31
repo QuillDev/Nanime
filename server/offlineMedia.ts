@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmod, lstat, mkdir, realpath, rename, unlink } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import type { OfflineMediaArtifact } from "../shared/types.ts";
-import { audioTracks } from "./audioTracks.ts";
+import { audioTracks, chooseAudioTrack } from "./audioTracks.ts";
 import { database } from "./database.ts";
 import { jsonObject } from "./json.ts";
 import { probeDuration } from "./mediaInfo.ts";
@@ -35,6 +35,7 @@ export interface OfflineMediaOptions {
   readonly mediaRoot: string;
   readonly videoExtensions: ReadonlySet<string>;
   readonly directPlayExtensions: ReadonlySet<string>;
+  readonly preferredAudioLanguage?: string | null;
 }
 
 interface Source {
@@ -56,9 +57,10 @@ const artifacts = database.query<ArtifactRow, []>(`
 const artifactById = database.query<ArtifactRow, [string]>(`
   SELECT * FROM offline_media_artifacts WHERE id = ?
 `);
-const matchingArtifact = database.query<ArtifactRow, [string, number, number, number]>(`
+const matchingArtifact = database.query<ArtifactRow, [string, number, number, number, number]>(`
   SELECT * FROM offline_media_artifacts
   WHERE source_rel = ? AND source_size = ? AND source_modified_at = ? AND audio_index = ?
+    AND direct = ?
 `);
 const insertArtifact = database.query<void, [
   string, string, number, number, number, number, string | null, string, number,
@@ -171,15 +173,20 @@ async function sourceFor(rel: string, options: OfflineMediaOptions): Promise<Sou
   return resolution.source;
 }
 
-async function selectedAudioIndex(abs: string, requested: number | null): Promise<number | null | undefined> {
+async function selectedAudioIndex(
+  abs: string,
+  requested: number | null,
+  preferredLanguage: string | null,
+): Promise<{ readonly index: number | null; readonly requiresSelection: boolean } | undefined> {
   const tracks = await audioTracks(abs);
   if (tracks.length === 0) {
-    return requested === null ? null : undefined;
+    return requested === null ? { index: null, requiresSelection: false } : undefined;
   }
-  if (requested !== null) {
-    return tracks.some((track) => track.index === requested) ? requested : undefined;
-  }
-  return tracks.find((track) => track.isDefault)?.index ?? tracks[0]?.index;
+  const fallback = chooseAudioTrack(tracks, null);
+  const selected = chooseAudioTrack(tracks, requested, preferredLanguage);
+  return selected === null
+    ? undefined
+    : { index: selected?.index ?? null, requiresSelection: selected?.index !== fallback?.index };
 }
 
 export function offlineTranscodeArgs(
@@ -306,29 +313,36 @@ async function reusableArtifact(
 
 async function createArtifact(
   source: Source,
-  audioIndex: number | null,
+  audio: { readonly index: number | null; readonly requiresSelection: boolean },
   options: OfflineMediaOptions,
 ): Promise<ArtifactRow> {
   const id = randomUUID();
   const now = Date.now();
   const duration = await probeDuration(source.abs);
-  const storedAudioIndex = audioIndex ?? -1;
-  const existing = matchingArtifact.get(source.rel, source.size, source.modifiedAt, storedAudioIndex);
+  const storedAudioIndex = audio.index ?? -1;
+  const direct = source.direct && !audio.requiresSelection;
+  const existing = matchingArtifact.get(
+    source.rel, source.size, source.modifiedAt, storedAudioIndex, direct ? 1 : 0,
+  );
   if (existing !== null) {
     return reusableArtifact(existing, options);
   }
-  const mimeType = source.direct
+  const mimeType = direct
     ? MIME_TYPES.get(extname(source.abs).toLowerCase()) ?? "application/octet-stream"
     : "video/mp4";
   insertArtifact.run(
-    id, source.rel, source.size, source.modifiedAt, storedAudioIndex, source.direct ? 1 : 0,
-    source.direct ? null : `${id}.mp4`, source.direct ? "ready" : "queued", duration,
-    source.direct ? source.size : null, mimeType, now, now,
+    id, source.rel, source.size, source.modifiedAt, storedAudioIndex, direct ? 1 : 0,
+    direct ? null : `${id}.mp4`, direct ? "ready" : "queued", duration,
+    direct ? source.size : null, mimeType, now, now,
   );
   return artifactById.get(id) as ArtifactRow;
 }
 
-async function prepareResponse(req: Request, options: OfflineMediaOptions): Promise<Response> {
+async function prepareResponse(
+  req: Request,
+  options: OfflineMediaOptions,
+  preferredAudioLanguage: string | null,
+): Promise<Response> {
   const body = jsonObject(await req.json().catch(() => null));
   const path = body?.["path"];
   const requestedAudio = body?.["audioIndex"] ?? null;
@@ -343,11 +357,11 @@ async function prepareResponse(req: Request, options: OfflineMediaOptions): Prom
     return new Response(resolution.error ?? "Video not found", { status: 404 });
   }
   const { source } = resolution;
-  const audioIndex = await selectedAudioIndex(source.abs, requestedAudio);
-  if (audioIndex === undefined) {
+  const audio = await selectedAudioIndex(source.abs, requestedAudio, preferredAudioLanguage);
+  if (audio === undefined) {
     return new Response("Audio track not found", { status: 404 });
   }
-  const row = await createArtifact(source, audioIndex, options);
+  const row = await createArtifact(source, audio, options);
   runQueue(options);
   return artifactResponse(
     artifactById.get(row.id) as ArtifactRow,
@@ -370,7 +384,7 @@ export function offlineMediaApiResponse(
 ): Response | Promise<Response> | null {
   if (pathname === "/api/offline-media") {
     return req.method === "POST"
-      ? prepareResponse(req, options)
+      ? prepareResponse(req, options, options.preferredAudioLanguage ?? null)
       : new Response("Method not allowed", { status: 405 });
   }
   const match = /^\/api\/offline-media\/(?<id>[0-9a-f-]+)$/u.exec(pathname);

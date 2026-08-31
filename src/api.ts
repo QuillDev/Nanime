@@ -23,6 +23,7 @@ import type {
   TranscodePreset,
   TorrentStatus,
 } from "./types.ts";
+import type { PreferredAudioLanguage } from "../shared/audioLanguage.ts";
 
 // TVmaze air dates are contractually strings. Eden otherwise revives date-like
 // JSON strings into Date objects even when the Elysia response schema says string.
@@ -111,6 +112,15 @@ export async function fetchCurrentUser(signal: AbortSignal): Promise<AuthUser | 
     }
     throw error;
   }
+}
+
+export async function updatePlaybackPreferences(
+  audioLanguage: PreferredAudioLanguage | null,
+): Promise<AuthUser> {
+  return unwrap(
+    await api.api.auth.preferences.put({ audioLanguage }),
+    "Updating playback preferences",
+  );
 }
 
 export async function fetchAniListAuthConfig(signal: AbortSignal): Promise<AniListAuthConfig> {

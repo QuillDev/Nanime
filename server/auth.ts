@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { database } from "./database.ts";
 import type { AuthUser } from "../shared/types.ts";
+import { isPreferredAudioLanguage } from "../shared/audioLanguage.ts";
 
 export type { AuthUser } from "../shared/types.ts";
 
@@ -20,6 +21,7 @@ interface UserRow {
   readonly password_hash: string | null;
   readonly setup_token_hash: string | null;
   readonly is_admin: number;
+  readonly preferred_audio_language: string | null;
 }
 
 interface Credentials {
@@ -36,10 +38,12 @@ interface LoginAttempts {
 const loginAttempts = new Map<string, LoginAttempts>();
 
 const findUser = database.query<UserRow, [string]>(`
-  SELECT id, username, password_hash, setup_token_hash, is_admin FROM users WHERE username = ?
+  SELECT id, username, password_hash, setup_token_hash, is_admin, preferred_audio_language
+  FROM users WHERE username = ?
 `);
 const findSessionUser = database.query<UserRow, [string, number]>(`
-  SELECT users.id, users.username, users.password_hash, users.setup_token_hash, users.is_admin
+  SELECT users.id, users.username, users.password_hash, users.setup_token_hash, users.is_admin,
+    users.preferred_audio_language
   FROM sessions JOIN users ON users.id = sessions.user_id
   WHERE sessions.token_hash = ? AND sessions.expires_at > ?
 `);
@@ -52,12 +56,33 @@ const setPassword = database.query<void, [string, number]>(`
   WHERE id = ? AND password_hash IS NULL
 `);
 const findUserById = database.query<UserRow, [number]>(`
-  SELECT id, username, password_hash, setup_token_hash, is_admin FROM users WHERE id = ?
+  SELECT id, username, password_hash, setup_token_hash, is_admin, preferred_audio_language
+  FROM users WHERE id = ?
+`);
+const updateAudioLanguage = database.query<void, [string | null, number]>(`
+  UPDATE users SET preferred_audio_language = ? WHERE id = ?
 `);
 database.query("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
 
 function publicUser(row: UserRow): AuthUser {
-  return { id: row.id, username: row.username, isAdmin: row.is_admin === 1 };
+  return {
+    id: row.id,
+    username: row.username,
+    isAdmin: row.is_admin === 1,
+    preferredAudioLanguage: isPreferredAudioLanguage(row.preferred_audio_language)
+      ? row.preferred_audio_language
+      : null,
+  };
+}
+
+async function updatePlaybackPreferences(req: Request, user: AuthUser): Promise<Response> {
+  const body = (await req.json().catch(() => null)) as { readonly audioLanguage?: unknown } | null;
+  const audioLanguage = body?.audioLanguage;
+  if (audioLanguage !== null && !isPreferredAudioLanguage(audioLanguage)) {
+    return new Response("Choose a supported audio language", { status: 400 });
+  }
+  updateAudioLanguage.run(audioLanguage, user.id);
+  return Response.json({ ...user, preferredAudioLanguage: audioLanguage });
 }
 
 function tokenHash(token: string): string {
@@ -263,6 +288,12 @@ export function authResponse(
   }
   if (pathname === "/api/auth/logout" && req.method === "POST") {
     return logout(req);
+  }
+  if (pathname === "/api/auth/preferences" && req.method === "PUT") {
+    const user = authenticatedUser(req);
+    return user === null
+      ? new Response("Unauthorized", { status: 401 })
+      : updatePlaybackPreferences(req, user);
   }
   return pathname.startsWith("/api/auth/")
     ? new Response("Method not allowed", { status: 405 })

@@ -1,3 +1,5 @@
+import type { PreferredAudioLanguage } from "./audioLanguage.ts";
+
 export interface MediaEntry {
   readonly rel: string;
   readonly name: string;
@@ -138,6 +140,7 @@ export interface AuthUser {
   readonly id: number;
   readonly username: string;
   readonly isAdmin: boolean;
+  readonly preferredAudioLanguage: PreferredAudioLanguage | null;
 }
 
 export interface AniListListEntry {

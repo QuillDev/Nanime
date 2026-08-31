@@ -9,7 +9,7 @@ import {
 } from "../hooks/usePlayerPresentation.ts";
 import { useAudioSelection, useSubtitleTracks } from "../hooks/useSubtitleTracks.ts";
 import type { VideoControls } from "../hooks/useVideoControls.ts";
-import type { EpisodeDisplay, MediaEntry, SubtitleTrack } from "../types.ts";
+import type { EpisodeDisplay, MediaEntry, PreferredAudioLanguage, SubtitleTrack } from "../types.ts";
 import { PlayerControls } from "./PlayerControls.tsx";
 import {
   PlayerDiagnostics,
@@ -55,6 +55,8 @@ function usePlaybackEvents(
 
 interface PlayerSurfaceProps {
   readonly entry: MediaEntry;
+  readonly preferredAudioLanguage: PreferredAudioLanguage | null;
+  readonly playbackMode: "direct" | "hls";
   readonly episodeDisplay: EpisodeDisplay | null;
   readonly timelineOffset: number;
   readonly knownDuration: number;
@@ -71,14 +73,27 @@ interface PlayerSurfaceProps {
   readonly playbackPosition: (video: HTMLVideoElement) => number;
 }
 
+function usePlayerTracks(
+  entry: MediaEntry,
+  onAudioTrack: (index: number) => void,
+  preferredLanguage: PreferredAudioLanguage | null,
+) {
+  const subtitles = useSubtitleTracks(entry.rel);
+  const audio = useAudioSelection(entry.rel, onAudioTrack, {
+    enabled: entry.offlineUrl === undefined,
+    preferredLanguage,
+  });
+  return { audio, subtitles };
+}
+
 export function PlayerSurface({
-  entry, episodeDisplay, timelineOffset, knownDuration, videoRef,
+  entry, preferredAudioLanguage, playbackMode,
+  episodeDisplay, timelineOffset, knownDuration, videoRef,
   setVideo, handleVideoError, handlePlaying, handleSourceMetadata, progress,
   previousAvailable, nextAvailable, onPrevious, onNext,
   onAudioTrack, onTimelineSeek, playbackPosition,
 }: PlayerSurfaceProps): React.JSX.Element {
-  const subtitles = useSubtitleTracks(entry.rel);
-  const audio = useAudioSelection(entry.rel, onAudioTrack, entry.offlineUrl === undefined);
+  const { audio, subtitles } = usePlayerTracks(entry, onAudioTrack, preferredAudioLanguage);
   const playerRef = useRef<HTMLDivElement | null>(null);
   const {
     buffering,
@@ -164,7 +179,7 @@ export function PlayerSurface({
             buffering={buffering}
             controlsVisible={controlsVisible}
             frameVisible={frameVisible}
-            playbackMode={entry.direct ? "direct" : "hls"}
+            playbackMode={playbackMode}
             videoRef={videoRef}
           />
           {controlsVisible && (

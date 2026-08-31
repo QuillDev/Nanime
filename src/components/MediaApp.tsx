@@ -98,10 +98,12 @@ function PlayerLayer({
   navigation,
   progress,
   mediaDuration,
+  preferredAudioLanguage,
 }: {
   readonly navigation: ReturnType<typeof useEpisodeNavigation>;
   readonly progress: ReturnType<typeof usePlaybackProgress>;
   readonly mediaDuration: ReturnType<typeof useMediaDuration>;
+  readonly preferredAudioLanguage: AuthUser["preferredAudioLanguage"];
 }): React.JSX.Element | null {
   if (navigation.selected === null || progress.status === "pending") {
     return null;
@@ -112,7 +114,7 @@ function PlayerLayer({
     : initialProgress?.duration ?? 0;
   return (
     <Suspense fallback={PLAYER_LOADING}>
-      <Player key={navigation.selected.rel} entry={navigation.selected} episodeDisplay={navigation.display} anilistTarget={navigation.target} nextAvailable={navigation.next !== null} previousAvailable={navigation.previous !== null} initialProgress={initialProgress} knownDuration={knownDuration} onClose={closeEpisode} onNext={navigation.handleNext} onPrevious={navigation.handlePrevious} />
+      <Player key={navigation.selected.rel} entry={navigation.selected} episodeDisplay={navigation.display} anilistTarget={navigation.target} nextAvailable={navigation.next !== null} previousAvailable={navigation.previous !== null} initialProgress={initialProgress} knownDuration={knownDuration} preferredAudioLanguage={preferredAudioLanguage} onClose={closeEpisode} onNext={navigation.handleNext} onPrevious={navigation.handlePrevious} />
     </Suspense>
   );
 }
@@ -147,7 +149,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
       <main className="mx-auto max-w-7xl px-6 py-6">
         <LibraryContent library={library} index={index} progress={playbackProgress} route={route} user={user} onSelect={handleSelect} onShowSelect={handleShowSelect} />
       </main>
-      <PlayerLayer navigation={navigation} progress={playbackProgress} mediaDuration={mediaDuration} />
+      <PlayerLayer navigation={navigation} progress={playbackProgress} mediaDuration={mediaDuration} preferredAudioLanguage={user.preferredAudioLanguage} />
     </div>
   );
 }

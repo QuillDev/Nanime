@@ -31,8 +31,8 @@ export interface HlsPlaylistOptions extends HlsOptions {
   readonly userId: number;
   readonly leaseId: string | null;
   readonly playerId: string | null;
+  readonly preferredAudioLanguage: string | null;
 }
-
 interface HlsSession {
   readonly id: string;
   readonly key: string;
@@ -105,7 +105,11 @@ async function createSession(
   segmentIndex: number,
   key: string,
 ): Promise<HlsSession | undefined> {
-  const audioTrack = await selectedAudioTrack(options.abs, options.audioIndex);
+  const audioTrack = await selectedAudioTrack(
+    options.abs,
+    options.audioIndex,
+    options.preferredAudioLanguage,
+  );
   if (audioTrack === null) {
     return undefined;
   }
@@ -491,7 +495,6 @@ async function cleanupSessions(): Promise<void> {
     }
   }
 }
-
 setInterval(() => {
   void cleanupSessions();
 }, 60 * 1000).unref();

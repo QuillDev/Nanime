@@ -27,7 +27,7 @@ type MediaHeaderProps = {
 export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
   const { user, view } = props;
   return (
-    <header className="sticky top-[env(safe-area-inset-top)] z-10 flex items-center gap-4 border-b border-border bg-background px-6 py-4">
+    <header className="sticky top-[env(safe-area-inset-top)] z-10 flex items-center gap-2 border-b border-border bg-background px-4 py-4 sm:gap-4 sm:px-6">
       <button
         type="button"
         onClick={navigateToShows}
@@ -48,10 +48,7 @@ export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
           onShowSelect={props.onShowSelect}
         />
       )}
-      {view !== "library" && (
-        <span className="ml-auto text-sm font-medium capitalize">{view}</span>
-      )}
-      <nav className="mobile-account-controls" aria-label="Primary navigation">
+      <nav className="mobile-account-controls ml-auto" aria-label="Primary navigation">
         <button
           type="button"
           data-active={view === "library"}

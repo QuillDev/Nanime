@@ -36,6 +36,9 @@ const userColumns = database.query<TableColumn, []>("PRAGMA table_info(users)").
 if (!userColumns.some((column) => column.name === "setup_token_hash")) {
   database.run("ALTER TABLE users ADD COLUMN setup_token_hash TEXT");
 }
+if (!userColumns.some((column) => column.name === "preferred_audio_language")) {
+  database.run("ALTER TABLE users ADD COLUMN preferred_audio_language TEXT");
+}
 if (ADMIN_SETUP_TOKEN !== "" && ADMIN_SETUP_TOKEN.length < 32) {
   throw new Error("NANIME_ADMIN_SETUP_TOKEN must contain at least 32 characters");
 }

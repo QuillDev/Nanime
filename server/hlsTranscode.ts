@@ -14,12 +14,14 @@ interface HlsSessionKeyOptions extends HlsOptions {
   readonly abs: string;
   readonly audioIndex: number | null;
   readonly leaseId: string | null;
+  readonly preferredAudioLanguage: string | null;
   readonly userId: number;
 }
 
 export function hlsSessionKey(options: HlsSessionKeyOptions, segmentIndex: number): string {
   return createHash("sha256").update([
-    String(options.userId), options.abs, String(options.audioIndex), String(segmentIndex),
+    String(options.userId), options.abs, String(options.audioIndex),
+    String(options.preferredAudioLanguage), String(segmentIndex),
     options.hardwareAcceleration, options.leaseId === null ? "legacy" : "managed",
   ].join("\0")).digest("hex");
 }
