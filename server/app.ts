@@ -35,6 +35,11 @@ import {
 } from "./schemas.ts";
 
 
+const aniListLinkSchema = schema.object({
+  key: schema.string({ minLength: 1 }), id: schema.integer({ minimum: 1 }),
+  manualTitle: schema.optional(schema.string({ minLength: 1, maxLength: 300 })),
+});
+
 function formRequest(
   req: Request,
   body: { readonly torrent?: File; readonly magnet?: string; readonly showFolder: string },
@@ -294,7 +299,7 @@ export const app = new Elysia({ name: "nanime" })
   .post("/api/anilist/link", ({ request, server, body }) => (
     handle(jsonRequest(request, body), server)
   ), {
-    body: schema.object({ key: schema.string({ minLength: 1 }), id: schema.integer() }),
+    body: aniListLinkSchema,
     response: aniListMediaSchema,
   })
   .get("/api/jikan/search", ({ request, server }) => handle(request, server), {

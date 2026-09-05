@@ -7,6 +7,7 @@ import type { AnimeMetadata, MetadataStore } from "./metadataTypes.ts";
 import { fetchJikanMedia, searchJikan } from "./jikan.ts";
 import { matchTvmaze, plainText } from "./tvmaze.ts";
 import { recordMappingActivity, type ActivityActor } from "./libraryActivity.ts";
+import { manualAniListMetadata } from "./manualMetadata.ts";
 
 export { aniListErrorResponse } from "./anilistClient.ts";
 export { jikanErrorResponse } from "./jikan.ts";
@@ -336,6 +337,7 @@ interface LinkBody {
   readonly key: string;
   readonly id: number;
   readonly anilistId: number | null;
+  readonly manualTitle: string | undefined;
 }
 
 function optionalAniListId(value: unknown): number | null | undefined {
@@ -351,10 +353,12 @@ function linkBody(value: unknown): LinkBody | null {
     return null;
   }
   const { key, id, anilistId: rawAniListId } = object;
+  const { manualTitle } = object;
+  if (manualTitle !== undefined && (typeof manualTitle !== "string" || manualTitle.trim() === "" || manualTitle.length > 300)) { return null; }
   const anilistId = optionalAniListId(rawAniListId);
-  return typeof key === "string" && key !== "" && Number.isInteger(id) &&
+  return typeof key === "string" && key !== "" && Number.isInteger(id) && Number(id) > 0 &&
     anilistId !== undefined
-    ? { key, id: id as number, anilistId }
+    ? { key, id: id as number, anilistId, manualTitle: manualTitle?.trim() }
     : null;
 }
 
@@ -363,9 +367,10 @@ export async function linkAniListResponse(req: Request, actor: ActivityActor): P
   if (body === null) {
     return new Response("Invalid link request", { status: 400 });
   }
-  const clean = await fetchMedia(body.id);
-  const media = body.key.startsWith("show:") ? await tvmazeEnrichment(clean) : clean;
   const store = await metadata();
+  const clean = body.manualTitle === undefined ? await fetchMedia(body.id)
+    : manualAniListMetadata(body.id, body.manualTitle, store[body.key]);
+  const media = body.manualTitle === undefined && body.key.startsWith("show:") ? await tvmazeEnrichment(clean) : clean;
   recordMappingActivity({
     actor,
     key: body.key,

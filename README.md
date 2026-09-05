@@ -37,6 +37,14 @@ after a handoff. Empty, abandoned parties expire after 24 hours.
 
 Watch together requires a network connection; offline downloads remain independent.
 
+## Metadata outages
+
+If metadata providers are unavailable, open **Match metadata → Link manually
+(no API)** and enter a title and AniList anime ID. This saves a local mapping
+without validating the ID or fetching artwork. Refresh metadata after the API
+recovers to fill in missing details. AniList progress synchronization still
+requires its public API.
+
 ## Verify
 
 ```sh

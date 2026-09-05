@@ -43,13 +43,14 @@ interface MetadataLink {
   readonly key: string;
   readonly id: number;
   readonly anilistId: number | null;
+  readonly manualTitle?: string;
 }
 
 export async function linkMetadata(link: MetadataLink): Promise<AniListMedia> {
-  const { provider, key, id, anilistId } = link;
-  return provider === "anilist"
-    ? unwrap(await api.api.anilist.link.post({ key, id }), "AniList link")
-    : unwrap(await api.api.jikan.link.post({ key, id, anilistId }), "Jikan link");
+  const { provider, key, id, anilistId, manualTitle } = link;
+  if (provider === "jikan") { return unwrap(await api.api.jikan.link.post({ key, id, anilistId }), "Jikan link"); }
+  if (manualTitle === undefined) { return unwrap(await api.api.anilist.link.post({ key, id }), "AniList link"); }
+  return unwrap(await api.api.anilist.link.post({ key, id, manualTitle }), "Manual AniList link");
 }
 
 export async function updateMetadataAniListId(

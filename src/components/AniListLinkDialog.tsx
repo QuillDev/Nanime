@@ -9,6 +9,7 @@ import {
 } from "../hooks/useShowMetadata.ts";
 import { Input } from "./ui/input.tsx";
 import { MetadataAniListSyncField } from "./MetadataAniListSyncField.tsx";
+import { ManualMetadataLink } from "./ManualMetadataLink.tsx";
 import {
   Dialog,
   DialogContent,
@@ -193,6 +194,7 @@ export function AniListLinkDialog({
           </DialogDescription>
         </DialogHeader>
         <ProviderPicker provider={provider} onProvider={setProvider} />
+        <ManualMetadataLink metadataKey={metadataKey} suggestedTitle={suggestedSearch} initialId={currentMedia?.anilistId} onClose={onClose} />
         {provider === "jikan" && (
           <MetadataAniListSyncField
             canSave={currentMedia?.provider === "jikan"}

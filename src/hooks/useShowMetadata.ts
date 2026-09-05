@@ -39,6 +39,7 @@ interface LinkVariables {
   readonly key: string;
   readonly id: number;
   readonly anilistId: number | null;
+  readonly manualTitle?: string;
 }
 
 export function useLinkMetadata(): UseMutationResult<

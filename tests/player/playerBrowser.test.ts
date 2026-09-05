@@ -1,3 +1,4 @@
+import { registerManualMetadataTest } from "./manualMetadataBrowser.ts";
 import { registerWatchTogetherTests } from "./watchTogetherBrowser.ts";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
@@ -464,4 +465,5 @@ describeBrowser("real browser player harness", () => {
   registerCommonJourneyTests();
   registerPlaybackRegressionTests();
   registerWatchTogetherTests(activeHarness);
+  registerManualMetadataTest(activeHarness);
 });

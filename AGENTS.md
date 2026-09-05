@@ -125,6 +125,14 @@ hover and pointer capability.
 - Preserve unrelated working-tree changes. Do not edit generated output, local
   operator data, or broad files mechanically when a focused change is enough.
 
+## Commits and pushing
+
+When requested work is ready, commit the relevant changes and push them to the
+project's GitHub remote after the required checks pass. The user has authorized
+these pushes; do not ask again or leave completed commits local-only. Preserve
+unrelated working-tree changes and never force-push shared branches. If a push
+fails, resolve it when possible and explicitly report any remaining blocker.
+
 ## Verification
 
 For deployment, follow [DEPLOYMENT.md](DEPLOYMENT.md). It records this machine's
