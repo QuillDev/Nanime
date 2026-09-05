@@ -11,6 +11,8 @@ AniList account sync and qBittorrent download management are optional.
 
 See the [setup guide](setup.md) to install, configure, and run Nanime.
 
+For updates on the hosted machine, follow the [deployment runbook](DEPLOYMENT.md).
+
 ## Watch together
 
 Choose the people icon labeled **Party** in the navigation bar to **Create party**,

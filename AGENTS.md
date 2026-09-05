@@ -8,10 +8,11 @@ include AniList and qBittorrent; metadata also uses Jikan and TVmaze.
 
 ## Project invariants
 
-- This is a public repository. Never commit secrets, databases, media, private
-  addresses, operator paths, deployment names, or library details. Examples must
-  be portable and obviously fictitious. Do not expose values from local `.env`,
-  SQLite, cache, or media files in patches, logs, screenshots, or test fixtures.
+- This repository is private. Machine-specific deployment paths and service names
+  belong in `DEPLOYMENT.md`. Never commit secrets, databases, media, environment
+  contents, or library details. Keep application defaults and test fixtures
+  portable and fictitious. Do not expose credentials or private user data from
+  local `.env`, SQLite, cache, or media files in logs or screenshots.
 - Use the Bun version pinned by `packageManager` and CI for the runtime, package
   manager, scripts, and `bun:test`. Keep those pins aligned when upgrading Bun;
   do not introduce another package manager or test framework.
@@ -125,6 +126,11 @@ hover and pointer capability.
   operator data, or broad files mechanically when a focused change is enough.
 
 ## Verification
+
+For deployment, follow [DEPLOYMENT.md](DEPLOYMENT.md). It records this machine's
+service, pinned runtime, verification steps, backups, restart, health checks, and
+rollback. The current systemd runtime override is temporary and disappears on
+reboot; verify the running executable rather than assuming the shell's Bun is used.
 
 Run `bun run check` before every commit. It must have no TypeScript or Oxlint
 findings and React Doctor must score 100/100. Run relevant targeted `bun test`

@@ -137,13 +137,7 @@ Open `http://localhost:5173`.
 
 ## Update
 
-Stop Nanime, then run:
-
-```sh
-git pull --ff-only
-bun install
-bun run build
-bun run start
-```
-
-Back up the SQLite database before updating.
+For this hosted installation, follow the step-by-step [deployment runbook](DEPLOYMENT.md).
+It covers the pinned runtime, verification, backups, service restart, health
+checks, and rollback. Other installations should adapt the service and filesystem
+paths to their own process manager while preserving those checks.
