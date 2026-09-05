@@ -20,6 +20,11 @@ export interface PlaybackHandlers {
   readonly handleEnded: (event: SyntheticEvent<HTMLVideoElement>) => void;
 }
 
+export function playerResumePosition(progress: PlaybackProgress | undefined): number {
+  return progress?.completed === false && hasMeaningfulPlaybackProgress(progress.position)
+    ? progress.position : 0;
+}
+
 interface PlayerProgressOptions {
   readonly anilistTarget: AniListPlaybackTarget | null;
   readonly entry: MediaEntry;

@@ -1,3 +1,4 @@
+import { WatchTogether, useWatchTogether, useWatchTogetherPosition } from "./WatchTogether.tsx";
 import { useCallback } from "react";
 import type {
   AniListPlaybackTarget,
@@ -6,9 +7,8 @@ import type {
   PlaybackProgress,
   PreferredAudioLanguage,
 } from "../types.ts";
-import { usePlayerProgress } from "../hooks/usePlayerProgress.ts";
+import { usePlayerProgress, playerResumePosition } from "../hooks/usePlayerProgress.ts";
 import { useVideoSource } from "../hooks/useVideoSource.ts";
-import { hasMeaningfulPlaybackProgress } from "../lib/playback.ts";
 import { PlayerDescription } from "./EpisodeNavigation.tsx";
 import { CopyableErrorBoundary } from "./CopyableErrorBoundary.tsx";
 import { CopyablePlaybackError } from "./CopyablePlaybackError.tsx";
@@ -48,10 +48,7 @@ export function Player({
   knownDuration,
   preferredAudioLanguage,
 }: PlayerProps): React.JSX.Element {
-  const resumeAt = initialProgress?.completed === false &&
-    hasMeaningfulPlaybackProgress(initialProgress.position)
-    ? initialProgress.position
-    : 0;
+  const resumeAt = useWatchTogetherPosition(entry.rel, playerResumePosition(initialProgress));
   const {
     playbackError,
     videoRef,
@@ -65,6 +62,7 @@ export function Player({
     playbackPosition,
     playbackMode,
   } = useVideoSource(entry, resumeAt, preferredAudioLanguage);
+  const together = useWatchTogether({ rel: entry.rel, videoRef, playbackPosition, onSeek: handleTimelineSeek });
   const progress = usePlayerProgress({
     anilistTarget,
     entry,
@@ -97,6 +95,7 @@ export function Player({
         </DialogHeader>
         <CopyableErrorBoundary title="The player encountered an error" onRecover={onClose}>
           <PlayerSurface
+            playbackLocked={together.guestId !== null}
             entry={entry}
             preferredAudioLanguage={preferredAudioLanguage}
             playbackMode={playbackMode}
@@ -112,11 +111,13 @@ export function Player({
             onTimelineSeek={handleTimelineSeek}
             playbackPosition={playbackPosition}
             progress={progress}
-            previousAvailable={previousAvailable}
-            nextAvailable={nextAvailable}
+            previousAvailable={previousAvailable && together.guestId === null}
+            nextAvailable={nextAvailable && together.guestId === null}
             onPrevious={onPrevious}
             onNext={onNext}
-          />
+          >
+            {entry.offlineUrl === undefined && <WatchTogether session={together} videoRef={videoRef} />}
+          </PlayerSurface>
         </CopyableErrorBoundary>
         {playbackError !== null && (
           <CopyablePlaybackError detail={playbackError} />

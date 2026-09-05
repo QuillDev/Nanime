@@ -28,6 +28,7 @@ export interface MediaRoute {
   readonly showName: string | null;
   readonly episodeRel: string | null;
   readonly query: string;
+  readonly watchTogether: string | null;
 }
 
 export type AdminTab = "downloads" | "videos" | "users" | "system";
@@ -58,6 +59,7 @@ export function useMediaRoute(): MediaRoute {
     showName: showFromPath(url.pathname),
     episodeRel: url.searchParams.get("episode"),
     query: url.searchParams.get("q") ?? "",
+    watchTogether: url.searchParams.get("watch"),
   };
 }
 
@@ -104,7 +106,13 @@ export function navigateToLogin(): void {
 export function navigateAfterAuthentication(): void {
   const url = new URL(globalThis.location.href);
   url.pathname = "/";
+  const episode = url.searchParams.get("episode");
+  const watch = url.searchParams.get("watch");
   url.search = "";
+  if (watch !== null) {
+    url.searchParams.set("watch", watch);
+    if (episode !== null) { url.searchParams.set("episode", episode); }
+  }
   updateUrl(url, true);
 }
 
@@ -112,6 +120,7 @@ export function navigateToShow(showName: string): void {
   const url = new URL(globalThis.location.href);
   url.pathname = `/shows/${encodeURIComponent(showName)}`;
   url.searchParams.delete("episode");
+  url.searchParams.delete("watch");
   updateUrl(url);
 }
 
@@ -119,6 +128,7 @@ export function navigateToShows(): void {
   const url = new URL(globalThis.location.href);
   url.pathname = "/";
   url.searchParams.delete("episode");
+  url.searchParams.delete("watch");
   updateUrl(url);
 }
 
@@ -131,6 +141,7 @@ export function navigateToEpisode(rel: string): void {
 export function closeEpisode(): void {
   const url = new URL(globalThis.location.href);
   url.searchParams.delete("episode");
+  url.searchParams.delete("watch");
   updateUrl(url, true);
 }
 
@@ -152,4 +163,17 @@ export function updateSearch(query: string): void {
     return;
   }
   document.startViewTransition(() => commitSearch(query));
+}
+
+export function navigateToWatchEpisode(id: string, rel: string | null): void {
+  const url = new URL("/", globalThis.location.origin);
+  url.searchParams.set("watch", id);
+  if (rel !== null) { url.searchParams.set("episode", rel); }
+  updateUrl(url, true);
+}
+
+export function leaveWatchTogether(): void {
+  const url = new URL(globalThis.location.href);
+  url.searchParams.delete("watch");
+  updateUrl(url, true);
 }

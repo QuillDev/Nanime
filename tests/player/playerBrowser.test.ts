@@ -1,3 +1,4 @@
+import { registerWatchTogetherTests } from "./watchTogetherBrowser.ts";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   activateElement,
@@ -462,4 +463,5 @@ describeBrowser("real browser player harness", () => {
 
   registerCommonJourneyTests();
   registerPlaybackRegressionTests();
+  registerWatchTogetherTests(activeHarness);
 });

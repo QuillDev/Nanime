@@ -1,6 +1,8 @@
 import { link, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
+export const SECOND_FIXTURE_FOLDER = "Another Fixture Show";
+export const OTHER_SHOW_FIXTURE = `${SECOND_FIXTURE_FOLDER}/Another Fixture - 01.mp4`;
 export const FIXTURE_FOLDER = "Browser Fixture Show";
 export const COMMON_FIRST_FIXTURE = `${FIXTURE_FOLDER}/Browser Fixture - 01.mp4`;
 export const COMMON_SECOND_FIXTURE = `${FIXTURE_FOLDER}/Browser Fixture - 02.mp4`;
@@ -65,7 +67,9 @@ export async function generateFixture(mediaDirectory: string, ffmpeg: string): P
     ffmpeg, "-hide_banner", "-loglevel", "error", "-i", hlsFixture,
     "-map", "0:v:0", "-c:v", "copy", "-an", "-movflags", "+faststart", directFixture,
   ]);
+  await mkdir(join(mediaDirectory, SECOND_FIXTURE_FOLDER), { recursive: true });
   await Promise.all([
+    link(directFixture, join(mediaDirectory, OTHER_SHOW_FIXTURE)),
     link(directFixture, join(mediaDirectory, COMMON_FIRST_FIXTURE)),
     link(directFixture, join(mediaDirectory, COMMON_SECOND_FIXTURE)),
     link(directFixture, join(mediaDirectory, WATCHED_FIXTURE)),
