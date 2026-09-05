@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 interface FakeHlsConfig {
   readonly autoStartLoad: boolean;
@@ -91,9 +91,13 @@ mock.module("hls.js", () => ({ default: FakeHls }));
 const { attachHls } = await import("./hlsPlayback.ts");
 
 function fakeVideo() {
-  // This focused adapter double only needs the play method exercised by attachHls.
+  const video = Object.assign(new EventTarget(), {
+    ended: false,
+    paused: false,
+    play: mock(() => Promise.resolve()),
+  });
   // eslint-disable-next-line anti-slop/no-chained-type-assertions
-  return { play: mock(() => Promise.resolve()) } as unknown as HTMLVideoElement;
+  return video as unknown as HTMLVideoElement;
 }
 
 function fatalError(type: string) {
@@ -107,9 +111,40 @@ function fatalError(type: string) {
   };
 }
 
+interface FakePage extends EventTarget {
+  visibilityState: DocumentVisibilityState;
+}
+
+function installFakePage(): FakePage {
+  const page = Object.assign(new EventTarget(), { visibilityState: "visible" as const });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: page });
+  return page;
+}
+
+function setPageVisibility(page: FakePage, visibility: DocumentVisibilityState): void {
+  page.visibilityState = visibility;
+  page.dispatchEvent(new Event("visibilitychange"));
+}
+
+function expectForegroundResume(fixture: ReturnType<typeof attachedFixture>): void {
+  expect(fixture.hls?.startLoads).toEqual([1, -1]);
+  expect(fixture.video.play).toHaveBeenCalledTimes(3);
+}
+
+function expectDetachedLifecycle(fixture: ReturnType<typeof attachedFixture>, page: FakePage): void {
+  fixture.detach?.();
+  setPageVisibility(page, "hidden");
+  setPageVisibility(page, "visible");
+  expect(fixture.hls?.startLoads).toEqual([1, -1]);
+}
+
 beforeEach(() => {
   FakeHls.supported = true;
   FakeHls.instances = [];
+});
+
+afterEach(() => {
+  Reflect.deleteProperty(globalThis, "document");
 });
 
 function attachedFixture() {
@@ -169,6 +204,17 @@ describe("hls.js playback adapter", () => {
     hls?.emit(FakeHls.Events.MANIFEST_PARSED);
     expect(video.play).not.toHaveBeenCalled();
     expect(hls?.startLoads).toEqual([0]);
+  });
+
+  test("resumes HLS loading once when a playing page returns to the foreground", () => {
+    const page = installFakePage();
+    const fixture = attachedFixture();
+    fixture.hls?.emit(FakeHls.Events.MANIFEST_PARSED);
+    setPageVisibility(page, "hidden");
+    setPageVisibility(page, "visible");
+    setPageVisibility(page, "visible");
+    expectForegroundResume(fixture);
+    expectDetachedLifecycle(fixture, page);
   });
 
   test("retries a transient missing manifest without retrying permanent client errors", () => {

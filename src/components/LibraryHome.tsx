@@ -12,6 +12,7 @@ import {
   type ContinueWatchingItem,
 } from "./ContinueWatching.tsx";
 import { ShowGrid } from "./ShowGrid.tsx";
+import { ShelfHeading } from "./ShelfHeading.tsx";
 
 interface LibraryHomeProps {
   readonly continueWatching: readonly ContinueWatchingItem[];
@@ -23,22 +24,6 @@ interface LibraryHomeProps {
   readonly progress: PlaybackProgressMap;
   readonly showContinueWatching: boolean;
   readonly shows: readonly ShowGroup[];
-}
-
-function SectionHeading({ count, title, completed = false }: {
-  readonly count: number;
-  readonly title: string;
-  readonly completed?: boolean;
-}): React.JSX.Element {
-  const noun = count === 1 ? "show" : "shows";
-  return (
-    <div className="mb-6">
-      <h2 className="text-2xl font-bold tracking-tight">{title}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {count} {completed ? "completed " : ""}{noun}
-      </p>
-    </div>
-  );
 }
 
 export function LibraryHome({
@@ -76,7 +61,7 @@ export function LibraryHome({
       )}
       {homeShows.unwatched.length > 0 && (
         <section>
-          <SectionHeading count={homeShows.unwatched.length} title="Shows" />
+          <ShelfHeading count={homeShows.unwatched.length} title="Shows" />
           <ShowGrid
             shows={homeShows.unwatched}
             metadata={metadata}
@@ -86,8 +71,8 @@ export function LibraryHome({
         </section>
       )}
       {homeShows.watched.length > 0 && (
-        <section className="mt-14 border-t border-border pt-10">
-          <SectionHeading count={homeShows.watched.length} title="Watched" completed />
+        <section className="mt-14 border-t border-border pt-8 sm:pt-10">
+          <ShelfHeading count={homeShows.watched.length} title="Watched" />
           <ShowGrid
             shows={homeShows.watched}
             metadata={metadata}

@@ -4,6 +4,7 @@ import { HLS_SEGMENT_SECONDS } from "../shared/playback.ts";
 import type { AudioTrack } from "./audioTracks.ts";
 
 export { HLS_SEGMENT_SECONDS } from "../shared/playback.ts";
+export { HLS_SESSION_IDLE_MS } from "../shared/playback.ts";
 
 export interface HlsOptions {
   readonly hardwareAcceleration: string;

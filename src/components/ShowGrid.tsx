@@ -1,10 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
-import { Check, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import type { AniListMedia, ShowMetadata, TorrentStatus } from "../types.ts";
 import {
-  isMovieMedia,
   primaryShowMetadata,
-  seasonMetadata,
   type ShowGroup,
 } from "../lib/library.ts";
 import { mediaTitle } from "../lib/anilist.ts";
@@ -15,30 +13,16 @@ interface ShowCardProps {
   readonly media: AniListMedia | undefined;
   readonly onSelect: (show: ShowGroup) => void;
   readonly downloadPercent: number | null;
-  readonly summary: string;
   readonly watched: boolean;
 }
 
 const SHOW_BATCH_SIZE = 120;
-
-function movieFacts(media: AniListMedia | undefined): readonly (string | number)[] {
-  const facts: (string | number)[] = ["Movie"];
-  const year = media?.startDate?.year ?? media?.seasonYear;
-  if (year !== null && year !== undefined) {
-    facts.push(year);
-  }
-  if (media?.duration !== null && media?.duration !== undefined) {
-    facts.push(`${String(media.duration)} min`);
-  }
-  return facts;
-}
 
 function ShowCard({
   show,
   media,
   onSelect,
   downloadPercent,
-  summary,
   watched,
 }: ShowCardProps): React.JSX.Element {
   const handleClick = useCallback(() => {
@@ -46,19 +30,17 @@ function ShowCard({
   }, [onSelect, show]);
   const [preview] = show.entries;
   const cover = media?.coverImage.large ?? media?.coverImage.extraLarge;
-  const movie = isMovieMedia(media);
-  const facts = movieFacts(media);
 
   return (
     <div>
       <button
         type="button"
         onClick={handleClick}
-        className="group w-full overflow-hidden rounded-lg border border-border bg-card text-left transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="group w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="relative block">
           {preview !== undefined && (
-            <MediaThumbnail rel={preview.rel} source={cover} className="aspect-[2/3]" />
+            <MediaThumbnail rel={preview.rel} source={cover} watched={watched} className="aspect-[2/3]" />
           )}
           {downloadPercent !== null && (
             <span className="absolute inset-x-2 bottom-2 rounded-md bg-black p-2 text-xs font-semibold text-foreground">
@@ -75,19 +57,10 @@ function ShowCard({
               />
             </span>
           )}
-          {watched && (
-            <span className="absolute right-2 top-2 inline-flex items-center gap-1.5 rounded-full bg-black/85 px-2.5 py-1 text-xs font-semibold text-primary shadow-lg">
-              <Check className="size-3.5" aria-hidden="true" />
-              Watched
-            </span>
-          )}
         </span>
-        <span className="block p-3">
+        <span className="block pt-1">
           <span className="block truncate text-sm font-semibold">
             {media === undefined ? show.name : mediaTitle(media)}
-          </span>
-          <span className="mt-1 block truncate text-xs text-muted-foreground">
-            {movie ? facts.join(" · ") : summary}
           </span>
         </span>
       </button>
@@ -172,19 +145,6 @@ function ShowGridItem({ show, metadata, onSelect, downloads, watched }: {
     viewTransitionName: showTransitionName(show.name),
   }), [show.name]);
   const downloadPercent = showDownloadPercent(show, downloads);
-  const movies = show.seasons.filter((season) => (
-    isMovieMedia(seasonMetadata(metadata, season.sourceShow, season.name))
-  ));
-  const seasonCount = show.seasons.length - movies.length;
-  const episodeCount = show.entries.length - movies.reduce(
-    (total, movie) => total + movie.entries.length,
-    0,
-  );
-  const summary = [
-    seasonCount === 0 ? null : `${String(seasonCount)} ${seasonCount === 1 ? "season" : "seasons"}`,
-    episodeCount === 0 ? null : `${String(episodeCount)} ${episodeCount === 1 ? "episode" : "episodes"}`,
-    movies.length === 0 ? null : `${String(movies.length)} ${movies.length === 1 ? "movie" : "movies"}`,
-  ].filter((item) => item !== null).join(" · ");
   return (
     <li style={style}>
       <ShowCard
@@ -192,7 +152,6 @@ function ShowGridItem({ show, metadata, onSelect, downloads, watched }: {
         media={primaryShowMetadata(show, metadata)}
         onSelect={onSelect}
         downloadPercent={downloadPercent}
-        summary={summary}
         watched={watched}
       />
     </li>

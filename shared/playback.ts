@@ -1,6 +1,7 @@
 import type { PlaybackProgress } from "./types.ts";
 
 export const HLS_SEGMENT_SECONDS = 2;
+export const HLS_SESSION_IDLE_MS = 60 * 1000;
 export const MINIMUM_PLAYBACK_PROGRESS_SECONDS = 30;
 export const PLAYBACK_COMPLETION_RATIO = 0.9;
 export const PLAYBACK_COMPLETION_REMAINING_SECONDS = 120;

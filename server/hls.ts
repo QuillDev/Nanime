@@ -9,14 +9,13 @@ import {
   hlsCapacityAvailable,
   reserveHlsPlaybackCapacity,
 } from "./hlsCapacity.ts";
-import { HLS_SEGMENT_SECONDS, hlsSessionKey, transcodeArgs, type HlsOptions } from "./hlsTranscode.ts";
+import { HLS_SEGMENT_SECONDS, HLS_SESSION_IDLE_MS, hlsSessionKey, transcodeArgs, type HlsOptions } from "./hlsTranscode.ts";
 import { stopHlsProcess } from "./hlsProcess.ts";
 import { hlsOwnershipKey, supersedeHlsLease } from "./hlsLeaseOwnership.ts";
 
 export { audioTracksResponse } from "./audioTracks.ts";
 export { transcodeArgs } from "./hlsTranscode.ts";
 
-const SESSION_IDLE_MS = 60 * 1000;
 const PROCESS_STOP_GRACE_MS = 2 * 1000;
 const MAX_ACTIVE_SESSIONS = 4;
 const MAX_ACTIVE_SESSIONS_PER_USER = 2;
@@ -480,7 +479,7 @@ export async function releaseHlsPlayback(
 
 async function cleanupSessions(): Promise<void> {
   const now = Date.now();
-  const cutoff = now - SESSION_IDLE_MS;
+  const cutoff = now - HLS_SESSION_IDLE_MS;
   const expiredLeases = [...leasesById.values()].filter((lease) => lease.lastAccess <= cutoff);
   await Promise.all(expiredLeases.map((lease) => (
     releaseHlsPlayback(lease.userId, lease.playerId, lease.id)

@@ -11,6 +11,12 @@ import {
 import { videoErrorDetail } from "../lib/videoError.ts";
 import { attachDirectVideoSource } from "../lib/directVideoPlayback.ts";
 import { attachManagedHls } from "../lib/managedHlsPlayback.ts";
+import {
+  restartHls,
+  type MutableSourceState,
+  type RestartOptions,
+} from "../lib/videoSourceRestart.ts";
+import { useHlsBackgroundRecovery } from "./useHlsBackgroundRecovery.ts";
 
 interface SourceAttachment {
   readonly video: HTMLVideoElement;
@@ -49,48 +55,8 @@ interface VideoSourceState {
   readonly timelineOffset: number;
   readonly playbackMode: "direct" | "hls";
 }
-interface MutableSourceState {
-  detach: (() => void) | undefined;
-  selectedAudio: number | null;
-  pendingPosition: number | null;
-  readonly playerId: string;
-  timelineOffset: number;
-  video: HTMLVideoElement | null;
-}
-interface RestartOptions {
-  readonly audioTrack: number | null;
-  readonly entry: MediaEntry;
-  readonly position: number;
-  readonly setError: (error: string | null) => void;
-  readonly setOffset: (offset: number) => void;
-  readonly source: MutableSourceState;
-}
 interface TimelineSeekOptions extends Omit<RestartOptions, "audioTrack"> {
   readonly direct: boolean;
-}
-function stopSource(source: MutableSourceState, setError: (error: string | null) => void): void {
-  source.detach?.();
-  setError(null);
-}
-function restartHls(options: RestartOptions): void {
-  const { audioTrack, entry, position, setError, setOffset, source } = options;
-  const { video } = source;
-  if (video === null) {
-    return;
-  }
-  const timelineOffset = hlsTimelineOffset(position);
-  const shouldPlay = !video.paused;
-  stopSource(source, setError);
-  Object.assign(source, { pendingPosition: position, selectedAudio: audioTrack, timelineOffset });
-  setOffset(timelineOffset);
-  source.detach = attachManagedHls({
-    video,
-    url: hlsUrl(entry.rel, audioTrack, position),
-    onError: setError,
-    resumeAt: position,
-    shouldPlay,
-    timelineOffset,
-  }, source.playerId);
 }
 function tryLocalHlsSeek(
   source: MutableSourceState,
@@ -161,6 +127,8 @@ function useSourceReferences(options: SourceReferenceOptions) {
   const { direct, entry, resumeAt, timelineOffset } = options;
   const sourceRef = useRef<MutableSourceState>({
     detach: undefined,
+    hiddenAt: null,
+    recoveryPending: false,
     selectedAudio: null,
     pendingPosition: null,
     playerId: crypto.randomUUID(),
@@ -183,6 +151,27 @@ function useInitialSourceState(
     direct ? 0 : hlsTimelineOffset(resumeAt),
   );
   return { direct, playbackError, setPlaybackError, timelineOffset, setTimelineOffset };
+}
+
+interface BackgroundRestartOptions {
+  readonly direct: boolean;
+  readonly entry: MediaEntry;
+  readonly playbackPosition: (video: HTMLVideoElement) => number;
+  readonly setError: (error: string | null) => void;
+  readonly setOffset: (offset: number) => void;
+  readonly sourceRef: React.RefObject<MutableSourceState>;
+}
+
+function useBackgroundRestart(options: BackgroundRestartOptions): void {
+  const { direct, entry, playbackPosition, setError, setOffset, sourceRef } = options;
+  const recover = useCallback((video: HTMLVideoElement) => {
+    restartHls({
+      audioTrack: sourceRef.current.selectedAudio, entry,
+      position: playbackPosition(video), setError, setOffset,
+      source: sourceRef.current,
+    });
+  }, [entry, playbackPosition, setError, setOffset, sourceRef]);
+  useHlsBackgroundRecovery({ enabled: !direct, onRecover: recover, sourceRef });
 }
 
 export function useVideoSource(
@@ -234,6 +223,10 @@ export function useVideoSource(
       sourceRef.current.pendingPosition,
     )
   ), [sourceRef]);
+  useBackgroundRestart({
+    direct, entry, playbackPosition, setError: setPlaybackError,
+    setOffset: setTimelineOffset, sourceRef,
+  });
   const handleSourceMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     const source = sourceRef.current;
     if (source.pendingPosition === null) {

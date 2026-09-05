@@ -5,6 +5,7 @@ import {
   type DirectVideoElement,
 } from "../lib/directVideoPlayback.ts";
 import { selectHlsPlaybackEngine } from "../lib/hlsPlaybackSelection.ts";
+import { backgroundRecoveryDue } from "./useHlsBackgroundRecovery.ts";
 
 function nativeVideo(supported = true) {
   const play = mock(() => Promise.resolve());
@@ -102,6 +103,15 @@ describe("HLS playback engine selection", () => {
   test("uses native HLS only when MSE playback is unavailable", () => {
     expect(selectHlsPlaybackEngine(false, true)).toBe("native");
     expect(selectHlsPlaybackEngine(false, false)).toBe("unsupported");
+  });
+});
+
+describe("HLS background recovery", () => {
+  test("renews only after a background interval can expire the server lease", () => {
+    expect(backgroundRecoveryDue(null, 100_000)).toBe(false);
+    expect(backgroundRecoveryDue(40_001, 100_000)).toBe(false);
+    expect(backgroundRecoveryDue(40_000, 100_000)).toBe(true);
+    expect(backgroundRecoveryDue(10_000, 100_000)).toBe(true);
   });
 });
 

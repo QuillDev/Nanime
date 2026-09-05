@@ -113,10 +113,10 @@ export function AnimeDetails({
   const cover = media?.coverImage.extraLarge ?? media?.coverImage.large;
 
   return (
-    <aside className="overflow-hidden rounded-xl border border-border bg-card">
+    <aside>
       <MediaThumbnail rel={previewRel} source={cover} className="aspect-[2/3] w-full" />
       <Collapsible open={expanded} onOpenChange={setExpanded} asChild>
-      <div className="p-5">
+      <div className="pt-3">
         <div className="flex items-start gap-2">
           {onLink !== undefined && (
             <button

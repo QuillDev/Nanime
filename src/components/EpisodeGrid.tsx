@@ -75,27 +75,23 @@ function EpisodeCard({
   const progressView = episodeProgressView(entry, progress);
 
   return (
-    <li className="flex rounded-lg border border-border bg-card transition-colors focus-within:ring-2 focus-within:ring-ring hover:border-primary">
+    <li className="flex items-center focus-within:ring-2 focus-within:ring-ring">
       <button
         type="button"
         onClick={handleClick}
         onFocus={preloadPlayer}
         onPointerDown={preloadPlayer}
         onPointerEnter={preloadPlayer}
-        className="group flex min-w-0 flex-1 overflow-hidden rounded-l-lg text-left focus-visible:outline-none"
+        className="group flex min-w-0 flex-1 text-left focus-visible:outline-none"
       >
         <span className="w-32 shrink-0 sm:w-44">
           <span className="relative block">
             <MediaThumbnail
               rel={entry.rel}
               source={details?.thumbnail}
+              watched={progressView.watched}
               className="w-full"
             />
-            {progressView.watched && (
-              <span className="absolute inset-0 flex items-center justify-center bg-black/60 text-xs font-semibold uppercase tracking-wider text-white">
-                Watched
-              </span>
-            )}
           </span>
           {progressView.show && (
             <progress
@@ -106,7 +102,7 @@ function EpisodeCard({
             />
           )}
         </span>
-        <span className="flex min-w-0 flex-1 flex-col justify-center p-4">
+        <span className="flex min-w-0 flex-1 flex-col justify-center py-1 pl-2 pr-3">
           <span className="flex min-w-0 items-baseline gap-3">
             {number !== null && (
               <span className="w-6 shrink-0 text-right font-mono text-xs text-muted-foreground">
@@ -178,7 +174,7 @@ export function EpisodeGrid({
           Could not update episode: {watchedState.error.message}
         </p>
       )}
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-4">
         {entries.map((entry) => (
           <EpisodeCard
             key={entry.rel}

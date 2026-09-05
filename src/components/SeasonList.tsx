@@ -48,7 +48,7 @@ function SeasonSection({
 
   return (
     <Collapsible defaultOpen={defaultOpen} asChild>
-    <li className="border-b border-border pb-3 last:border-b-0">
+    <li className="pb-3">
       <div className="flex items-center py-2">
         <CollapsibleTrigger asChild>
           <button
@@ -80,7 +80,7 @@ function SeasonSection({
         </CollapsibleTrigger>
       </div>
       <CollapsibleContent>
-        <div className="pb-2 pl-8">
+        <div className="pb-2 sm:pl-8">
           {listMedia !== undefined && listMedia.anilistId !== null && (
             <AniListListControls media={listMedia} mediaId={listMedia.anilistId} />
           )}

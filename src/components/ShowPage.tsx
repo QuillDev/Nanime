@@ -13,6 +13,7 @@ import {
 } from "../lib/library.ts";
 import { AnimeDetails } from "./AnimeDetails.tsx";
 import { SeasonList } from "./SeasonList.tsx";
+import { ShelfHeading } from "./ShelfHeading.tsx";
 
 interface ShowPageProps {
   readonly show: ShowGroup;
@@ -41,10 +42,7 @@ export function ShowPage({
   )).length;
   const seasonCount = show.seasons.length - movieCount;
   const sectionTitle = movieCount > 0 ? "Seasons & movies" : "Seasons";
-  const summary = [
-    seasonCount === 0 ? null : `${String(seasonCount)} ${seasonCount === 1 ? "season" : "seasons"}`,
-    movieCount === 0 ? null : `${String(movieCount)} ${movieCount === 1 ? "movie" : "movies"}`,
-  ].filter((item) => item !== null).join(" · ");
+  const sectionCount = seasonCount + movieCount;
   return (
     <section>
       <button
@@ -65,14 +63,12 @@ export function ShowPage({
           />
         )}
         <div className="min-w-0">
-          <div className="mb-5 flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-bold tracking-tight">{sectionTitle}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {summary}
-              </p>
-            </div>
-          </div>
+          <ShelfHeading
+            count={sectionCount}
+            title={sectionTitle}
+            singularLabel="season or movie"
+            pluralLabel="seasons and movies"
+          />
           <SeasonList
             seasons={show.seasons}
             metadata={metadata}

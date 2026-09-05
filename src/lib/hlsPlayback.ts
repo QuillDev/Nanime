@@ -74,6 +74,41 @@ function bindHlsEvents(hls: Hls, options: HlsAttachment): void {
   });
 }
 
+function bindPageLifecycle(hls: Hls, video: HTMLVideoElement): () => void {
+  if (typeof document === "undefined") {
+    return () => undefined;
+  }
+  let suspended = false;
+  const suspend = () => {
+    suspended = true;
+  };
+  const resume = () => {
+    if (!suspended || document.visibilityState === "hidden") {
+      return;
+    }
+    suspended = false;
+    if (!video.paused && !video.ended) {
+      hls.startLoad(-1);
+      tryPlay(video);
+    }
+  };
+  const handleVisibility = () => {
+    if (document.visibilityState === "hidden") {
+      suspend();
+    } else {
+      resume();
+    }
+  };
+  document.addEventListener("visibilitychange", handleVisibility);
+  globalThis.addEventListener("pagehide", suspend);
+  globalThis.addEventListener("pageshow", resume);
+  return () => {
+    document.removeEventListener("visibilitychange", handleVisibility);
+    globalThis.removeEventListener("pagehide", suspend);
+    globalThis.removeEventListener("pageshow", resume);
+  };
+}
+
 export function attachHls(options: HlsAttachment): (() => void) | undefined {
   if (!hlsJsSupported()) {
     options.onError("This browser does not support HLS video playback.");
@@ -101,13 +136,20 @@ export function attachHls(options: HlsAttachment): (() => void) | undefined {
       ? -1
       : Math.max(0, options.resumeAt - (options.timelineOffset ?? 0)),
   });
+  const unbindPageLifecycle = startHls(hls, options);
+  return () => {
+    unbindPageLifecycle();
+    hls.destroy();
+  };
+}
+
+function startHls(hls: Hls, options: HlsAttachment): () => void {
   bindHlsEvents(hls, options);
+  const unbindPageLifecycle = bindPageLifecycle(hls, options.video);
   hls.loadSource(options.url);
   hls.attachMedia(options.video);
   if (options.shouldPlay ?? true) {
     tryPlay(options.video);
   }
-  return () => {
-    hls.destroy();
-  };
+  return unbindPageLifecycle;
 }

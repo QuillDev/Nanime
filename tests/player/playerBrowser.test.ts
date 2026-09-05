@@ -26,6 +26,7 @@ import {
   timelineBounds,
   waitForPlayerState,
 } from "./playerHarness.ts";
+import { registerBackgroundRecoveryTest } from "./backgroundRecoveryBrowser.ts";
 
 let harness: PlayerHarness | undefined = undefined;
 const describeBrowser = Bun.env["NANIME_PLAYER_E2E"] === "true" ? describe : describe.skip;
@@ -343,6 +344,9 @@ function registerPlaybackRegressionTests(): void {
     }
   }, 60_000);
 
+}
+
+function registerRemainingPlaybackRegressionTests(): void {
   test("keeps controls visible during a real timeline drag and settles on the requested HLS seek", async () => {
     const profile = testProfile("timeline HLS seek");
     const runtime = activeHarness();
@@ -464,6 +468,8 @@ describeBrowser("real browser player harness", () => {
 
   registerCommonJourneyTests();
   registerPlaybackRegressionTests();
+  registerBackgroundRecoveryTest(activeHarness, verifyNoPlayerErrors);
+  registerRemainingPlaybackRegressionTests();
   registerWatchTogetherTests(activeHarness);
   registerManualMetadataTest(activeHarness);
 });
