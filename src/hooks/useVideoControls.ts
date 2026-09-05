@@ -122,6 +122,7 @@ function useKeyboardSeeking(onSeekBy: (seconds: number) => void): void {
 }
 
 interface VideoControlsOptions {
+  readonly playbackLocked: boolean;
   readonly knownDuration: number;
   readonly onBeforeSeek: () => void;
   readonly onTimelineSeek: (position: number) => void;
@@ -133,6 +134,7 @@ interface VideoControlsOptions {
 export function useVideoControls(options: VideoControlsOptions): VideoControls {
   const {
     knownDuration,
+    playbackLocked,
     onBeforeSeek,
     onTimelineSeek,
     playbackPosition,
@@ -142,7 +144,7 @@ export function useVideoControls(options: VideoControlsOptions): VideoControls {
   const playback = useVideoState(playbackPosition, knownDuration);
   const handleTogglePlayback = useCallback(() => {
     const video = videoRef.current;
-    if (video === null) {
+    if (video === null || playbackLocked) {
       return;
     }
     if (video.paused) {
@@ -150,14 +152,14 @@ export function useVideoControls(options: VideoControlsOptions): VideoControls {
     } else {
       video.pause();
     }
-  }, [videoRef]);
+  }, [playbackLocked, videoRef]);
   const handleSeek = useCallback((time: number) => {
-    if (videoRef.current !== null) {
+    if (videoRef.current !== null && !playbackLocked) {
       onBeforeSeek();
       onTimelineSeek(time);
       playback.setState((current) => ({ ...current, currentTime: time }));
     }
-  }, [onBeforeSeek, onTimelineSeek, playback, videoRef]);
+  }, [onBeforeSeek, onTimelineSeek, playback, playbackLocked, videoRef]);
   const handleSeekBy = useCallback((seconds: number) => {
     const video = videoRef.current;
     if (video !== null) {

@@ -456,7 +456,7 @@ export async function handle(req: Request, server: Server<undefined> | null): Pr
   if (pathname.startsWith("/api") || pathname.startsWith("/hls") || response.status >= 400) {
     const suffix = url.searchParams.has("i") ? `&i=${url.searchParams.get("i") ?? ""}` : "";
     // eslint-disable-next-line no-console
-    console.log(`${req.method} ${pathname}${suffix} -> ${String(response.status)}`);
+    console.log(`${req.method} ${pathname.replace(/\/api\/watch-together\/[^/]+/u, "/api/watch-together/session")}${suffix} -> ${String(response.status)}`);
   }
   return securityHeaders(response);
 }

@@ -1,3 +1,5 @@
+import { jsonRequest, requestWithBody } from "./requestBody.ts";
+import { watchTogetherApp } from "./watchTogetherApp.ts";
 import { Elysia } from "elysia";
 import { handle, serverOptions } from "./server.ts";
 import { securityHeaders } from "./security.ts";
@@ -32,22 +34,6 @@ import {
   trickplayManifestSchema,
 } from "./schemas.ts";
 
-function requestWithBody(req: Request, body: string | FormData): Request {
-  const headers = new Headers(req.headers);
-  headers.delete("content-length");
-  if (body instanceof FormData) {
-    headers.delete("content-type");
-  }
-  return new Request(req.url, {
-    method: req.method,
-    headers,
-    body,
-    signal: req.signal,
-  });
-}
-function jsonRequest(req: Request, body: unknown): Request {
-  return requestWithBody(req, JSON.stringify(body));
-}
 
 function formRequest(
   req: Request,
@@ -210,6 +196,7 @@ export const app = new Elysia({ name: "nanime" })
     code === "VALIDATION" ? "Invalid request" : "Server error",
     { status: code === "VALIDATION" ? 400 : 500 },
   )))
+  .use(watchTogetherApp)
   .get("/api/auth/me", ({ request, server }) => handle(request, server), {
     response: schema.union([authUserSchema, schema.nullValue()]),
   })

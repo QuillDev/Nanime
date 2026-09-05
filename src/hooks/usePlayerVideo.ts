@@ -4,6 +4,7 @@ import { useVideoBuffering } from "./useVideoBuffering.ts";
 import { useVideoControls } from "./useVideoControls.ts";
 
 interface PlayerVideoOptions {
+  readonly playbackLocked: boolean;
   readonly knownDuration: number;
   readonly onPlaying: () => void;
   readonly playerRef: RefObject<HTMLDivElement | null>;
@@ -15,6 +16,7 @@ interface PlayerVideoOptions {
 
 export function usePlayerVideo({
   onPlaying,
+  playbackLocked,
   playerRef,
   progress,
   videoRef,
@@ -25,6 +27,7 @@ export function usePlayerVideo({
   const buffering = useVideoBuffering(videoRef);
   const controls = useVideoControls({
     knownDuration,
+    playbackLocked,
     onBeforeSeek: buffering.handleBuffering,
     onTimelineSeek,
     playbackPosition,

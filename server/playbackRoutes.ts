@@ -1,3 +1,4 @@
+import { watchTogetherRoute } from "./watchTogetherRoutes.ts";
 import type { AuthUser } from "../shared/types.ts";
 import type { AniListPlaybackTarget } from "./anilistAccountTypes.ts";
 import {
@@ -52,6 +53,6 @@ export function playbackRoute(
   const restoreMatch = /^\/api\/progress\/history\/(?<id>\d+)\/restore$/u.exec(pathname);
   const eventId = restoreMatch?.groups?.["id"];
   return eventId === undefined
-    ? null
+    ? watchTogetherRoute(context, options.mediaExists)
     : restorePlaybackAuditResponse({ req, eventId: Number(eventId), actor: user, ...updates });
 }

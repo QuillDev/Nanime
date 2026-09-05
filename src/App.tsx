@@ -13,8 +13,7 @@ import {
   loadProfileApp,
 } from "./routeModules.ts";
 import { AppShellSkeleton, SessionSkeleton } from "./components/Skeleton.tsx";
-import { SeriesCompletionProvider } from "./components/SeriesCompletionPrompt.tsx";
-import { OfflineDownloadToast } from "./components/OfflineDownloadToast.tsx";
+import { SessionProviders } from "./components/SessionProviders.tsx";
 
 const AdminApp = lazy(async () => {
   const module = await loadAdminApp();
@@ -64,10 +63,9 @@ export function App(): React.JSX.Element {
   }
   return (
     <Suspense fallback={ROUTE_LOADING}>
-      <SeriesCompletionProvider>
+      <SessionProviders key={currentUser.data.id} userId={currentUser.data.id}>
         {authenticatedView(currentUser.data, route)}
-        <OfflineDownloadToast />
-      </SeriesCompletionProvider>
+      </SessionProviders>
     </Suspense>
   );
 }

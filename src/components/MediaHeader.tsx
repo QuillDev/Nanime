@@ -6,6 +6,7 @@ import { navigateToAdmin, navigateToShows } from "../hooks/useMediaRoute.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
 import { LibrarySearch } from "./LibrarySearch.tsx";
 import { UserMenu } from "./UserMenu.tsx";
+import { PartyMenu } from "./PartyMenu.tsx";
 import {
   preloadAdminApp,
   preloadMediaApp,
@@ -77,6 +78,7 @@ export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
             <span className="mobile-nav-label">Admin</span>
           </button>
         )}
+        <PartyMenu />
         <UserMenu active={view === "profile"} />
       </nav>
     </header>

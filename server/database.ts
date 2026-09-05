@@ -345,3 +345,48 @@ database.run(`
     PRIMARY KEY (user_id, media_id)
   )
 `);
+
+database.run(`
+  CREATE TABLE IF NOT EXISTS watch_together (
+    id TEXT PRIMARY KEY,
+    host_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    host_token TEXT NOT NULL,
+    rel TEXT NOT NULL,
+    position REAL NOT NULL,
+    paused INTEGER NOT NULL,
+    rate REAL NOT NULL,
+    updated_at INTEGER NOT NULL
+  )
+`);
+
+const partyColumns = database.query<TableColumn, []>("PRAGMA table_info(watch_together)").all();
+if (!partyColumns.some((column) => column.name === "host_member_id")) {
+  database.transaction(() => {
+    database.run(`CREATE TABLE watch_together_membership_migration (
+      id TEXT PRIMARY KEY,
+      host_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      host_token TEXT NOT NULL, rel TEXT NOT NULL, position REAL NOT NULL,
+      paused INTEGER NOT NULL, rate REAL NOT NULL, updated_at INTEGER NOT NULL,
+      host_member_id TEXT, generation INTEGER NOT NULL DEFAULT 1,
+      active_at INTEGER NOT NULL
+    )`);
+    database.run(`INSERT INTO watch_together_membership_migration
+      (id, host_id, host_token, rel, position, paused, rate, updated_at, active_at)
+      SELECT id, host_id, host_token, rel, position, paused, rate, updated_at, updated_at FROM watch_together`);
+    database.run("DROP TABLE watch_together");
+    database.run("ALTER TABLE watch_together_membership_migration RENAME TO watch_together");
+  })();
+}
+database.run(`CREATE TABLE IF NOT EXISTS watch_together_members (
+  id TEXT PRIMARY KEY,
+  room_id TEXT NOT NULL REFERENCES watch_together(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL,
+  connection_id TEXT NOT NULL,
+  incarnation INTEGER NOT NULL,
+  joined_at INTEGER NOT NULL,
+  seen_at INTEGER NOT NULL,
+  left_at INTEGER,
+  UNIQUE (room_id, token_hash)
+)`);
+database.run("CREATE INDEX IF NOT EXISTS watch_members_room ON watch_together_members(room_id, seen_at)");

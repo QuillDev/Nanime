@@ -54,6 +54,8 @@ function usePlaybackEvents(
 }
 
 interface PlayerSurfaceProps {
+  readonly playbackLocked: boolean;
+  readonly children: React.ReactNode;
   readonly entry: MediaEntry;
   readonly preferredAudioLanguage: PreferredAudioLanguage | null;
   readonly playbackMode: "direct" | "hls";
@@ -87,11 +89,11 @@ function usePlayerTracks(
 }
 
 export function PlayerSurface({
-  entry, preferredAudioLanguage, playbackMode,
+  entry, preferredAudioLanguage, playbackMode, playbackLocked,
   episodeDisplay, timelineOffset, knownDuration, videoRef,
   setVideo, handleVideoError, handlePlaying, handleSourceMetadata, progress,
   previousAvailable, nextAvailable, onPrevious, onNext,
-  onAudioTrack, onTimelineSeek, playbackPosition,
+  onAudioTrack, onTimelineSeek, playbackPosition, children,
 }: PlayerSurfaceProps): React.JSX.Element {
   const { audio, subtitles } = usePlayerTracks(entry, onAudioTrack, preferredAudioLanguage);
   const playerRef = useRef<HTMLDivElement | null>(null);
@@ -107,8 +109,7 @@ export function PlayerSurface({
     handlePlayerSeeked,
     handlePlayerTimeUpdate,
   } = usePlayerVideo({
-    videoRef,
-    playerRef,
+    videoRef, playbackLocked, playerRef,
     progress,
     onPlaying: handlePlaying,
     knownDuration,
@@ -226,6 +227,7 @@ export function PlayerSurface({
             onAppearance={display.handleAppearance}
           />
         </div>
+        {children}
         <PlayerErrors
           noSubtitles={subtitles.status === "success" && subtitles.data.length === 0}
           controlsVisible={controlsVisible}

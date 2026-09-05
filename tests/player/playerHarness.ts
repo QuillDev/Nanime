@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Database } from "bun:sqlite";
-import { FIXTURE_FOLDER, FIXTURE_METADATA, generateFixture as generateMediaFixture } from "./mediaFixture.ts";
+import { FIXTURE_FOLDER, SECOND_FIXTURE_FOLDER, FIXTURE_METADATA, generateFixture as generateMediaFixture } from "./mediaFixture.ts";
 import { PLAYER_PROXY_ENTRYPOINT } from "./playerProxy.ts";
 
 const ADMIN_SETUP_TOKEN = "nanime-player-harness-setup-token-0001";
@@ -167,10 +167,12 @@ async function createAdmin(origin: string): Promise<void> {
 function seedFixtureMetadata(databasePath: string): void {
   const database = new Database(databasePath);
   try {
-    database.query(`
+    for (const folder of [FIXTURE_FOLDER, SECOND_FIXTURE_FOLDER]) {
+      database.query(`
       INSERT INTO media_metadata (key, payload, updated_at) VALUES (?, ?, ?)
       ON CONFLICT(key) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
-    `).run(`show:${FIXTURE_FOLDER}`, JSON.stringify(FIXTURE_METADATA), Date.now());
+      `).run(`show:${folder}`, JSON.stringify({ ...FIXTURE_METADATA, id: folder === FIXTURE_FOLDER ? 1 : 2, idMal: folder === FIXTURE_FOLDER ? 1 : 2, title: { ...FIXTURE_METADATA.title, english: folder, romaji: folder } }), Date.now());
+    }
   } finally {
     database.close();
   }
