@@ -115,7 +115,7 @@ async function createSession(
   const root = await cacheRoot;
   const id = randomUUID();
   const directory = join(root, id);
-  await mkdir(directory, { mode: 0o700 });
+  await mkdir(directory, { recursive: true, mode: 0o700 });
   const process = await spawnHlsProcess([
       "ffmpeg",
       ...transcodeArgs({
@@ -317,7 +317,8 @@ export async function hlsPlaylistResponse(options: HlsPlaylistOptions): Promise<
   let session: HlsSession | null | undefined = null;
   try {
     session = await activeSession(options);
-  } catch {
+  } catch (error: unknown) {
+    console.error("HLS session could not start:", error); // eslint-disable-line no-console
     abandonUnboundLease(options);
     return new Response("Stream could not start", { status: 503 });
   }
