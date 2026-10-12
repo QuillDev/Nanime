@@ -13,6 +13,8 @@ export async function fetchPlaybackHistory(
   );
 }
 
+/** Returns progress at its resolved current path, or null when restoration clears it.
+ * History event rel remains the immutable original path, not a cache key for this result. */
 export async function restorePlaybackHistoryEvent(
   id: number,
 ): Promise<PlaybackProgress | null> {

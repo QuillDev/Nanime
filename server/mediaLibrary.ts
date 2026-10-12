@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { dirname, extname, join, relative } from "node:path";
 import type { LibraryStatus, MediaEntry } from "../shared/types.ts";
 import { database } from "./database.ts";
+import { entryId, hasInternalSegment, resolveExisting } from "./libraryPaths.ts";
 
 export { libraryActivityResponse } from "./libraryActivity.ts";
 
@@ -55,6 +56,43 @@ const replaceLibrary = database.transaction((entries: readonly MediaEntry[], sca
   `).run(scannedAt, entries.length);
 });
 let scanPromise: Promise<readonly MediaEntry[]> | undefined = undefined;
+let mutationGeneration = 0;
+let mutationsInFlight = 0;
+let mutationsSettled = Promise.withResolvers<undefined>();
+
+/** Marks scans that started before a library file operation as stale. */
+export function noteLibraryMutation(): void {
+  mutationGeneration += 1;
+}
+
+/**
+ * Called before a library file operation touches the disk; the returned
+ * function runs once it has committed or rolled back. Scans that overlap it
+ * wait and rescan, so the cached library never stores a half-moved state.
+ */
+export function beginLibraryMutation(): () => void {
+  mutationGeneration += 1;
+  mutationsInFlight += 1;
+  return () => {
+    mutationGeneration += 1;
+    mutationsInFlight -= 1;
+    if (mutationsInFlight === 0) {
+      mutationsSettled.resolve(undefined);
+      mutationsSettled = Promise.withResolvers<undefined>();
+    }
+  };
+}
+
+/** Media lives outside Nanime's own folders (trash awaiting Undo, uploads, transcodes); scans skip those. */
+export function isLibraryMediaPath(rel: string): boolean {
+  return !hasInternalSegment(rel);
+}
+
+async function mutationsIdle(): Promise<void> {
+  if (mutationsInFlight > 0) {
+    await mutationsSettled.promise;
+  }
+}
 
 async function walk(
   directory: string,
@@ -68,11 +106,16 @@ async function walk(
     if (item.isDirectory() && !item.name.startsWith(".nanime-")) {
       await walk(absolutePath, options);
     } else if (item.isFile() && options.videoExtensions.has(extname(item.name).toLowerCase())) {
-      const { size } = await stat(absolutePath).catch(() => ({ size: 0 }));
+      const stats = await stat(absolutePath).catch(() => null);
+      if (stats === null) {
+        continue;
+      }
+      const { size } = stats;
       const rel = relative(options.mediaDir, absolutePath);
       const folder = dirname(rel);
       options.entries.push({
         rel,
+        mediaIdentity: entryId(stats),
         name: item.name,
         folder: folder === "." ? "" : folder,
         size,
@@ -113,9 +156,21 @@ export function libraryStatus(): LibraryStatus {
   };
 }
 
+/** A scan no file operation overlapped, or null when one did. */
+async function settledScan(options: LibraryOptions): Promise<readonly MediaEntry[] | null> {
+  await mutationsIdle();
+  const generation = mutationGeneration;
+  const entries = await scanFiles(options);
+  return generation === mutationGeneration && mutationsInFlight === 0 ? entries : null;
+}
+
 async function runScan(options: LibraryOptions): Promise<readonly MediaEntry[]> {
   try {
-    const entries = await scanFiles(options);
+    let entries = await settledScan(options);
+    // A file operation ran mid-walk; rescan rather than store a mix of both.
+    while (entries === null) {
+      entries = await settledScan(options);
+    }
     replaceLibrary(entries, Date.now());
     return entries;
   } finally {
@@ -128,13 +183,28 @@ export function refreshMediaLibrary(options: LibraryOptions): Promise<readonly M
   return scanPromise;
 }
 
-async function refreshInBackground(options: LibraryOptions): Promise<void> {
+export async function refreshInBackground(options: LibraryOptions): Promise<void> {
   try {
     await refreshMediaLibrary(options);
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error("Background library scan failed", error);
   }
+}
+
+/** Reads the actual occupant, never infers identity from cached size or timestamps. */
+export async function mediaIdentityAt(root: string, rel: string): Promise<string | null> {
+  const entry = await resolveExisting(root, rel).catch(() => null);
+  return entry !== null && entry.stats.isFile() ? entryId(entry.stats) : null;
+}
+
+async function identifiedEntry(entry: MediaEntry, root: string): Promise<MediaEntry> {
+  const mediaIdentity = await mediaIdentityAt(root, entry.rel);
+  return mediaIdentity === null ? entry : { ...entry, mediaIdentity };
+}
+
+function identifiedEntries(options: LibraryOptions): Promise<readonly MediaEntry[]> {
+  return Promise.all(cachedEntries().map((entry) => identifiedEntry(entry, options.mediaDir)));
 }
 
 export function listMedia(options: LibraryOptions): Promise<readonly MediaEntry[]> {
@@ -145,7 +215,7 @@ export function listMedia(options: LibraryOptions): Promise<readonly MediaEntry[
   if (Date.now() - current.last_scanned_at >= LIBRARY_STALE_MS) {
     void refreshInBackground(options);
   }
-  return Promise.resolve(cachedEntries());
+  return identifiedEntries(options);
 }
 
 export function libraryStatusResponse(): Response {

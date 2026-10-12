@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { libraryWriterResponse } from "./libraryWriterAdmission.ts";
 import { chmod, lstat, realpath, rename, unlink } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { audioTracks, invalidateAudioTracks } from "./audioTracks.ts";
@@ -138,6 +139,15 @@ export async function pruneTracksResponse(req: Request, options: MediaLibraryOpt
     return new Response("Choose tracks from up to 100 videos", { status: 400 });
   }
   const values = body.operations as PruneOperationBody[];
+  if (values.some((value) => value === null || typeof value !== "object" || typeof value.path !== "string")) {
+    return new Response("One or more track selections are invalid", { status: 400 });
+  }
+  return libraryWriterResponse({ root: options.mediaDir, paths: values.map((value) => value.path as string), siblings: true }, () => (
+    pruneClaimedTracks(values, options)
+  ));
+}
+
+async function pruneClaimedTracks(values: readonly PruneOperationBody[], options: MediaLibraryOptions): Promise<Response> {
   const operations = await Promise.all(values.map((value) => prepareOperation(value, options)));
   if (
     operations.some((operation) => operation === null) ||

@@ -390,3 +390,51 @@ database.run(`CREATE TABLE IF NOT EXISTS watch_together_members (
   UNIQUE (room_id, token_hash)
 )`);
 database.run("CREATE INDEX IF NOT EXISTS watch_members_room ON watch_together_members(room_id, seen_at)");
+database.run(`CREATE TABLE IF NOT EXISTS library_file_operations (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  actor_user_id INTEGER NOT NULL,
+  actor_username TEXT NOT NULL,
+  steps TEXT NOT NULL,
+  reverts_operation_id TEXT,
+  reverted_by_operation_id TEXT,
+  error TEXT,
+  progress TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+)`);
+// Per-step checkpoints: which steps started, and the identity of anything a
+// step created, so recovery only ever removes or moves what it can prove.
+const fileOperationColumns = database.query<TableColumn, []>("PRAGMA table_info(library_file_operations)").all();
+if (!fileOperationColumns.some((column) => column.name === "progress")) {
+  database.run("ALTER TABLE library_file_operations ADD COLUMN progress TEXT");
+}
+database.run("CREATE INDEX IF NOT EXISTS library_file_operations_status ON library_file_operations(status, created_at)");
+database.run(`CREATE TABLE IF NOT EXISTS media_path_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  operation_id TEXT NOT NULL,
+  old_rel TEXT NOT NULL,
+  new_rel TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  audit_watermark INTEGER
+)`);
+// The newest playback audit id when the move committed: audit entries at or
+// below it were recorded before the move, so path history never relies on
+// timestamps that can tie.
+const pathHistoryColumns = database.query<TableColumn, []>("PRAGMA table_info(media_path_history)").all();
+if (!pathHistoryColumns.some((column) => column.name === "audit_watermark")) {
+  database.run("ALTER TABLE media_path_history ADD COLUMN audit_watermark INTEGER");
+}
+database.run("CREATE INDEX IF NOT EXISTS media_path_history_old ON media_path_history(old_rel, id)");
+database.run("CREATE INDEX IF NOT EXISTS media_path_history_new ON media_path_history(new_rel, id)");
+database.run(`CREATE TRIGGER IF NOT EXISTS media_path_history_no_update
+  BEFORE UPDATE ON media_path_history
+  BEGIN
+    SELECT RAISE(ABORT, 'media path history entries are immutable');
+  END`);
+database.run(`CREATE TRIGGER IF NOT EXISTS media_path_history_no_delete
+  BEFORE DELETE ON media_path_history
+  BEGIN
+    SELECT RAISE(ABORT, 'media path history entries are immutable');
+  END`);

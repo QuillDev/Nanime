@@ -1,8 +1,45 @@
 # Deploy Nanime on this machine
 
-This is the deployment runbook for the private repository. Machine paths below
-were verified on 2026-09-05. Keep credentials, environment-file contents, database
-backups, and media out of Git even while the repository is private.
+This is the deployment runbook for the private repository. Keep credentials,
+environment-file contents, database backups, and media out of Git even while
+the repository is private.
+
+## Current Linux host
+
+The current Linux deployment uses `nanime.service` as user `quill`, with
+`WorkingDirectory=/home/quill/projects/nanime-linux-host` and the persistent
+runtime `/home/quill/.local/share/nanime-runtime/1.4.0/bun`. Its private environment
+files are `~/.config/nanime/host.env` and `~/.config/nanime/qbittorrent.env`; do not
+print their contents. The public origin is `https://tv.nakode.moe`.
+
+Before a release, verify these values with `systemctl show nanime.service` and
+inspect only the required non-secret path settings. Use the same isolated-test,
+private-backup, clean fast-forward, stopped-service build, health-check and
+rollback discipline below, but substitute this service and checkout. Do not run
+the historical NixOS service commands on this host.
+
+```sh
+systemctl show nanime.service -p WorkingDirectory -p ExecStart -p EnvironmentFiles
+# After the reviewed commit is merged, privately back up state and stop the service.
+sudo -n systemctl stop nanime.service
+# In the clean deployment worktree, fast-forward to the verified merged main commit.
+# Use the pinned Bun and scratch TMPDIR, install with bun ci, then bun run build.
+sudo -n systemctl start nanime.service
+systemctl is-active nanime.service
+```
+
+Compare the public HTML and hashed assets with the exact built release, verify
+anonymous auth remains `null` and protected APIs remain unauthorized, and check
+the fresh-browser sign-in screen. File-manager workflow tests use an isolated
+library/database, not production files or watch state. Native no-overwrite folder
+moves require Linux/glibc, `/proc`, and filesystem `renameat2` support; unsupported
+configurations fail closed instead of attempting ordinary overwriting renames.
+
+## Historical NixOS deployment reference
+
+The paths and `mediaserver.service` commands below were verified on 2026-09-05
+for the earlier NixOS host. They are not the current Linux deployment.
+
 
 ## 1. Identify what will be deployed
 

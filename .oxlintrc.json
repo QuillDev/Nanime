@@ -95,7 +95,7 @@
       }
     },
     {
-      "files": ["tests/player/**/*.ts"],
+      "files": ["tests/player/**/*.ts", "packages/file-manager/tests/**/*.ts"],
       "env": { "browser": false, "node": true },
       "rules": {
         "import/no-nodejs-modules": "off",

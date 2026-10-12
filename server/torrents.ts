@@ -1,5 +1,7 @@
-import { readdir } from "node:fs/promises";
-import { join, relative, resolve, sep } from "node:path";
+import { realpath } from "node:fs/promises";
+import { LibraryFileError, pathSegments, resolveFolder } from "./libraryPaths.ts";
+import { canonicalizeTorrentAdditionRoot, forgetTorrentAddition, pendingTorrentPayloads, refreshTorrentAdditions, reserveTorrentAddition, torrentAdditionObserved, torrentOwnershipRead } from "./libraryTorrentClaims.ts";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import type { TorrentStatus } from "../shared/types.ts";
 import { jsonObject } from "./json.ts";
 import { searchNyaaResponse } from "./nyaa.ts";
@@ -8,6 +10,7 @@ const QBITTORRENT_USERNAME = process.env["QBITTORRENT_USERNAME"] ?? "";
 const QBITTORRENT_PASSWORD = process.env["QBITTORRENT_PASSWORD"] ?? "";
 const MAX_TORRENT_BYTES = 10 * 1024 * 1024;
 const MAX_MAGNET_LENGTH = 16_384;
+const OWNERSHIP_TIMEOUT_MS = 5000;
 
 function configuredQbittorrentUrl(value: string): string {
   if (value === "") {
@@ -43,7 +46,7 @@ function qBittorrentHeaders(cookie?: string): Headers {
   return headers;
 }
 
-async function qBittorrentCookie(): Promise<string | undefined> {
+async function qBittorrentCookie(signal?: AbortSignal | null): Promise<string | undefined> {
   if (QBITTORRENT_USERNAME === "" || QBITTORRENT_PASSWORD === "") {
     return undefined;
   }
@@ -51,11 +54,11 @@ async function qBittorrentCookie(): Promise<string | undefined> {
     username: QBITTORRENT_USERNAME,
     password: QBITTORRENT_PASSWORD,
   });
-  const response = await fetch(`${QBITTORRENT_URL}/api/v2/auth/login`, {
-    method: "POST",
-    headers: qBittorrentHeaders(),
-    body,
-  });
+  const init: RequestInit = { method: "POST", headers: qBittorrentHeaders(), body };
+  if (signal !== undefined) {
+    init.signal = signal;
+  }
+  const response = await fetch(`${QBITTORRENT_URL}/api/v2/auth/login`, init);
   const responseText = await response.text();
   if (!response.ok || responseText.trim() !== "Ok.") {
     throw new Error("qBittorrent authentication failed");
@@ -75,7 +78,7 @@ async function qBittorrentRequest(
     return null;
   }
   try {
-    const cookie = await qBittorrentCookie();
+    const cookie = await qBittorrentCookie(init.signal);
     return await fetch(`${QBITTORRENT_URL}${path}`, {
       ...init,
       headers: qBittorrentHeaders(cookie),
@@ -94,19 +97,12 @@ export async function detachTorrentsForFiles(files: readonly string[]): Promise<
   if (!Array.isArray(payload)) {
     return false;
   }
-  const hashes = payload.flatMap((value): readonly string[] => {
-    const item = jsonObject(value);
-    if (item === null) {
-      return [];
-    }
-    if (typeof item["hash"] !== "string" || typeof item["content_path"] !== "string") {
-      return [];
-    }
-    const contentPath = resolve(item["content_path"]);
-    return files.some((file) => file === contentPath || file.startsWith(contentPath + sep))
-      ? [item["hash"]]
-      : [];
-  });
+  const owned = await Promise.all(payload.map((value) => detachPayload(value)));
+  if (owned.some((item) => item === null)) {
+    return false;
+  }
+  const hashes = owned.flatMap((item): readonly string[] => item !== null &&
+    files.some((file) => file === item.path || file.startsWith(item.path + sep)) ? [item.hash] : []);
   if (hashes.length === 0) {
     return true;
   }
@@ -121,14 +117,97 @@ export async function detachTorrentsForFiles(files: readonly string[]): Promise<
   return deleteResponse?.ok === true;
 }
 
-async function existingShowFolder(mediaDir: string, name: string): Promise<string | null> {
-  if (name === "") {
-    return mediaDir;
+async function detachPayload(value: unknown): Promise<{ readonly hash: string; readonly path: string } | null> {
+  const item = jsonObject(value);
+  if (item === null || typeof item["hash"] !== "string" ||
+    typeof item["content_path"] !== "string" || item["content_path"] === "") {
+    return null;
   }
-  const folders = await readdir(mediaDir, { withFileTypes: true });
-  return folders.some((entry) => entry.isDirectory() && entry.name === name)
-    ? join(mediaDir, name)
-    : null;
+  return { hash: item["hash"], path: await canonicalPayloadPath(resolve(item["content_path"])) };
+}
+
+export interface TorrentPayload {
+  readonly hash: string;
+  readonly name: string;
+  readonly contentPath: string;
+  readonly progress: number;
+  readonly state: string;
+}
+
+export type TorrentOwnership =
+  | { readonly state: "available"; readonly payloads: readonly TorrentPayload[] }
+  | { readonly state: "unavailable" }
+  | { readonly state: "unconfigured" };
+
+export function torrentPayloadFromJson(value: unknown): TorrentPayload | null {
+  const item = jsonObject(value);
+  if (
+    item === null || typeof item["hash"] !== "string" || typeof item["name"] !== "string" ||
+    typeof item["content_path"] !== "string" || item["content_path"] === "" ||
+    typeof item["progress"] !== "number" || typeof item["state"] !== "string"
+  ) {
+    return null;
+  }
+  return {
+    hash: item["hash"],
+    name: item["name"],
+    contentPath: resolve(item["content_path"]),
+    progress: item["progress"],
+    state: item["state"],
+  };
+}
+
+/**
+ * Every torrent qBittorrent knows about, complete or not. Ownership is
+ * fail-closed: an unreachable client or an entry without a usable content
+ * path makes ownership unknown rather than empty.
+ */
+export async function torrentOwnership(): Promise<TorrentOwnership> {
+  if (QBITTORRENT_URL === "") {
+    return { state: "unconfigured" };
+  }
+  const read = torrentOwnershipRead();
+  // A stalled client must not stall library writes; treat it as unreachable.
+  const response = await qBittorrentRequest("/api/v2/torrents/info", { signal: AbortSignal.timeout(OWNERSHIP_TIMEOUT_MS) });
+  const payload: unknown = response?.ok === true ? await response.json().catch(() => null) : null;
+  if (!Array.isArray(payload)) {
+    return { state: "unavailable" };
+  }
+  const payloads = payload.flatMap((item) => {
+    const parsed = torrentPayloadFromJson(item);
+    return parsed === null ? [] : [parsed];
+  });
+  if (payloads.length !== payload.length) {
+    return { state: "unavailable" };
+  }
+  const canonicalPayloads = await Promise.all(payloads.map((item) => canonicalTorrentPayload(item)));
+  refreshTorrentAdditions(canonicalPayloads, payload, read);
+  return { state: "available", payloads: [...canonicalPayloads, ...pendingTorrentPayloads()] };
+}
+
+async function canonicalTorrentPayload(item: TorrentPayload): Promise<TorrentPayload> {
+  return {
+    hash: item.hash, name: item.name, progress: item.progress, state: item.state,
+    contentPath: await canonicalPayloadPath(item.contentPath),
+  };
+}
+
+/** Downloading payloads may not exist yet; canonicalize their existing parent. */
+async function canonicalPayloadPath(path: string): Promise<string> {
+  let current = path;
+  const missing: string[] = [];
+  while (true) {
+    const canonical = await realpath(current).catch(() => null);
+    if (canonical !== null) {
+      return join(canonical, ...missing.toReversed());
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      return path;
+    }
+    missing.push(basename(current));
+    current = parent;
+  }
 }
 
 function validMagnetLink(value: string): boolean {
@@ -226,7 +305,10 @@ function invalidTorrentInput(torrent: File | null, magnet: string): Response | n
   return null;
 }
 
-function torrentRequestBody(torrent: File | null, magnet: string, savePath: string): FormData {
+interface TorrentInput { readonly torrent: File | null; readonly magnet: string }
+
+function torrentRequestBody(input: TorrentInput, savePath: string, tag: string): FormData {
+  const { torrent, magnet } = input;
   const body = new FormData();
   if (torrent === null) {
     body.append("urls", magnet);
@@ -234,6 +316,7 @@ function torrentRequestBody(torrent: File | null, magnet: string, savePath: stri
     body.append("torrents", torrent, torrent.name);
   }
   body.append("savepath", savePath);
+  body.append("tags", tag);
   return body;
 }
 
@@ -252,23 +335,64 @@ async function addTorrentResponse(req: Request, mediaDir: string): Promise<Respo
   if (invalid !== null) {
     return invalid;
   }
-  const savePath = await existingShowFolder(mediaDir, showFolder);
-  if (savePath === null) {
-    return new Response("The selected show folder no longer exists", { status: 400 });
-  }
-
-  const response = await qBittorrentRequest("/api/v2/torrents/add", {
-    method: "POST",
-    body: torrentRequestBody(torrent, magnet, savePath),
-  });
-  if (response === null) {
+  if (QBITTORRENT_URL === "") {
     return new Response("Could not reach qBittorrent", { status: 502 });
   }
-  const detail = await response.text();
-  if (!response.ok || detail.trim() === "Fails.") {
-    return new Response(detail.trim() || "qBittorrent rejected the torrent", { status: 502 });
+  return reserveAndAddTorrent({ torrent, magnet }, mediaDir, showFolder);
+}
+
+async function reserveAndAddTorrent(input: TorrentInput, mediaDir: string, showFolder: string): Promise<Response> {
+  let tag: string | undefined = undefined;
+  let savePath = "";
+  try {
+    if (showFolder !== "") {
+      pathSegments(showFolder);
+      if (showFolder.includes("/")) {
+        return new Response("Choose a show folder", { status: 400 });
+      }
+    }
+    tag = reserveTorrentAddition(mediaDir, showFolder);
+    const root = await realpath(mediaDir);
+    canonicalizeTorrentAdditionRoot(tag, root);
+    savePath = await resolveFolder(root, showFolder === "" ? null : showFolder);
+  } catch (error) {
+    // Validation failed before POST; there is no external ownership to retain.
+    if (tag !== undefined) {
+      forgetTorrentAddition(tag);
+    }
+    if (error instanceof LibraryFileError) {
+      return new Response(error.message, { status: error.status === 404 ? 400 : error.status });
+    }
+    throw error;
   }
-  return Response.json({ added: true });
+  return submitReservedTorrent(input, savePath, tag);
+}
+
+async function submitReservedTorrent(input: TorrentInput, savePath: string, tag: string): Promise<Response> {
+  const before = await torrentOwnership();
+  if (before.state !== "available") {
+    // No POST was attempted. An outage alone must not leave a pending root
+    // reservation that makes harmless new-folder creation impossible.
+    forgetTorrentAddition(tag);
+    return new Response("Could not identify qBittorrent ownership", { status: 502 });
+  }
+  const response = await qBittorrentRequest("/api/v2/torrents/add", {
+    method: "POST", body: torrentRequestBody(input, savePath, tag), signal: AbortSignal.timeout(OWNERSHIP_TIMEOUT_MS),
+  });
+  const detail = await response?.text().catch(() => "") ?? "";
+  if (detail.trim() === "Fails.") {
+    forgetTorrentAddition(tag);
+    return new Response("qBittorrent rejected the torrent", { status: 502 });
+  }
+  // A lost acknowledgement may still have started a download. Keep its durable
+  // scope reservation until tagged payload ownership is actually observed.
+  if (response?.ok !== true) {
+    return new Response("Torrent addition outcome is unknown; its destination stays locked", { status: 502 });
+  }
+  await torrentOwnership();
+  return torrentAdditionObserved(tag)
+    ? Response.json({ added: true })
+    : new Response("Torrent ownership is not observable yet; its destination stays locked", { status: 502 });
 }
 
 interface CancelTorrentBody {

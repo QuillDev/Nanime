@@ -1,3 +1,5 @@
+export { captureEncoder, captureProbe } from "./transcodeProcessLifetime.ts";
+
 interface ProgressSample {
   readonly progress: number;
   readonly speed: number;

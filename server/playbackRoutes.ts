@@ -19,12 +19,14 @@ interface PlaybackRouteContext {
 
 interface PlaybackRouteOptions {
   readonly mediaExists: (rel: string) => Promise<boolean>;
+  readonly mediaIdentity: (rel: string) => Promise<string | null>;
   readonly sync: (userId: number, target: AniListPlaybackTarget) => Promise<void>;
 }
 
 function updateOptions(userId: number, options: PlaybackRouteOptions) {
   return {
     mediaExists: options.mediaExists,
+    mediaIdentity: options.mediaIdentity,
     sync: (target: AniListPlaybackTarget) => options.sync(userId, target),
   };
 }

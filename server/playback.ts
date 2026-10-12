@@ -1,3 +1,4 @@
+import type { PlaybackAuditEvent } from "../shared/types.ts";
 import type { AniListPlaybackTarget } from "./anilistAccountTypes.ts";
 import { isPlaybackComplete, playbackWatchedState } from "../shared/playback.ts";
 import {
@@ -9,8 +10,12 @@ import {
   restorePlaybackAuditEvent,
   type PlaybackActor,
 } from "./playbackAudit.ts";
+import { hasInternalSegment } from "./libraryPaths.ts";
+import { currentMediaPath, currentMediaPathForAudit, departedMediaPaths } from "./mediaPathHistory.ts";
+import { admittedPlaybackMutation, playbackCandidatePaths } from "./playbackConcurrency.ts";
 
 interface PlaybackUpdate {
+  readonly mediaIdentity?: unknown;
   readonly rel?: unknown;
   readonly position?: unknown;
   readonly duration?: unknown;
@@ -34,6 +39,7 @@ export function forgetPlaybackProgress(
 }
 
 interface PlaybackUpdateOptions {
+  readonly mediaIdentity?: (rel: string) => Promise<string | null>;
   readonly mediaExists: (rel: string) => Promise<boolean>;
   readonly sync?: (target: AniListPlaybackTarget) => Promise<void>;
 }
@@ -42,6 +48,62 @@ interface PlaybackSyncFields {
   readonly anilistMediaId?: unknown;
   readonly episode?: unknown;
   readonly totalEpisodes?: unknown;
+}
+
+/** A playable library path: present, and not inside Nanime's own folders such as the trash. */
+async function playablePath(rel: string | null, options: PlaybackUpdateOptions): Promise<string | null> {
+  return rel !== null && !hasInternalSegment(rel) && await options.mediaExists(rel) ? rel : null;
+}
+
+async function identifiedPlaybackPath(
+  candidate: string | null,
+  identity: string,
+  options: PlaybackUpdateOptions,
+): Promise<string | null> {
+  const path = await playablePath(candidate, options);
+  if (path === null || options.mediaIdentity === undefined) {
+    return null;
+  }
+  return await options.mediaIdentity(path) === identity ? path : null;
+}
+
+/**
+ * The media's current path. A client that queued progress before an admin
+ * renamed or moved the file still reaches the same media through path
+ * history, unless that history is ambiguous or leads to the trash.
+ */
+async function existingMediaPath(request: { readonly rel: string; readonly mediaIdentity?: unknown }, options: PlaybackUpdateOptions): Promise<string | null> {
+  const { rel, mediaIdentity } = request;
+  const departures = departedMediaPaths(rel);
+  if (mediaIdentity !== undefined) {
+    if (typeof mediaIdentity !== "string" || options.mediaIdentity === undefined) {
+      return null;
+    }
+    const candidates = [...new Set([rel, ...departures])];
+    const resolved = await Promise.all(candidates.map((candidate) => identifiedPlaybackPath(candidate, mediaIdentity, options)));
+    const matches = resolved.filter((path): path is string => path !== null);
+    return matches.length === 1 ? matches[0] ?? null : null;
+  }
+  const present = await playablePath(rel, options);
+  // Once something left an occupied path, a legacy request could mean either
+  // occupant. Never prefer the present file over the departed one.
+  if (present !== null) {
+    return departures.length === 0 ? present : null;
+  }
+  return await playablePath(currentMediaPath(rel), options);
+}
+
+/**
+ * Where a history restore applies: the event's media wherever it lives now.
+ * Restoring saved progress needs the media present; clearing progress may
+ * target missing media, but never trashed media, whose progress Undo restores.
+ */
+async function restoreTarget(event: PlaybackAuditEvent, options: PlaybackUpdateOptions): Promise<string | null> {
+  const rel = currentMediaPathForAudit(event.rel, event.id);
+  if (rel === null || hasInternalSegment(rel)) {
+    return null;
+  }
+  return event.previous === null ? rel : await playablePath(rel, options);
 }
 
 export function playbackProgressResponse(userId: number): Response {
@@ -77,6 +139,7 @@ export async function setPlaybackWatchedState(
   const body = (await req.json().catch(() => null)) as {
     readonly rel?: unknown;
     readonly watched?: unknown;
+    readonly mediaIdentity?: unknown;
     readonly anilistMediaId?: unknown;
     readonly episode?: unknown;
     readonly totalEpisodes?: unknown;
@@ -90,26 +153,25 @@ export async function setPlaybackWatchedState(
   ) {
     return new Response("Invalid watched state", { status: 400 });
   }
-  if (!(await options.mediaExists(body.rel))) {
-    return new Response("Media not found", { status: 404 });
-  }
-  const origin = watchedOrigin(body.origin);
-  const { rel, watched } = body;
-  const auditTarget = playbackTargetIdentity(body);
-  const progress = mutatePlayback({
-    userId: actor.id,
-    actor,
-    rel,
-    action: watched ? "watched" : "unwatched",
-    origin,
-    anilistTarget: auditTarget,
-    next: (existing) => playbackWatchedState({
+  const { rel: requestedRel, watched } = body;
+  const progress = await admittedPlaybackMutation(playbackCandidatePaths(requestedRel), async () => {
+    const rel = await existingMediaPath({ rel: requestedRel, mediaIdentity: body.mediaIdentity }, options);
+    if (rel === null) {
+      return new Response("Media not found", { status: 404 });
+    }
+    return mutatePlayback({
+      userId: actor.id,
+      actor,
       rel,
-      watched,
-      existing,
-      updatedAt: Date.now(),
-    }),
+      action: watched ? "watched" : "unwatched",
+      origin: watchedOrigin(body.origin),
+      anilistTarget: playbackTargetIdentity(body),
+      next: (existing) => playbackWatchedState({ rel, watched, existing, updatedAt: Date.now() }),
+    });
   });
+  if (progress instanceof Response) {
+    return progress;
+  }
   if (progress === null) {
     return new Response("Could not update watched state", { status: 500 });
   }
@@ -137,34 +199,36 @@ export async function updatePlaybackProgress(
   ) {
     return new Response("Invalid playback progress", { status: 400 });
   }
-  if (!(await options.mediaExists(body.rel))) {
-    return new Response("Media not found", { status: 404 });
-  }
-
-  const position = body.duration > 0 ? Math.min(body.position, body.duration) : body.position;
-  const { rel, duration, completed } = body;
-  const auditTarget = playbackTargetIdentity(body);
+  const { rel: requestedRel, duration, completed } = body;
+  const position = duration > 0 ? Math.min(body.position, duration) : body.position;
   const saveEvent = playbackSaveEvent(body.event, completed);
   const sessionSeconds = validNumber(body.sessionSeconds) ? body.sessionSeconds : null;
-  const progress = mutatePlayback({
-    userId: actor.id,
-    actor,
-    rel,
-    action: playbackAuditAction(saveEvent),
-    origin: "player",
-    anilistTarget: auditTarget,
-    sessionSeconds,
-    recordAudit: saveEvent === "started" || saveEvent === "completed" ||
-      saveEvent === "stopped" && sessionSeconds !== null,
-    next: () => ({
+  const progress = await admittedPlaybackMutation(playbackCandidatePaths(requestedRel), async () => {
+    const rel = await existingMediaPath({ rel: requestedRel, mediaIdentity: body.mediaIdentity }, options);
+    if (rel === null) {
+      return new Response("Media not found", { status: 404 });
+    }
+    return mutatePlayback({
+      userId: actor.id,
+      actor,
       rel,
-      position,
-      duration,
-      completed: isPlaybackComplete(position, duration, completed),
-      updatedAt: Date.now(),
-      dismissedAt: null,
-    }),
+      action: playbackAuditAction(saveEvent),
+      origin: "player",
+      anilistTarget: playbackTargetIdentity(body),
+      sessionSeconds,
+      recordAudit: saveEvent === "started" || saveEvent === "completed" ||
+        saveEvent === "stopped" && sessionSeconds !== null,
+      next: () => ({
+        rel, position, duration,
+        completed: isPlaybackComplete(position, duration, completed),
+        updatedAt: Date.now(),
+        dismissedAt: null,
+      }),
+    });
   });
+  if (progress instanceof Response) {
+    return progress;
+  }
   if (progress === null) {
     return new Response("Could not save playback progress", { status: 500 });
   }
@@ -216,10 +280,16 @@ export async function restorePlaybackAuditResponse(options: PlaybackUpdateOption
   if (event === null) {
     return new Response("Playback history event not found", { status: 404 });
   }
-  if (event.previous !== null && !(await options.mediaExists(event.rel))) {
-    return new Response("Media no longer exists", { status: 404 });
+  const currentPath = currentMediaPathForAudit(event.rel, event.id);
+  const progress = await admittedPlaybackMutation(playbackCandidatePaths(event.rel, currentPath), async () => {
+    const rel = await restoreTarget(event, options);
+    return rel === null
+      ? new Response("Media no longer exists", { status: 404 })
+      : restorePlaybackAuditEvent(event, actor, rel);
+  });
+  if (progress instanceof Response) {
+    return progress;
   }
-  const progress = restorePlaybackAuditEvent(event, actor);
   if (event.anilistMediaId !== null && event.episode !== null) {
     await syncPlayback(options, {
       mediaId: event.anilistMediaId,

@@ -381,6 +381,22 @@ export async function removeTrickplayCache(abs: string): Promise<void> {
   }
 }
 
+/**
+ * Carries a finished trickplay cache to a moved video. The cache fingerprint
+ * uses size and modification time, which a same-volume rename preserves.
+ * Best effort: a missed migration only means the sheets are regenerated.
+ */
+export async function moveTrickplayCache(fromAbs: string, toAbs: string): Promise<void> {
+  if (activeGenerationPath === fromAbs || generationPaths.has(fromAbs)) {
+    return;
+  }
+  const destination = cacheDirectory(toAbs);
+  if (await lstat(destination).catch((): null => null) !== null) {
+    return;
+  }
+  await rename(cacheDirectory(fromAbs), destination).catch(() => undefined);
+}
+
 interface TrickplayMediaRequest {
   readonly abs: string;
   readonly pathname: string;
