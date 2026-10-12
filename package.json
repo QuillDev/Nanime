@@ -18,7 +18,7 @@
     "doctor": "NANIME_DATABASE=${TMPDIR:-/tmp}/nanime-tooling-$$.sqlite NANIME_ADMIN_SETUP_TOKEN=nanime-tooling-token-with-thirty-two-characters react-doctor --yes --blocking warning",
     "check": "bun run typecheck && bun run lint && bun run doctor",
     "test:player": "bun run build && NANIME_PLAYER_E2E=true bun test tests/player/playerBrowser.test.ts --timeout 120000",
-    "test:library-files": "bun run build && NANIME_LIBRARY_FILES_E2E=true bun test tests/player/libraryFilesBrowser.test.ts --timeout 120000",
+    "test:library-files": "bun run build && NANIME_LIBRARY_FILES_E2E=true bun test tests/player/libraryFilesBrowser.test.ts tests/player/adminNavigationBrowser.test.ts --timeout 120000",
     "start": "bun run server/app.ts"
   },
   "dependencies": {
