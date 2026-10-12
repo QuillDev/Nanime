@@ -61,6 +61,10 @@ jobs:
             file: tests/player/libraryFilesBrowser.test.ts
             ffmpeg: false
             pattern: "."
+          - name: admin-navigation
+            file: tests/player/adminNavigationBrowser.test.ts
+            ffmpeg: false
+            pattern: "."
           - name: file-manager-package
             file: packages/file-manager/tests/fileManagerBrowser.test.ts
             ffmpeg: false

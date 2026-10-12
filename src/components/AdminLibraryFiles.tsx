@@ -2,6 +2,7 @@ import "@nanime/file-manager/styles.css";
 import { useCallback, useMemo } from "react";
 import { FileManager, modifiedColumn, sizeColumn, type FileOperation, type OperationResult } from "@nanime/file-manager";
 import { TriangleAlert } from "lucide-react";
+import { SectionHelp } from "./SectionHelp.tsx";
 import type { LibraryFileItem } from "../../shared/libraryFiles.ts";
 import { useLibraryFileOperation, useLibraryFiles } from "../hooks/useLibraryFiles.ts";
 import {
@@ -49,11 +50,11 @@ export function AdminLibraryFiles(): React.JSX.Element {
   const handleOperation = useOperationHandler(items);
   return (
     <section aria-labelledby="library-files-title" className="space-y-3">
-      <div>
+      <div className="flex items-center justify-between gap-3">
         <h2 id="library-files-title" className="text-sm font-semibold">Library files</h2>
-        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+        <SectionHelp label="About library files">
           Organize folders and files under the library root. Watch progress, history, and mappings follow moved media; deleted items go to Nanime’s trash and can be undone.
-        </p>
+        </SectionHelp>
       </div>
       {files.data?.torrentOwnership === "unavailable" && <OwnershipNotice />}
       {files.error !== null && <p className="select-text text-sm text-destructive">{files.error.message}</p>}
