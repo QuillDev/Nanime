@@ -28,12 +28,14 @@ import {
   mediaRequest,
   rangedFileResponse,
 } from "./mediaRouting.ts";
-import { torrentsResponse } from "./torrents.ts";
+import { adminLibraryRoutes } from "./adminLibraryRoutes.ts";
 import { mediaAdminResponse } from "./mediaAdmin.ts";
 import {
+  isLibraryMediaPath,
   libraryStatusResponse,
   libraryActivityResponse,
   listMedia,
+  mediaIdentityAt,
   refreshLibraryResponse,
 } from "./mediaLibrary.ts";
 import {
@@ -85,6 +87,13 @@ const OFFLINE_MEDIA_OPTIONS = {
   videoExtensions: VIDEO_EXTS,
   directPlayExtensions: DIRECT_PLAY,
 } as const;
+const ADMIN_LIBRARY = adminLibraryRoutes({
+  mediaDir: MEDIA_DIR,
+  mediaRoot: MEDIA_ROOT,
+  videoExtensions: VIDEO_EXTS,
+  directPlayExtensions: DIRECT_PLAY,
+});
+await ADMIN_LIBRARY.recover();
 async function safePath(rel: string | null): Promise<string | null> {
   if (rel === null || rel === "") {
     return null;
@@ -94,7 +103,9 @@ async function safePath(rel: string | null): Promise<string | null> {
     return null;
   }
   const canonical = await realpath(abs).catch((): null => null);
-  return canonical !== null && canonical !== MEDIA_ROOT && canonical.startsWith(MEDIA_ROOT + sep)
+  // Nanime's own folders (trash awaiting Undo, uploads, transcodes) are never media.
+  return canonical !== null && canonical !== MEDIA_ROOT && canonical.startsWith(MEDIA_ROOT + sep) &&
+    isLibraryMediaPath(rel) && isLibraryMediaPath(canonical.slice(MEDIA_ROOT.length + 1))
     ? canonical
     : null;
 }
@@ -276,6 +287,7 @@ async function libraryRoute(context: RouteContext): Promise<Response | null> {
   const information = await libraryInformationRoute(context);
   return information ?? playbackRoute(context, {
     mediaExists,
+    mediaIdentity: (rel) => mediaIdentityAt(MEDIA_ROOT, rel),
     sync: syncAniListPlayback,
   });
 }
@@ -352,10 +364,9 @@ async function administrationRoute(context: RouteContext): Promise<Response | nu
     const requestedUserId = pathname === "/api/users" ? null : Number(pathname.slice(11));
     return usersResponse(req, user, requestedUserId);
   }
-  if (pathname === "/api/torrents" || pathname.startsWith("/api/torrents/")) {
-    return user.isAdmin
-      ? torrentsResponse(req, MEDIA_DIR, url)
-      : new Response("Forbidden", { status: 403 });
+  const library = ADMIN_LIBRARY.respond({ req, pathname, url, user });
+  if (library !== null) {
+    return await library;
   }
   const mediaAdmin = mediaAdminResponse(req, pathname, {
     isAdmin: user.isAdmin,

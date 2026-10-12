@@ -122,12 +122,9 @@ export async function completedOfflineDownloads(): Promise<readonly OfflineDownl
     : database.listDownloads(profile.user.id, true);
 }
 
-function offlineLibraryEntry(
-  download: OfflineDownload,
-  byRel: ReadonlyMap<string, MediaEntry>,
-): MediaEntry {
+function offlineLibraryEntry(download: OfflineDownload): MediaEntry {
   return {
-    ...byRel.get(download.rel),
+    ...download,
     rel: download.rel,
     name: download.name,
     folder: download.folder,
@@ -145,8 +142,7 @@ export async function offlineLibraryFallback(): Promise<readonly MediaEntry[]> {
   if (profile === null) {
     return [];
   }
-  const byRel = new Map(profile.library?.map((entry) => [entry.rel, entry]));
-  return downloads.map((download) => offlineLibraryEntry(download, byRel));
+  return downloads.map((download) => offlineLibraryEntry(download));
 }
 
 export async function offlineMetadataFallback(): Promise<ShowMetadata> {
@@ -194,7 +190,8 @@ function appendPlaybackUpdate(
   }
   return [
     ...current.filter((item) => (
-      item.update.event !== "heartbeat" || item.update.rel !== next.update.rel
+      item.update.event !== "heartbeat" || item.update.rel !== next.update.rel ||
+      item.update.mediaIdentity !== next.update.mediaIdentity
     )),
     next,
   ];

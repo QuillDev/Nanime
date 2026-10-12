@@ -60,6 +60,11 @@ const upsertMetadata = database.query<void, [string, string, number]>(`
     payload = excluded.payload,
     updated_at = excluded.updated_at
 `);
+// A refresh only updates mappings that still exist: if a library file
+// operation re-keyed one mid-refresh, writing the old key back would orphan it.
+const refreshStoredMetadata = database.query<void, [string, number, string]>(
+  "UPDATE media_metadata SET payload = ?, updated_at = ? WHERE key = ?",
+);
 const writeMetadataTransaction = database.transaction((store: MetadataStore) => {
   const updatedAt = Date.now();
   for (const [key, media] of Object.entries(store)) {
@@ -261,7 +266,7 @@ async function refreshMetadata(): Promise<void> {
         ? await tvmazeEnrichment(mappedMedia, previous)
         : mappedMedia;
       store[key] = updated;
-      upsertMetadata.run(key, JSON.stringify(updated), Date.now());
+      refreshStoredMetadata.run(JSON.stringify(updated), Date.now(), key);
       updateRefreshStatus({ completed: refreshStatus.completed + 1 });
     } catch (error) {
       updateRefreshStatus({
@@ -272,6 +277,15 @@ async function refreshMetadata(): Promise<void> {
     }
   }
   updateRefreshStatus({ state: "complete", completedAt: Date.now() });
+}
+
+export function metadataRefreshRunning(): boolean {
+  return refreshStatus.state === "running";
+}
+
+/** Drops the in-memory store after metadata keys were changed directly in SQLite. */
+export function forgetCachedMetadata(): void {
+  metadataPromise = undefined;
 }
 
 export function metadataRefreshStatusResponse(): Response {

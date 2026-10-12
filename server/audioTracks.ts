@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { libraryWriterResponse } from "./libraryWriterAdmission.ts";
 import { chmod, lstat, realpath, rename, unlink } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { detachTorrentsForFiles } from "./torrents.ts";
@@ -166,11 +167,21 @@ export async function deleteAudioTrackResponse(
   options: DeleteAudioTrackOptions,
 ): Promise<Response> {
   const body = (await req.json().catch(() => null)) as DeleteAudioTrackRequest | null;
-  const abs = await requestedMedia(body?.path, options);
+  const path = body?.path;
   const index = body?.index;
-  if (abs === null || typeof index !== "number" || !Number.isInteger(index) || index < 0) {
+  if (typeof path !== "string" || typeof index !== "number" || !Number.isInteger(index) || index < 0) {
     return new Response("Choose a valid audio track", { status: 400 });
   }
+  return libraryWriterResponse({ root: options.mediaDir, paths: [path], siblings: true }, async () => {
+    const abs = await requestedMedia(path, options);
+    if (abs === null) {
+      return new Response("Choose a valid audio track", { status: 400 });
+    }
+    return deleteClaimedAudioTrack(abs, index, options);
+  });
+}
+
+async function deleteClaimedAudioTrack(abs: string, index: number, options: DeleteAudioTrackOptions): Promise<Response> {
   const tracks = await audioTracks(abs);
   const selected = tracks.find((track) => track.index === index);
   if (selected === undefined) {

@@ -3,6 +3,8 @@ import { lstat, link, mkdir, open, realpath, unlink } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import { fileSystemErrorCode } from "./fileSystemError.ts";
 import { recordUploadActivity } from "./libraryActivity.ts";
+import { claimLibraryPaths, libraryPathUnavailable } from "./libraryWriters.ts";
+import { LibraryFileError } from "./libraryPaths.ts";
 
 const MAX_CHUNK_BYTES = 8 * 1024 * 1024;
 const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024 * 1024;
@@ -17,7 +19,11 @@ interface UploadSession {
   readonly relativePath: string;
   readonly size: number;
   readonly expiresAt: number;
+  readonly release: () => void;
   received: number;
+  activeWrites: number;
+  discarded: boolean;
+  expiration: ReturnType<typeof setTimeout> | null;
 }
 
 interface UploadStartBody {
@@ -40,6 +46,17 @@ interface MediaUploadOptions {
 }
 
 const uploads = new Map<string, UploadSession>();
+// Destinations claimed by uploads that are still being set up.
+const reservedDestinations = new Set<string>();
+
+/** Library-relative destinations of uploads that are being set up or still receiving chunks. */
+export function activeUploadPaths(): readonly string[] {
+  const now = Date.now();
+  return [
+    ...reservedDestinations,
+    ...[...uploads.values()].flatMap((session) => (session.expiresAt > now ? [session.relativePath] : [])),
+  ];
+}
 
 function safePart(value: string): boolean {
   return value !== "." && value !== ".." && /^[^/\\\p{Cc}]{1,255}$/u.test(value);
@@ -88,8 +105,16 @@ async function safeDestinationDirectory(
 }
 
 async function discard(session: UploadSession): Promise<void> {
+  session.discarded = true;
+  if (session.expiration !== null) {
+    clearTimeout(session.expiration);
+    session.expiration = null;
+  }
   uploads.delete(session.id);
   await unlink(session.temporaryPath).catch(() => undefined);
+  if (session.activeWrites === 0) {
+    session.release();
+  }
 }
 
 async function removeExpiredUploads(): Promise<void> {
@@ -133,6 +158,40 @@ async function startUpload(
   if (upload === null) {
     return new Response("Choose a supported video file and destination", { status: 400 });
   }
+  // Claimed synchronously, so a library file operation either sees this
+  // upload's lock or is already visible here as busy.
+  const relativePath = [...upload.parts, upload.fileName].join("/");
+  const unavailable = libraryPathUnavailable(relativePath);
+  if (unavailable !== null) {
+    return new Response(unavailable, { status: 423 });
+  }
+  let release: (() => void) | undefined = undefined;
+  let admitted = false;
+  try {
+    release = claimLibraryPaths([relativePath], true);
+    reservedDestinations.add(relativePath);
+    const result = await createUploadSession(upload, { relativePath, release }, options);
+    admitted = result.ok;
+    return result;
+  } catch (error) {
+    if (error instanceof LibraryFileError) {
+      return new Response(error.message, { status: error.status });
+    }
+    throw error;
+  } finally {
+    reservedDestinations.delete(relativePath);
+    if (!admitted) {
+      release?.();
+    }
+  }
+}
+
+async function createUploadSession(
+  upload: ValidUploadStart,
+  reservation: { readonly relativePath: string; readonly release: () => void },
+  options: MediaUploadOptions,
+): Promise<Response> {
+  const { relativePath, release } = reservation;
   const destinationDirectory = await safeDestinationDirectory(options.mediaRoot, upload.parts);
   if (destinationDirectory === null) {
     return new Response("Invalid upload destination", { status: 400 });
@@ -155,16 +214,23 @@ async function startUpload(
     return new Response("Could not prepare upload", { status: 500 });
   }
   await file.close();
-  uploads.set(id, {
+  const session: UploadSession = {
     id,
     userId: options.userId,
     temporaryPath,
     destinationPath: resolvedDestination,
-    relativePath: [...upload.parts, upload.fileName].join("/"),
+    relativePath,
     size: upload.size,
     received: 0,
+    activeWrites: 0,
+    discarded: false,
+    expiration: null,
     expiresAt: Date.now() + UPLOAD_LIFETIME_MS,
-  });
+    release,
+  };
+  uploads.set(id, session);
+  session.expiration = setTimeout(() => { void discard(session); }, UPLOAD_LIFETIME_MS);
+  session.expiration.unref();
   return Response.json({ id, chunkSize: MAX_CHUNK_BYTES });
 }
 
@@ -179,6 +245,22 @@ async function appendChunk(req: Request, id: string, userId: number): Promise<Re
   if (session === null) {
     return new Response("Upload not found", { status: 404 });
   }
+  return withUploadWrite(session, () => appendClaimedChunk(req, session));
+}
+
+async function withUploadWrite(session: UploadSession, work: () => Promise<Response>): Promise<Response> {
+  session.activeWrites += 1;
+  try {
+    return await work();
+  } finally {
+    session.activeWrites -= 1;
+    if (session.discarded && session.activeWrites === 0) {
+      session.release();
+    }
+  }
+}
+
+async function appendClaimedChunk(req: Request, session: UploadSession): Promise<Response> {
   const form = await req.formData().catch(() => null);
   const chunk = form?.get("chunk");
   const offsetValue = form?.get("offset");
@@ -193,7 +275,7 @@ async function appendChunk(req: Request, id: string, userId: number): Promise<Re
   const bytes = new Uint8Array(await chunk.arrayBuffer());
   const file = await open(session.temporaryPath, "r+").catch(() => null);
   if (file === null) {
-    uploads.delete(session.id);
+    await discard(session);
     return new Response("Upload is no longer available", { status: 410 });
   }
   try {
@@ -214,6 +296,10 @@ async function completeUpload(id: string, options: MediaUploadOptions): Promise<
   if (session === null) {
     return new Response("Upload not found", { status: 404 });
   }
+  return withUploadWrite(session, () => completeClaimedUpload(session, options));
+}
+
+async function completeClaimedUpload(session: UploadSession, options: MediaUploadOptions): Promise<Response> {
   if (session.received !== session.size) {
     return new Response("Upload is incomplete", { status: 409 });
   }

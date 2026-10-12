@@ -5,6 +5,8 @@ import type {
   PlaybackProgress,
 } from "../shared/types.ts";
 import { database } from "./database.ts";
+import { hasInternalSegment } from "./libraryPaths.ts";
+import { mediaAuditWindows } from "./mediaPathHistory.ts";
 
 export interface PlaybackActor {
   readonly id: number;
@@ -100,13 +102,13 @@ const listAudit = database.query<AuditRow, [number, number]>(`
   ORDER BY created_at DESC, id DESC
   LIMIT ?
 `);
-const listAuditForMedia = database.query<AuditRow, [number, string, number]>(`
+const listAuditInWindow = database.query<AuditRow, [number, string, number, number, number]>(`
   SELECT id, user_id, actor_user_id, actor_username, rel, action, origin,
     previous_state, next_state, anilist_media_id, episode, total_episodes, session_seconds,
     reverts_event_id, created_at
   FROM playback_audit_log
-  WHERE user_id = ? AND rel = ?
-  ORDER BY created_at DESC, id DESC
+  WHERE user_id = ? AND rel = ? AND id > ? AND id <= ?
+  ORDER BY id DESC
   LIMIT ?
 `);
 const getAudit = database.query<AuditRow, [number, number]>(`
@@ -248,8 +250,12 @@ export function mutatePlayback(mutation: PlaybackMutation): PlaybackProgress | n
   return commitMutation(mutation);
 }
 
+/**
+ * Progress for media in Nanime's own folders (trashed media awaiting Undo) is
+ * kept so Undo restores it, but never offered for playback.
+ */
 export function playbackProgressForUser(userId: number): readonly PlaybackProgress[] {
-  return listProgress.all(userId).map((row) => playbackFromRow(row));
+  return listProgress.all(userId).flatMap((row) => (hasInternalSegment(row.rel) ? [] : [playbackFromRow(row)]));
 }
 
 export function playbackAuditForUser(
@@ -257,10 +263,19 @@ export function playbackAuditForUser(
   limit: number,
   rel: string | null,
 ): readonly PlaybackAuditEvent[] {
-  const rows = rel === null
-    ? listAudit.all(userId, limit)
-    : listAuditForMedia.all(userId, rel, limit);
-  return rows.map((row) => eventFromRow(row));
+  if (rel === null) {
+    return listAudit.all(userId, limit).map((row) => eventFromRow(row));
+  }
+  // Moves never rewrite the immutable log; include events recorded under the
+  // paths this media had before it was renamed or moved, and only while it
+  // was the media at each of those paths.
+  const rows = mediaAuditWindows(rel).flatMap((window) => listAuditInWindow.all(
+    userId, window.rel, window.afterId, window.throughId ?? Number.MAX_SAFE_INTEGER, limit,
+  ));
+  return rows
+    .toSorted((a, b) => b.created_at - a.created_at || b.id - a.id)
+    .slice(0, limit)
+    .map((row) => eventFromRow(row));
 }
 
 export function playbackAuditEvent(userId: number, id: number): PlaybackAuditEvent | null {
@@ -268,14 +283,16 @@ export function playbackAuditEvent(userId: number, id: number): PlaybackAuditEve
   return row === null ? null : eventFromRow(row);
 }
 
+/** Restores the state before `event` onto `rel`, where that media lives now. */
 export function restorePlaybackAuditEvent(
   event: PlaybackAuditEvent,
   actor: PlaybackActor,
+  rel: string = event.rel,
 ): PlaybackProgress | null {
   return mutatePlayback({
     userId: event.userId,
     actor,
-    rel: event.rel,
+    rel,
     action: "restored",
     origin: "history",
     revertsEventId: event.id,
@@ -289,7 +306,7 @@ export function restorePlaybackAuditEvent(
       },
     next: () => event.previous === null
       ? null
-      : { ...event.previous, updatedAt: Date.now() },
+      : { ...event.previous, rel, updatedAt: Date.now() },
   });
 }
 

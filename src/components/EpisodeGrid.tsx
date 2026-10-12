@@ -159,14 +159,16 @@ export function EpisodeGrid({
         episode: target.episode,
         totalEpisodes: target.totalEpisodes,
       };
-    watchedState.mutate(update, {
+    const entry = entries.find((item) => item.rel === rel);
+    const identified = entry?.mediaIdentity === undefined ? update : { ...update, mediaIdentity: entry.mediaIdentity };
+    watchedState.mutate(identified, {
       onSuccess: () => {
         if (watched && target !== null) {
           promptForScore(target);
         }
       },
     });
-  }, [promptForScore, watchedState]);
+  }, [entries, promptForScore, watchedState]);
   return (
     <div>
       {watchedState.error !== null && (

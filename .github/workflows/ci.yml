@@ -28,6 +28,8 @@ jobs:
         run: bun audit
       - name: Run quality gate
         run: bun run check
+      - name: Install tools for real media regression tests
+        run: sudo apt-get update && sudo apt-get install --yes ffmpeg
       - name: Run unit tests
         run: bun test
         env:
@@ -44,11 +46,25 @@ jobs:
       matrix:
         case:
           - name: journey
+            file: tests/player/playerBrowser.test.ts
+            ffmpeg: true
             pattern: navigates through a season
           - name: state-and-direct
+            file: tests/player/playerBrowser.test.ts
+            ffmpeg: true
             pattern: "marks an episode watched|direct playback accepts"
           - name: hls-resilience
+            file: tests/player/playerBrowser.test.ts
+            ffmpeg: true
             pattern: "recovers a transient HLS manifest|keeps controls visible"
+          - name: library-files
+            file: tests/player/libraryFilesBrowser.test.ts
+            ffmpeg: false
+            pattern: "."
+          - name: file-manager-package
+            file: packages/file-manager/tests/fileManagerBrowser.test.ts
+            ffmpeg: false
+            pattern: "."
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,14 +87,18 @@ jobs:
         run: bun ci
       - name: Build production bundle
         run: bun run build
+      - name: Build standalone file-manager fixture
+        if: matrix.case.name == 'file-manager-package'
+        run: bun run --cwd packages/file-manager build:demo
       - name: Restore pinned FFmpeg tools
+        if: matrix.case.ffmpeg
         id: ffmpeg-cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: .ci/ffmpeg
           key: ffmpeg-n8.1.2-44-g7c533d0f86-linux64-gpl
       - name: Download pinned FFmpeg tools
-        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        if: matrix.case.ffmpeg && steps.ffmpeg-cache.outputs.cache-hit != 'true'
         env:
           FFMPEG_ARCHIVE_SHA256: c86e5d9a6cdd824a0b1f220ebc43c57dec129df3252376988730a091d19be4ce
           FFMPEG_ARCHIVE_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-19-19-21/ffmpeg-n8.1.2-44-g7c533d0f86-linux64-gpl-8.1.tar.xz
@@ -90,6 +110,7 @@ jobs:
             --strip-components=2 --wildcards '*/bin/ffmpeg' '*/bin/ffprobe'
           chmod +x .ci/ffmpeg/ffmpeg .ci/ffmpeg/ffprobe
       - name: Add FFmpeg tools to PATH
+        if: matrix.case.ffmpeg
         run: echo "$GITHUB_WORKSPACE/.ci/ffmpeg" >> "$GITHUB_PATH"
       - name: Connect to warmed Chrome
         run: |
@@ -109,10 +130,13 @@ jobs:
       - name: Run player browser shard
         env:
           NANIME_PLAYER_E2E: "true"
+          NANIME_LIBRARY_FILES_E2E: "true"
+          NANIME_FILE_MANAGER_E2E: "true"
+          PLAYER_TEST_FILE: ${{ matrix.case.file }}
           PLAYER_TEST_PATTERN: ${{ matrix.case.pattern }}
         run: |
           for attempt in 1 2; do
-            bun test tests/player/playerBrowser.test.ts --timeout 120000 --test-name-pattern "$PLAYER_TEST_PATTERN" && exit 0
+            bun test "$PLAYER_TEST_FILE" --timeout 120000 --test-name-pattern "$PLAYER_TEST_PATTERN" && exit 0
           done
           exit 1
       - name: Upload player harness diagnostics

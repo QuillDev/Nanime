@@ -1,4 +1,5 @@
 import { t } from "elysia";
+import { fileMovementSchema, fileOperationKindSchema } from "./libraryFilesSchemas.ts";
 
 const array = t.Array;
 const boolean = t.Boolean;
@@ -45,6 +46,7 @@ export const provisionedUserSchema = object({
 });
 export const mediaEntrySchema = object({
   rel: string(), name: string(), folder: string(), size: number(), direct: boolean(),
+  mediaIdentity: optional(string()),
 });
 export const offlineMediaArtifactSchema = object({
   id: string(),
@@ -130,7 +132,17 @@ const uploadActivityStateSchema = object({
   path: string(),
   size: number(),
 });
+const mappingMovementSchema = object({ from: string(), to: string() });
+const fileOperationActivityStateSchema = object({
+  kind: literal("files"),
+  operationId: string(),
+  operation: fileOperationKindSchema,
+  entries: array(fileMovementSchema),
+  mappings: array(mappingMovementSchema),
+  revertsOperationId: nullableString,
+});
 const libraryActivityStateSchema = union([
+  fileOperationActivityStateSchema,
   mappingActivityStateSchema,
   uploadActivityStateSchema,
 ]);
@@ -138,7 +150,10 @@ export const libraryActivityEventSchema = object({
   id: number(),
   actorUserId: number(),
   actorUsername: string(),
-  action: union([literal("mapping-updated"), literal("media-uploaded")]),
+  action: union([
+    literal("files-moved"), literal("files-renamed"), literal("files-reverted"), literal("files-trashed"),
+    literal("folder-created"), literal("mapping-updated"), literal("media-uploaded"),
+  ]),
   subject: string(),
   previous: union([libraryActivityStateSchema, nullValue()]),
   next: libraryActivityStateSchema,

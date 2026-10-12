@@ -1,5 +1,6 @@
 import { jsonRequest, requestWithBody } from "./requestBody.ts";
 import { watchTogetherApp } from "./watchTogetherApp.ts";
+import { libraryFilesApp } from "./libraryFilesApp.ts";
 import { Elysia } from "elysia";
 import { handle, serverOptions } from "./server.ts";
 import { securityHeaders } from "./security.ts";
@@ -107,6 +108,7 @@ const watchedOriginSchema = schema.union([
   schema.literal("series-menu"),
 ]);
 const playbackUpdateSchema = schema.object({
+  mediaIdentity: schema.optional(schema.string()),
   rel: schema.string(),
   position: schema.number({ minimum: 0 }),
   duration: schema.number({ minimum: 0 }),
@@ -119,6 +121,7 @@ const playbackUpdateSchema = schema.object({
 });
 const playbackDismissSchema = schema.object({ rel: schema.string({ minLength: 1 }) });
 const playbackWatchedSchema = schema.object({
+  mediaIdentity: schema.optional(schema.string()),
   rel: schema.string({ minLength: 1 }),
   watched: schema.boolean(),
   anilistMediaId: schema.optional(schema.integer({ minimum: 1 })),
@@ -202,6 +205,7 @@ export const app = new Elysia({ name: "nanime" })
     { status: code === "VALIDATION" ? 400 : 500 },
   )))
   .use(watchTogetherApp)
+  .use(libraryFilesApp)
   .get("/api/auth/me", ({ request, server }) => handle(request, server), {
     response: schema.union([authUserSchema, schema.nullValue()]),
   })

@@ -1,6 +1,9 @@
 import type { PreferredAudioLanguage } from "./audioLanguage.ts";
+import type { FileOperationActivityState } from "./libraryFiles.ts";
 
 export interface MediaEntry {
+  /** Filesystem occupant identity: stable across managed moves, captured by queued edits. */
+  readonly mediaIdentity?: string;
   readonly rel: string;
   readonly name: string;
   readonly folder: string;
@@ -105,13 +108,25 @@ export interface MappingActivityState {
   readonly title: string;
 }
 
-export type LibraryActivityState = MappingActivityState | UploadActivityState;
+export type LibraryActivityState =
+  | FileOperationActivityState
+  | MappingActivityState
+  | UploadActivityState;
+
+export type LibraryActivityAction =
+  | "files-moved"
+  | "files-renamed"
+  | "files-reverted"
+  | "files-trashed"
+  | "folder-created"
+  | "mapping-updated"
+  | "media-uploaded";
 
 export interface LibraryActivityEvent {
   readonly id: number;
   readonly actorUserId: number;
   readonly actorUsername: string;
-  readonly action: "mapping-updated" | "media-uploaded";
+  readonly action: LibraryActivityAction;
   readonly subject: string;
   readonly previous: LibraryActivityState | null;
   readonly next: LibraryActivityState;

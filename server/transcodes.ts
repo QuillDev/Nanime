@@ -4,8 +4,9 @@ import { basename, dirname, extname, join, relative, resolve, sep } from "node:p
 import { availableParallelism, totalmem } from "node:os";
 import type { TranscodePreset } from "../shared/types.ts";
 import { database } from "./database.ts";
+import { claimTranscodeWorkerPaths, LibraryFileError, libraryWriterResponse, resolveExisting } from "./libraryWriterAdmission.ts";
 import { detachTorrentsForFiles } from "./torrents.ts";
-import { readTranscodeProgress } from "./transcodeProgress.ts";
+import { captureEncoder, captureProbe, readTranscodeProgress } from "./transcodeProgress.ts";
 import type { MediaLibraryOptions } from "./mediaLibraryOptions.ts";
 
 type TranscodeStatus = "cancelled" | "complete" | "failed" | "processing" | "queued";
@@ -69,6 +70,7 @@ const maxWorkers = Number.isInteger(configuredWorkers) && configuredWorkers > 0
   ? Math.min(configuredWorkers, 4)
   : automaticWorkers;
 const activeJobs = new Set<string>();
+const editingJobs = new Set<string>();
 const cancelledJobs = new Set<string>();
 const activeProcesses = new Map<string, { kill: () => void }>();
 const OUTPUT_NAME = /^(?<key>[a-f0-9]{24})-(?<id>[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.mkv$/u;
@@ -127,12 +129,12 @@ async function existingOutputPath(row: TranscodeRow, options: MediaLibraryOption
 
 async function duration(path: string): Promise<number> {
   const proc = Bun.spawn(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path], { stdout: "pipe", stderr: "ignore" });
-  const text = await new Response(proc.stdout).text();
+  const { code, text } = await captureProbe(proc, new Response(proc.stdout).text());
   const value = Number(text.trim());
-  return await proc.exited === 0 && Number.isFinite(value) ? value : 0;
+  return code === 0 && Number.isFinite(value) ? value : 0;
 }
 
-async function processJob(row: TranscodeRow, options: MediaLibraryOptions): Promise<void> {
+async function jobPaths(row: TranscodeRow, options: MediaLibraryOptions) {
   const [source, output] = await Promise.all([
     safeSource(row.source_rel, options),
     pendingOutputPath(row, options),
@@ -141,12 +143,16 @@ async function processJob(row: TranscodeRow, options: MediaLibraryOptions): Prom
   if (source === null || output === null || preset === null) {
     throw new Error("Transcode job contains an invalid media path or preset");
   }
+  return { source, output, preset };
+}
+
+async function processJob(row: TranscodeRow, options: MediaLibraryOptions): Promise<void> {
+  const { source, output, preset } = await jobPaths(row, options);
+  if (cancelledJobs.has(row.id)) { return; }
   const startedAt = Date.now();
   startJob.run(startedAt, row.id);
   const sourceDuration = await duration(source);
   if (cancelledJobs.has(row.id)) {
-    cancelledJobs.delete(row.id);
-    updateJob.run("cancelled", null, null, Date.now(), row.id);
     return;
   }
   const proc = Bun.spawn([
@@ -161,19 +167,15 @@ async function processJob(row: TranscodeRow, options: MediaLibraryOptions): Prom
   const progress = readTranscodeProgress(proc.stdout, sourceDuration, (sample) => {
     updateProgress.run(sample.progress, sample.speed, Date.now(), row.id);
   });
-  const [exitCode, stderrText] = await Promise.all([proc.exited, stderr, progress]) as [number, string, void];
+  const { code: exitCode, stderr: stderrText } = await captureEncoder(proc, { stderr, progress });
   const errorText = stderrText.trim();
   activeProcesses.delete(row.id);
-  if (cancelledJobs.has(row.id)) {
-    cancelledJobs.delete(row.id);
-    await unlink(output).catch(() => undefined);
-    updateJob.run("cancelled", null, null, Date.now(), row.id);
-    return;
-  }
+  if (cancelledJobs.has(row.id)) { return; }
   const [outputStat, outputDuration] = await Promise.all([
     lstat(output).catch(() => null),
     duration(output),
   ]);
+  if (cancelledJobs.has(row.id)) { return; }
   const valid = exitCode === 0 && outputStat?.isFile() === true && outputStat.size > 0 &&
     sourceDuration > 0 && Math.abs(sourceDuration - outputDuration) <= 2;
   if (valid) {
@@ -181,48 +183,68 @@ async function processJob(row: TranscodeRow, options: MediaLibraryOptions): Prom
     updateJob.run("complete", outputStat.size, null, Date.now(), row.id);
   } else {
     await unlink(output).catch(() => undefined);
-    updateJob.run("failed", null, errorText.slice(-500) || "Output validation failed", Date.now(), row.id);
+    if (!cancelledJobs.has(row.id)) {
+      updateJob.run("failed", null, errorText.slice(-500) || "Output validation failed", Date.now(), row.id);
+    }
   }
 }
 
-async function executeJob(row: TranscodeRow, options: MediaLibraryOptions): Promise<void> {
+async function cleanupCancelledJob(row: TranscodeRow, options: MediaLibraryOptions): Promise<void> {
+  if (!cancelledJobs.has(row.id)) { return; }
+  const output = await pendingOutputPath(row, options);
+  if (output !== null) { await unlink(output).catch(() => undefined); }
+  updateJob.run("cancelled", null, null, Date.now(), row.id);
+}
+
+async function executeJob(row: TranscodeRow, options: MediaLibraryOptions, release: () => void): Promise<void> {
   try {
     await processJob(row, options);
   } catch (error) {
-    if (cancelledJobs.delete(row.id)) {
-      const output = await pendingOutputPath(row, options);
-      if (output !== null) {
-        await unlink(output).catch(() => undefined);
-      }
-      updateJob.run("cancelled", null, null, Date.now(), row.id);
-    } else {
+    const output = await pendingOutputPath(row, options);
+    if (output !== null) { await unlink(output).catch(() => undefined); }
+    if (!cancelledJobs.has(row.id)) {
       const message = error instanceof Error ? error.message : "Transcode process could not start";
       updateJob.run("failed", null, message.slice(0, 500), Date.now(), row.id);
     }
   } finally {
-    activeProcesses.delete(row.id);
-    activeJobs.delete(row.id);
-    void runQueue(options);
+    try {
+      await cleanupCancelledJob(row, options);
+    } finally {
+      activeProcesses.delete(row.id);
+      activeJobs.delete(row.id);
+      cancelledJobs.delete(row.id);
+      release();
+      runQueue(options);
+    }
   }
 }
 
 function runQueue(options: MediaLibraryOptions): void {
   const queued = jobs.all().toReversed().filter((row) => (
-    row.status === "queued" && !activeJobs.has(row.id)
+    row.status === "queued" && !activeJobs.has(row.id) && !editingJobs.has(row.id)
   ));
-  for (const row of queued.slice(0, maxWorkers - activeJobs.size)) {
+  for (const row of queued) {
+    if (activeJobs.size >= maxWorkers) { break; }
+    let release: (() => void) | null = null;
+    try {
+      release = claimTranscodeWorkerPaths([row.source_rel]);
+    } catch (error) {
+      if (!(error instanceof LibraryFileError)) { throw error; }
+      if (error.status !== 423) { updateJob.run("failed", null, error.message, Date.now(), row.id); }
+      continue;
+    }
     activeJobs.add(row.id);
-    void executeJob(row, options);
+    void executeJob(row, options, release);
   }
 }
 
 async function safeSource(path: string, options: MediaLibraryOptions): Promise<string | null> {
-  const absolute = resolve(options.mediaDir, path);
-  if (absolute === options.mediaDir || !absolute.startsWith(options.mediaDir + sep)) {
+  try {
+    const source = await resolveExisting(options.mediaRoot, path);
+    return source.abs;
+  } catch {
     return null;
   }
-  const canonical = await realpath(absolute).catch(() => null);
-  return canonical !== null && canonical.startsWith(options.mediaRoot + sep) ? canonical : null;
 }
 
 async function start(req: Request, options: MediaLibraryOptions): Promise<Response> {
@@ -232,6 +254,14 @@ async function start(req: Request, options: MediaLibraryOptions): Promise<Respon
   if (typeof path !== "string" || (preset !== "space-saver" && preset !== "compatibility")) {
     return new Response("Choose a video and preset", { status: 400 });
   }
+  const response = await libraryWriterResponse({ root: options.mediaRoot, paths: [path], allowJobs: true }, () => (
+    startClaimed(path, preset, options)
+  ));
+  runQueue(options);
+  return response;
+}
+
+async function startClaimed(path: string, preset: TranscodePreset, options: MediaLibraryOptions): Promise<Response> {
   const source = await safeSource(path, options);
   if (source === null) {
     return new Response("Video not found", { status: 404 });
@@ -250,7 +280,6 @@ async function start(req: Request, options: MediaLibraryOptions): Promise<Respon
   const outputRel = `.nanime-transcodes/${key}-${id}${extension}`;
   const now = Date.now();
   insertJob.run(id, path, preset, outputRel, sourceStat.size, now, now);
-  void runQueue(options);
   return Response.json(publicJob(jobById.get(id) as TranscodeRow), { status: 201 });
 }
 
@@ -266,6 +295,14 @@ async function startBulk(req: Request, options: MediaLibraryOptions): Promise<Re
     return new Response("Choose up to 500 videos and a preset", { status: 400 });
   }
   const uniquePaths = [...new Set(paths as string[])];
+  const response = await libraryWriterResponse({ root: options.mediaRoot, paths: uniquePaths, allowJobs: true }, () => (
+    startBulkClaimed(uniquePaths, preset, options)
+  ));
+  runQueue(options);
+  return response;
+}
+
+async function startBulkClaimed(uniquePaths: readonly string[], preset: TranscodePreset, options: MediaLibraryOptions): Promise<Response> {
   const sources = await Promise.all(uniquePaths.map(async (path) => {
     const source = await safeSource(path, options);
     const sourceStat = source === null ? null : await lstat(source).catch(() => null);
@@ -295,31 +332,48 @@ async function startBulk(req: Request, options: MediaLibraryOptions): Promise<Re
   if (queued.length === 0) {
     return new Response("Every video in this season already has a transcode job", { status: 409 });
   }
-  void runQueue(options);
   return Response.json(queued.map((row) => publicJob(row)), { status: 201 });
 }
 
-async function cancel(row: TranscodeRow, options: MediaLibraryOptions): Promise<Response> {
+function cancel(row: TranscodeRow, options: MediaLibraryOptions): Response | Promise<Response> {
+  if (editingJobs.has(row.id)) { return new Response("This job is already being modified", { status: 409 }); }
   if (row.status !== "queued" && row.status !== "processing") {
     return new Response("Only queued or processing jobs can be cancelled", { status: 409 });
   }
-  cancelledJobs.add(row.id);
-  activeProcesses.get(row.id)?.kill();
-  if (row.status === "queued") {
-    cancelledJobs.delete(row.id);
-    const output = await pendingOutputPath(row, options);
-    if (output !== null) {
-      await unlink(output).catch(() => undefined);
-    }
+  if (activeJobs.has(row.id)) {
+    updateJob.run("cancelled", null, null, Date.now(), row.id);
+    cancelledJobs.add(row.id);
+    activeProcesses.get(row.id)?.kill();
+    return Response.json(publicJob(jobById.get(row.id) as TranscodeRow));
   }
-  updateJob.run("cancelled", null, null, Date.now(), row.id);
-  return Response.json(publicJob(jobById.get(row.id) as TranscodeRow));
+  return editJob(row.id, options, async () => {
+    updateJob.run("cancelled", null, null, Date.now(), row.id);
+    const output = await existingOutputPath(row, options);
+    if (output !== null) { await unlink(output).catch(() => undefined); }
+    return Response.json(publicJob(jobById.get(row.id) as TranscodeRow));
+  });
 }
 
-async function removeOriginal(row: TranscodeRow, options: MediaLibraryOptions): Promise<Response> {
+/** Reserve a per-job lifecycle turn synchronously before filesystem awaits. */
+async function editJob(id: string, options: MediaLibraryOptions, work: () => Promise<Response>): Promise<Response> {
+  if (editingJobs.has(id) || activeJobs.has(id)) {
+    return new Response("An active or changing job cannot be modified yet", { status: 409 });
+  }
+  editingJobs.add(id);
+  try { return await work(); }
+  finally { editingJobs.delete(id); runQueue(options); }
+}
+
+function removeOriginal(row: TranscodeRow, options: MediaLibraryOptions): Response | Promise<Response> {
   if (row.status !== "complete" || row.original_deleted === 1) {
     return new Response("Original cannot be deleted", { status: 409 });
   }
+  return editJob(row.id, options, () => libraryWriterResponse({ root: options.mediaRoot, paths: [row.source_rel], siblings: true }, () => (
+    promoteClaimedOriginal(row, options)
+  )));
+}
+
+async function promoteClaimedOriginal(row: TranscodeRow, options: MediaLibraryOptions): Promise<Response> {
   const [source, output] = await Promise.all([
     safeSource(row.source_rel, options),
     existingOutputPath(row, options),
@@ -333,7 +387,7 @@ async function removeOriginal(row: TranscodeRow, options: MediaLibraryOptions): 
   }
   const extension = extname(output);
   const target = join(dirname(source), `${basename(source, extname(source))}.${preset}${extension}`);
-  const targetRel = relative(options.mediaDir, target);
+  const targetRel = relative(options.mediaRoot, target).split(sep).join("/");
   if (await lstat(target).catch(() => null) !== null) {
     return new Response("Optimized destination already exists", { status: 409 });
   }
@@ -348,19 +402,21 @@ async function removeOriginal(row: TranscodeRow, options: MediaLibraryOptions): 
   return Response.json(publicJob(jobById.get(row.id) as TranscodeRow));
 }
 
-async function deleteTranscode(row: TranscodeRow, options: MediaLibraryOptions): Promise<Response> {
+function deleteTranscode(row: TranscodeRow, options: MediaLibraryOptions): Response | Promise<Response> {
   if (row.original_deleted === 1) {
     return new Response("The optimized copy is now the library copy", { status: 409 });
   }
-  if (row.status === "processing") {
-    return new Response("A processing job cannot be removed", { status: 409 });
+  if (row.status === "processing" || activeJobs.has(row.id)) {
+    return new Response("An active worker cannot be removed until it finishes cleanup", { status: 409 });
   }
-  const output = await existingOutputPath(row, options);
-  if (output !== null) {
-    await unlink(output).catch(() => undefined);
-  }
-  deleteJob.run(row.id);
-  return new Response(null, { status: 204 });
+  return editJob(row.id, options, async () => {
+    const output = await existingOutputPath(row, options);
+    if (output !== null) {
+      await unlink(output).catch(() => undefined);
+    }
+    deleteJob.run(row.id);
+    return new Response(null, { status: 204 });
+  });
 }
 
 function transcodeJobResponse(

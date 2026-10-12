@@ -76,7 +76,7 @@ interface TimedOperationOptions<T> {
   readonly timeout?: number;
 }
 
-function browserBackend(browserPath: string): Bun.WebView.Backend {
+export function browserBackend(browserPath: string): Bun.WebView.Backend {
   const browserUrl = Bun.env["NANIME_CHROME_URL"];
   if (browserUrl !== undefined && browserUrl !== "") {
     return { type: "chrome", url: browserUrl };
@@ -93,7 +93,7 @@ function reportTiming(description: string, startedAt: number): void {
   process.stdout.write(`[player-timing] ${description}: ${elapsed.toFixed(1)}ms\n`);
 }
 
-function requiredExecutable(names: readonly string[]): string {
+export function requiredExecutable(names: readonly string[]): string {
   for (const name of names) {
     const executable = Bun.which(name);
     if (executable !== null) {

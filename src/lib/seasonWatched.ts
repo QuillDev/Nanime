@@ -44,7 +44,7 @@ function watchedUpdate(
   watched: boolean,
 ): PlaybackWatchedUpdate {
   const target = episodePlaybackTarget(entry, media);
-  return target === null
+  const update: PlaybackWatchedUpdate = target === null
     ? { rel: entry.rel, watched, origin: "season-menu" }
     : {
       rel: entry.rel,
@@ -54,6 +54,7 @@ function watchedUpdate(
       totalEpisodes: target.totalEpisodes,
       origin: "season-menu",
     };
+  return entry.mediaIdentity === undefined ? update : { ...update, mediaIdentity: entry.mediaIdentity };
 }
 
 export function seasonWatchedUpdates(

@@ -73,6 +73,7 @@ function usePlaybackSaving(target: AniListPlaybackTarget | null) {
 }
 
 function progressUpdate(options: {
+  readonly mediaIdentity: string | undefined;
   readonly rel: string;
   readonly position: number;
   readonly duration: number;
@@ -87,9 +88,10 @@ function progressUpdate(options: {
     completed: options.completed,
     event: options.completed ? "completed" : options.event,
   };
+  const identified = options.mediaIdentity === undefined ? update : { ...update, mediaIdentity: options.mediaIdentity };
   return options.sessionSeconds === undefined
-    ? update
-    : { ...update, sessionSeconds: options.sessionSeconds };
+    ? identified
+    : { ...identified, sessionSeconds: options.sessionSeconds };
 }
 
 function progressSavedAt(lastSavedAtRef: { current: number }): number {
@@ -147,6 +149,7 @@ export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandl
       : undefined;
     const progress = progressUpdate({
       rel: entry.rel,
+      mediaIdentity: entry.mediaIdentity,
       position,
       duration,
       completed,
@@ -162,7 +165,7 @@ export function usePlayerProgress(options: PlayerProgressOptions): PlaybackHandl
         totalEpisodes: anilistTarget.totalEpisodes,
       });
     markSessionStopped(startedAtRef, event);
-  }, [anilistTarget, entry.rel, knownDuration, lastSavedAtRef, playbackPosition, savePlayback, startedAtRef]);
+  }, [anilistTarget, entry.rel, entry.mediaIdentity, knownDuration, lastSavedAtRef, playbackPosition, savePlayback, startedAtRef]);
   const handleLoadedMetadata = useInitialPosition(resumeAt, timelineOffset);
   const handlePlay = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     saveCurrentProgress(event.currentTarget, false, "started");

@@ -22,18 +22,6 @@ interface DismissContext {
   readonly previous: PlaybackProgressMap | undefined;
 }
 
-function aniListWatchedUpdate(update: PlaybackWatchedUpdate) {
-  if (update.anilistMediaId === undefined || update.episode === undefined ||
-    update.totalEpisodes === undefined) {
-    return undefined;
-  }
-  return {
-    anilistMediaId: update.anilistMediaId,
-    episode: update.episode,
-    totalEpisodes: update.totalEpisodes,
-  };
-}
-
 function optimisticWatchedProgress(
   update: PlaybackWatchedUpdate,
   existing: PlaybackProgress | undefined,
@@ -133,7 +121,7 @@ export function useSetPlaybackWatched(): UseMutationResult<
     mutationFn: (update) => setPlaybackWatched(
       update.rel,
       update.watched,
-      aniListWatchedUpdate(update),
+      update,
     ),
     onMutate: async ({ rel, watched }) => {
       await queryClient.cancelQueries({ queryKey: playbackProgressKey });

@@ -27,6 +27,7 @@ export async function fetchPlaybackProgress(
 }
 
 export interface PlaybackProgressUpdate {
+  readonly mediaIdentity?: string;
   readonly rel: string;
   readonly position: number;
   readonly duration: number;
@@ -39,6 +40,7 @@ export interface PlaybackProgressUpdate {
 }
 
 export interface PlaybackWatchedUpdate {
+  readonly mediaIdentity?: string;
   readonly rel: string;
   readonly watched: boolean;
   readonly anilistMediaId?: number;
@@ -80,7 +82,7 @@ export async function dismissPlaybackProgress(rel: string): Promise<PlaybackProg
 export async function setPlaybackWatched(
   rel: string,
   watched: boolean,
-  target?: AniListPlaybackUpdate & Pick<PlaybackWatchedUpdate, "origin">,
+  target?: AniListPlaybackUpdate & Pick<PlaybackWatchedUpdate, "origin" | "mediaIdentity">,
 ): Promise<PlaybackProgress> {
   return unwrap(
     await api.api.progress.watched.post({ rel, watched, ...target }),

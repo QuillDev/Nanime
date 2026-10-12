@@ -37,6 +37,40 @@ after a handoff. Empty, abandoned parties expire after 24 hours.
 
 Watch together requires a network connection; offline downloads remain independent.
 
+## Library files
+
+Admins can organize the library from **Admin → Files**: browse the folder tree,
+create folders, rename, move, and delete files or folders. Moving or renaming a
+video takes its subtitle sidecars along, and watch progress, playback history,
+show and season mappings, scans, and transcode records follow the media. Every
+change is checked on the server against the canonical library root: paths can't
+escape it, symbolic links aren't followed, and existing destinations are never
+replaced. Changes are journaled for recovery after interruption. Recovery that
+cannot prove ownership stops and keeps the affected paths locked instead of
+claiming that a rollback succeeded.
+
+Run only one Nanime writer process per library. Journaled filesystem mutations
+require Linux/glibc, `/proc`, and a filesystem supporting `renameat2`; unsupported
+platforms, volumes, and case-only renames on case-insensitive volumes fail closed.
+The React file-manager package itself has no backend or platform dependency.
+
+Private journal staging is kept in the library parent's owner-only
+`.nanime-journal/<library-root-hash>` directory, **outside** the downloader's shared
+media-root mount. The parent must be writable by Nanime and staging must be on
+the same filesystem as the media; cross-device mutations fail rather than copying.
+Do not expose that private sibling to downloader containers or other untrusted
+writers. Root/directory topology and private staging remain trusted application
+storage, not a defense against an uncoordinated process with full host-user access.
+
+
+**Delete** moves items to `.nanime-trash/` inside the library, and **Undo** restores
+them; there is no permanent purge in the app, so empty that folder manually when
+you're sure. Files owned by qBittorrent torrents (downloading or seeding) are
+locked, along with the folders containing them, so seeding never breaks. If
+qBittorrent is configured but unreachable, renames, moves, and deletes pause until
+it responds. Active transcodes, offline-copy preparation, and uploads lock their
+files as well.
+
 ## Metadata outages
 
 If metadata providers are unavailable, open **Match metadata → Link manually
@@ -51,6 +85,8 @@ requires its public API.
 bun test
 bun run check
 bun run build
+bun run test:player          # real-browser player suite (needs Chrome and ffmpeg)
+bun run test:library-files   # real-browser admin file manager suite (needs Chrome)
 ```
 
 See [`SECURITY.md`](SECURITY.md) to report a vulnerability.

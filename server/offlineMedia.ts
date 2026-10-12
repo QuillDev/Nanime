@@ -1,13 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { chmod, lstat, mkdir, realpath, rename, unlink } from "node:fs/promises";
-import { extname, join, resolve, sep } from "node:path";
+import { extname, join, relative, resolve, sep } from "node:path";
+import { libraryWriterResponse, revalidateWriterSource, type WriterSource } from "./libraryWriterAdmission.ts";
 import type { OfflineMediaArtifact } from "../shared/types.ts";
-import { audioTracks, chooseAudioTrack } from "./audioTracks.ts";
 import { database } from "./database.ts";
 import { jsonObject } from "./json.ts";
-import { probeDuration } from "./mediaInfo.ts";
+import { probeDuration, selectedAudioIndex } from "./offlineMediaInspection.ts";
 import { readTranscodeProgress } from "./transcodeProgress.ts";
 import { rangedFileResponse } from "./httpRange.ts";
+
+// Nanime's own folders, like the media library scan skips them. Trashed media
+// keeps its artifact rows so Undo restores them, but is never served.
+const INTERNAL_SEGMENT = /(?:^|[\\/])\.nanime-/iu;
 
 type ArtifactStatus = "failed" | "preparing" | "queued" | "ready";
 
@@ -137,6 +141,9 @@ function artifactResponse(row: ArtifactRow, status = 200): Response {
 }
 
 async function resolveSource(rel: string, options: OfflineMediaOptions): Promise<SourceResolution> {
+  if (INTERNAL_SEGMENT.test(rel)) {
+    return { error: "Video file is no longer available", source: null };
+  }
   const candidate = resolve(options.mediaDir, rel);
   if (candidate === options.mediaDir || !candidate.startsWith(options.mediaDir + sep)) {
     return { error: "Video path is invalid", source: null };
@@ -147,6 +154,10 @@ async function resolveSource(rel: string, options: OfflineMediaOptions): Promise
   }
   if (!abs.startsWith(options.mediaRoot + sep)) {
     return { error: "Video path is outside the media library", source: null };
+  }
+  const canonicalRel = relative(options.mediaRoot, abs).split(sep).join("/");
+  if (INTERNAL_SEGMENT.test(canonicalRel)) {
+    return { error: "Video file is no longer available", source: null };
   }
   const extension = extname(abs).toLowerCase();
   if (!options.videoExtensions.has(extension)) {
@@ -160,7 +171,7 @@ async function resolveSource(rel: string, options: OfflineMediaOptions): Promise
     error: null,
     source: {
       abs,
-      rel,
+      rel: canonicalRel,
       size: information.size,
       modifiedAt: information.mtimeMs,
       direct: options.directPlayExtensions.has(extension),
@@ -171,22 +182,6 @@ async function resolveSource(rel: string, options: OfflineMediaOptions): Promise
 async function sourceFor(rel: string, options: OfflineMediaOptions): Promise<Source | null> {
   const resolution = await resolveSource(rel, options);
   return resolution.source;
-}
-
-async function selectedAudioIndex(
-  abs: string,
-  requested: number | null,
-  preferredLanguage: string | null,
-): Promise<{ readonly index: number | null; readonly requiresSelection: boolean } | undefined> {
-  const tracks = await audioTracks(abs);
-  if (tracks.length === 0) {
-    return requested === null ? { index: null, requiresSelection: false } : undefined;
-  }
-  const fallback = chooseAudioTrack(tracks, null);
-  const selected = chooseAudioTrack(tracks, requested, preferredLanguage);
-  return selected === null
-    ? undefined
-    : { index: selected?.index ?? null, requiresSelection: selected?.index !== fallback?.index };
 }
 
 export function offlineTranscodeArgs(
@@ -293,6 +288,7 @@ function runQueue(options: OfflineMediaOptions): void {
 async function reusableArtifact(
   row: ArtifactRow,
   options: OfflineMediaOptions,
+  expected: WriterSource["stats"],
 ): Promise<ArtifactRow> {
   if (row.direct === 1) {
     if (row.status !== "ready") {
@@ -305,6 +301,7 @@ async function reusableArtifact(
   const missingOutput = row.status === "ready" &&
     (output === null || !(await Bun.file(output).exists()));
   if (row.status === "failed" || missingOutput) {
+    await revalidateWriterSource(options.mediaRoot, row.source_rel, expected);
     requeueArtifact.run(Date.now(), row.id);
     return artifactById.get(row.id) as ArtifactRow;
   }
@@ -314,18 +311,20 @@ async function reusableArtifact(
 async function createArtifact(
   source: Source,
   audio: { readonly index: number | null; readonly requiresSelection: boolean },
-  options: OfflineMediaOptions,
+  setup: { readonly options: OfflineMediaOptions; readonly expected: WriterSource["stats"] },
 ): Promise<ArtifactRow> {
+  const { options, expected } = setup;
   const id = randomUUID();
   const now = Date.now();
   const duration = await probeDuration(source.abs);
+  await revalidateWriterSource(options.mediaRoot, source.rel, expected);
   const storedAudioIndex = audio.index ?? -1;
   const direct = source.direct && !audio.requiresSelection;
   const existing = matchingArtifact.get(
     source.rel, source.size, source.modifiedAt, storedAudioIndex, direct ? 1 : 0,
   );
   if (existing !== null) {
-    return reusableArtifact(existing, options);
+    return reusableArtifact(existing, options, expected);
   }
   const mimeType = direct
     ? MIME_TYPES.get(extname(source.abs).toLowerCase()) ?? "application/octet-stream"
@@ -352,6 +351,16 @@ async function prepareResponse(
   ) {
     return new Response("Choose valid media and audio", { status: 400 });
   }
+  return libraryWriterResponse({ root: options.mediaRoot, paths: [path], allowJobs: true }, (sources) => (
+    prepareClaimedSource({ path, requestedAudio, preferredAudioLanguage }, options, sources[0]!.stats)
+  ));
+}
+
+async function prepareClaimedSource(
+  selection: { readonly path: string; readonly requestedAudio: number | null; readonly preferredAudioLanguage: string | null },
+  options: OfflineMediaOptions, expected: WriterSource["stats"],
+): Promise<Response> {
+  const { path, requestedAudio, preferredAudioLanguage } = selection;
   const resolution = await resolveSource(path, options);
   if (resolution.source === null) {
     return new Response(resolution.error ?? "Video not found", { status: 404 });
@@ -361,7 +370,7 @@ async function prepareResponse(
   if (audio === undefined) {
     return new Response("Audio track not found", { status: 404 });
   }
-  const row = await createArtifact(source, audio, options);
+  const row = await createArtifact(source, audio, { options, expected });
   runQueue(options);
   return artifactResponse(
     artifactById.get(row.id) as ArtifactRow,

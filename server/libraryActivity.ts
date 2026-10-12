@@ -1,3 +1,4 @@
+import type { FileOperationActivityState } from "../shared/libraryFiles.ts";
 import type {
   LibraryActivityEvent,
   LibraryActivityState,
@@ -94,6 +95,22 @@ export function recordMappingActivity(options: {
     );
   });
   commit();
+}
+
+/**
+ * Appends a file operation entry. Callers run this inside the transaction
+ * that commits the operation's state change, so both land or neither does.
+ */
+export interface FileOperationActivity {
+  readonly actor: ActivityActor;
+  readonly action: LibraryActivityEvent["action"];
+  readonly subject: string;
+  readonly next: FileOperationActivityState;
+}
+
+export function insertFileOperationActivity(entry: FileOperationActivity): void {
+  const { actor, action, subject, next } = entry;
+  insertActivity.run(actor.id, actor.username, action, subject, null, JSON.stringify(next), Date.now());
 }
 
 function eventFromRow(row: ActivityRow): LibraryActivityEvent {

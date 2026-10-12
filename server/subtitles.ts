@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { libraryWriterResponse } from "./libraryWriterAdmission.ts";
 import { chmod, link, open, readdir, realpath, unlink } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { invalidateMediaScan, scannedTrackSizes } from "./scanCache.ts";
@@ -367,6 +368,12 @@ export async function subtitleUploadResponse(
   if (upload === null) {
     return new Response("Choose a valid SRT or ASS subtitle file", { status: 400 });
   }
+  return libraryWriterResponse({ root: mediaRoot, paths: [upload.rel], siblings: true }, () => (
+    uploadClaimedSubtitle(mediaRoot, upload, videoExtensions)
+  ));
+}
+
+async function uploadClaimedSubtitle(mediaRoot: string, upload: SubtitleUpload, videoExtensions: ReadonlySet<string>): Promise<Response> {
   const media = await subtitleMedia(mediaRoot, upload.rel, videoExtensions);
   if (media === null) {
     return new Response("Episode not found", { status: 404 });
