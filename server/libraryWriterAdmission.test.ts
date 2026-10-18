@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installWriterTools } from "./libraryWriterTestTools.ts";
 
-const scenarios = ["delete", "audio", "prune", "subtitle", "offline", "transcode", "aliases", "trash", "writer-first", "torrent", "torrent-visible", "torrent-visible-alias", "torrent-outage", "upload", "detach-alias", "offline-setup", "offline-requeue", "offline-replaced", "audio-first", "prune-first", "promotion", "transcode-canonical"];
+const scenarios = ["delete", "audio", "prune", "subtitle", "offline", "transcode", "aliases", "trash", "writer-first", "torrent", "torrent-visible", "torrent-visible-alias", "torrent-delayed", "torrent-outage", "upload", "detach-alias", "offline-setup", "offline-requeue", "offline-replaced", "audio-first", "prune-first", "promotion", "transcode-canonical"];
 for (const scenario of scenarios) {
   test(`library writer regression: ${scenario}`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "nanime-writer-regression-"));
