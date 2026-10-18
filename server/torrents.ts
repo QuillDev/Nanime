@@ -1,6 +1,6 @@
 import { realpath } from "node:fs/promises";
 import { LibraryFileError, pathSegments, resolveFolder } from "./libraryPaths.ts";
-import { canonicalizeTorrentAdditionRoot, forgetTorrentAddition, pendingTorrentPayloads, refreshTorrentAdditions, reserveTorrentAddition, torrentAdditionObserved, torrentOwnershipRead } from "./libraryTorrentClaims.ts";
+import { canonicalizeTorrentAdditionRoot, forgetTorrentAddition, hasPendingTorrentAdditions, pendingTorrentPayloads, refreshTorrentAdditions, reserveTorrentAddition, torrentAdditionObserved, torrentOwnershipRead } from "./libraryTorrentClaims.ts";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import type { TorrentStatus } from "../shared/types.ts";
 import { jsonObject } from "./json.ts";
@@ -37,6 +37,27 @@ function configuredQbittorrentUrl(value: string): string {
 const QBITTORRENT_URL = configuredQbittorrentUrl(process.env["QBITTORRENT_URL"] ?? "");
 if ((QBITTORRENT_USERNAME === "") !== (QBITTORRENT_PASSWORD === "")) {
   throw new Error("Set both QBITTORRENT_USERNAME and QBITTORRENT_PASSWORD, or neither");
+}
+
+// A pending addition locks its whole destination until qBittorrent lists the
+// tagged payload. Reads happen on library writes, so keep reconciling in the
+// background too: otherwise a slow magnet can lock unrelated writers forever.
+const configuredReconcileMs = Number(process.env["NANIME_TORRENT_RECONCILE_MS"] ?? "");
+const RECONCILE_MS = Number.isFinite(configuredReconcileMs) && configuredReconcileMs > 0 ? configuredReconcileMs : 15_000;
+
+async function reconcilePendingAdditions(): Promise<void> {
+  if (hasPendingTorrentAdditions()) {
+    await torrentOwnership();
+  }
+}
+
+if (QBITTORRENT_URL !== "") {
+  setInterval(() => {
+    void reconcilePendingAdditions();
+  }, RECONCILE_MS).unref();
+  queueMicrotask(() => {
+    void reconcilePendingAdditions();
+  });
 }
 
 function qBittorrentHeaders(cookie?: string): Headers {

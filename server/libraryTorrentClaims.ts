@@ -58,6 +58,11 @@ export function forgetTorrentAddition(tag: string): void {
   additions.delete(tag);
 }
 
+/** True while a torrent addition still holds its broad pending reservation. */
+export function hasPendingTorrentAdditions(): boolean {
+  return [...additions.values()].some((addition) => addition.ownedPaths.length === 0);
+}
+
 export function torrentAdditionObserved(tag: string): boolean {
   return (additions.get(tag)?.ownedPaths.length ?? 0) > 0;
 }
