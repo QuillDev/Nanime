@@ -46,6 +46,15 @@ function qBittorrentHeaders(cookie?: string): Headers {
   return headers;
 }
 
+/**
+ * Login responses differ by version: 4.x answers success with 200 "Ok." (and 200 "Fails."
+ * on bad credentials); 5.x answers 204 with an empty body and 401 on failure.
+ */
+export function qBittorrentLoginSucceeded(status: number, body: string): boolean {
+  const text = body.trim();
+  return (status === 200 && text === "Ok.") || (status === 204 && text === "");
+}
+
 async function qBittorrentCookie(signal?: AbortSignal | null): Promise<string | undefined> {
   if (QBITTORRENT_USERNAME === "" || QBITTORRENT_PASSWORD === "") {
     return undefined;
@@ -60,7 +69,7 @@ async function qBittorrentCookie(signal?: AbortSignal | null): Promise<string | 
   }
   const response = await fetch(`${QBITTORRENT_URL}/api/v2/auth/login`, init);
   const responseText = await response.text();
-  if (!response.ok || responseText.trim() !== "Ok.") {
+  if (!response.ok || !qBittorrentLoginSucceeded(response.status, responseText)) {
     throw new Error("qBittorrent authentication failed");
   }
   const cookie = response.headers.get("set-cookie")?.split(";", 1)[0];
