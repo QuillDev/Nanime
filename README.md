@@ -5,7 +5,9 @@ tracks playback, serves subtitles and audio tracks, and uses ffmpeg for HLS
 playback and transcoding. Metadata comes from Jikan, AniList, and TVmaze.
 AniList account sync and qBittorrent download management are optional.
 
-![Nanime library](docs/library.png)
+![Nanime library home](docs/library.jpg)
+
+![Nanime show page](docs/show.jpg)
 
 ## Setup
 
