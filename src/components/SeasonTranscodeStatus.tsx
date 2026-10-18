@@ -71,6 +71,15 @@ export function SeasonTranscodeStatus({ summary, canTranscode }: SeasonTranscode
   if (summary.kind === "ready") {
     return null;
   }
+  if (summary.kind === "loading") {
+    // Holds the chip's place so the heading row does not jump when readiness arrives.
+    return (
+      <>
+        <span aria-hidden="true" className="h-9 w-44 animate-pulse rounded-full bg-muted/40" />
+        <span className="flex-1" />
+      </>
+    );
+  }
   const needs = summary.kind === "needs-transcode";
   return (
     <>

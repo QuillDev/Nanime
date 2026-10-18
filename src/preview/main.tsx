@@ -12,9 +12,9 @@ import {
 
 /**
  * Design preview: the real show page rendered from fixtures, no backend.
- * Open /preview/?state=needs|partial|transcoding|ready under `bun run dev`.
+ * Open /preview/?state=loading|needs|partial|transcoding|ready under `bun run dev`.
  */
-const STATES = new Set<PreviewState>(["needs", "partial", "transcoding", "ready"]);
+const STATES = new Set<PreviewState>(["loading", "needs", "partial", "transcoding", "ready"]);
 const requested = new URL(globalThis.location.href).searchParams.get("state") as PreviewState | null;
 const state: PreviewState = requested !== null && STATES.has(requested) ? requested : "needs";
 
@@ -30,7 +30,10 @@ globalThis.fetch = Object.assign(
 
 const client = new QueryClient({ defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY, retry: false } } });
 const streamed = previewShow.entries.map((entry) => entry.rel);
-client.setQueryData(["playback-readiness", ...streamed], previewReadiness(state));
+// "loading" leaves readiness unanswered, the moment before the server replies.
+if (state !== "loading") {
+  client.setQueryData(["playback-readiness", ...streamed], previewReadiness(state));
+}
 client.setQueryData(["transcodes"], previewJobs(state));
 
 const noop = (): void => undefined;
