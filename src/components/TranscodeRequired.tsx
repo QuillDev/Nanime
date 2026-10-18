@@ -53,9 +53,9 @@ export function TranscodeRequired({
   const start = useStartTranscode();
   const queue = useCallback((paths: readonly string[]) => {
     start.mutate({ paths, preset: "compatibility" }, {
-      onSettled: () => client.invalidateQueries({ queryKey: playbackReadinessKey(entry.rel) }),
+      onSettled: () => client.invalidateQueries({ queryKey: playbackReadinessKey() }),
     });
-  }, [client, entry.rel, start]);
+  }, [client, start]);
   const handleEpisode = useCallback(() => {
     queue([entry.rel]);
   }, [entry.rel, queue]);

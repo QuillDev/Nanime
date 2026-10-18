@@ -4,7 +4,7 @@ import type { HlsStreamSource } from "./hlsTranscode.ts";
 import type { MediaLibraryOptions } from "./mediaLibraryOptions.ts";
 import { captureProbe } from "./transcodeProgress.ts";
 import { sourceTranscodeState, storedCompatibilityCopy, type SourceTranscodeState } from "./transcodes.ts";
-import { STORED_KEYFRAME_TAG } from "./transcodeEncoder.ts";
+import { budget, STORED_KEYFRAME_TAG } from "./transcodeEncoder.ts";
 
 export { resumeTranscodeQueue } from "./transcodes.ts";
 
@@ -108,13 +108,34 @@ export async function playbackPlan(
   return { kind: "transcode-required", transcode: sourceTranscodeState(rel) };
 }
 
+const MAX_READINESS_PATHS = 500;
+
+async function requestedPaths(req: Request): Promise<readonly string[] | null> {
+  const body = (await req.json().catch(() => null)) as { readonly paths?: unknown } | null;
+  const paths = body?.paths;
+  const valid = Array.isArray(paths) && paths.length <= MAX_READINESS_PATHS && paths.every((path) => typeof path === "string");
+  return valid ? paths as string[] : null;
+}
+
+/** Readiness for several library videos at once (a whole season); unknown paths are omitted. */
 export async function playbackReadinessResponse(
-  abs: string,
-  rel: string,
+  req: Request,
+  resolve: (rel: string) => Promise<string | null>,
   options: MediaLibraryOptions & { readonly hardwareAcceleration: string },
 ): Promise<Response> {
-  const plan = await playbackPlan(abs, rel, options);
-  return Response.json(plan.kind === "stream"
-    ? { ready: true, transcode: null }
-    : { ready: false, transcode: plan.transcode });
+  const paths = await requestedPaths(req);
+  if (paths === null) {
+    return new Response("Choose up to 500 videos", { status: 400 });
+  }
+  const items = await Promise.all(paths.map(async (rel) => {
+    const abs = await resolve(rel);
+    if (abs === null) {
+      return [];
+    }
+    const plan = await playbackPlan(abs, rel, options);
+    return [plan.kind === "stream"
+      ? { path: rel, ready: true, transcode: sourceTranscodeState(rel) }
+      : { path: rel, ready: false, transcode: plan.transcode }];
+  }));
+  return Response.json({ workers: budget.workers, items: items.flat() });
 }

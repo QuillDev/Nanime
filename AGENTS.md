@@ -78,7 +78,17 @@ include AniList and qBittorrent; metadata also uses Jikan and TVmaze.
 ## Client and design
 
 - Use Tailwind CSS v4 and the existing shadcn/ui patterns. Surfaces are solid
-  black with the `#ec4899` accent; do not add translucent UI.
+  black with the `#ec4899` accent; amber (`warning`) marks video that needs a
+  transcode. Panels and menus stay opaque; scrims are only for legibility over
+  artwork (hero banners, episode thumbnails). Headings use Bricolage Grotesque
+  (`font-display`), everything else Geist.
+- Review UI states with the design preview, not a live server: `bun run dev`
+  serves `/preview/?state=needs|partial|transcoding|ready`, the real show page
+  rendered from fictional fixtures in `src/preview/` with API calls stubbed.
+  Add a state there when a new UI state needs review; it is not part of the
+  production build. `server/capturePreviewSnapshot.ts` swaps the fictional
+  fixtures for a real show's stored metadata and frames in the gitignored
+  `src/preview/snapshot/`; never commit that directory.
 - Preserve route-level lazy loading and avoid pulling admin, profile, player, or
   HLS-only code into the initial library bundle without a concrete reason.
 - Prefer accessible native semantics, keyboard operation, visible focus, and

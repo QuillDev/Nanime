@@ -5,8 +5,8 @@ import { refreshLibraryCache } from "./refreshLibraryCache.ts";
 
 const key = ["transcodes"] as const;
 
-export function useTranscodes() {
-  return useQuery({ queryKey: key, queryFn: ({ signal }) => fetchTranscodes(signal), refetchInterval: 2000 });
+export function useTranscodes(enabled = true) {
+  return useQuery({ queryKey: key, queryFn: ({ signal }) => fetchTranscodes(signal), refetchInterval: 2000, enabled });
 }
 
 export function useStartTranscode() {

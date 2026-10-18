@@ -5,126 +5,12 @@ import type {
   MediaEntry,
   PlaybackProgressMap,
 } from "../types.ts";
-import { episodeMetadata, episodeNumber, mediaTitle } from "../lib/anilist.ts";
-import { isMovieMedia } from "../lib/library.ts";
-import { hasMeaningfulPlaybackProgress, preloadPlayer } from "../lib/playback.ts";
-import { episodePlaybackTarget } from "../lib/seasonWatched.ts";
-import { MediaThumbnail } from "./MediaThumbnail.tsx";
+import type { EpisodeTranscodeState, SeasonTranscodeSummary } from "../lib/seasonTranscode.ts";
 import { useSetPlaybackWatched } from "../hooks/usePlaybackProgress.ts";
 import { useSeriesCompletionPrompt } from "./SeriesCompletionPrompt.tsx";
-import {
-  EpisodeActionsMenu,
-  type EpisodeWatchedHandler,
-} from "./EpisodeActionsMenu.tsx";
+import { EpisodeTile } from "./EpisodeTile.tsx";
 
-interface EpisodeCardProps {
-  readonly entry: MediaEntry;
-  readonly media: AniListMedia | undefined;
-  readonly progress: PlaybackProgressMap;
-  readonly onSelect: (entry: MediaEntry) => void;
-  readonly onSetWatched: EpisodeWatchedHandler;
-  readonly pending: boolean;
-  readonly showMedia: AniListMedia | undefined;
-  readonly seasonNumber: number;
-}
-
-interface EpisodeProgressView {
-  readonly percent: number;
-  readonly show: boolean;
-  readonly watched: boolean;
-}
-
-function episodeProgressView(
-  entry: MediaEntry,
-  progress: PlaybackProgressMap,
-): EpisodeProgressView {
-  const item = progress[entry.rel];
-  if (item === undefined) {
-    return { percent: 0, show: false, watched: false };
-  }
-  const percent = item.duration <= 0
-    ? 0
-    : Math.min(100, Math.max(0, item.position / item.duration * 100));
-  return {
-    percent,
-    show: item.completed || hasMeaningfulPlaybackProgress(item.position),
-    watched: item.completed,
-  };
-}
-
-function EpisodeCard({
-  entry,
-  media,
-  progress,
-  onSelect,
-  onSetWatched,
-  pending,
-  showMedia,
-  seasonNumber,
-}: EpisodeCardProps): React.JSX.Element {
-  const handleClick = useCallback(() => {
-    onSelect(entry);
-  }, [entry, onSelect]);
-  const movie = isMovieMedia(media);
-  const details = movie
-    ? null
-    : episodeMetadata(entry, media, { showMedia, season: seasonNumber });
-  const number = movie ? null : episodeNumber(entry);
-  const target = episodePlaybackTarget(entry, media);
-  const title = movie ? mediaTitle(media) : details?.title ?? entry.name;
-  const progressView = episodeProgressView(entry, progress);
-
-  return (
-    <li className="flex items-center focus-within:ring-2 focus-within:ring-ring">
-      <button
-        type="button"
-        onClick={handleClick}
-        onFocus={preloadPlayer}
-        onPointerDown={preloadPlayer}
-        onPointerEnter={preloadPlayer}
-        className="group flex min-w-0 flex-1 text-left focus-visible:outline-none"
-      >
-        <span className="w-32 shrink-0 sm:w-44">
-          <span className="relative block">
-            <MediaThumbnail
-              rel={entry.rel}
-              source={details?.thumbnail}
-              watched={progressView.watched}
-              className="w-full"
-            />
-          </span>
-          {progressView.show && (
-            <progress
-              aria-label="Episode progress"
-              max={100}
-              value={progressView.watched ? 100 : progressView.percent}
-              className="playback-progress block h-1 w-full overflow-hidden"
-            />
-          )}
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col justify-center py-1 pl-2 pr-3">
-          <span className="flex min-w-0 items-baseline gap-3">
-            {number !== null && (
-              <span className="w-6 shrink-0 text-right font-mono text-xs text-muted-foreground">
-                {String(number).padStart(2, "0")}
-              </span>
-            )}
-            <span className="line-clamp-2 font-medium" title={entry.name}>
-              {title}
-            </span>
-          </span>
-        </span>
-      </button>
-      <EpisodeActionsMenu
-        entry={entry}
-        pending={pending}
-        watched={progressView.watched}
-        onSetWatched={onSetWatched}
-        target={target}
-      />
-    </li>
-  );
-}
+const READY: EpisodeTranscodeState = { kind: "ready" };
 
 interface EpisodeGridProps {
   readonly entries: readonly MediaEntry[];
@@ -133,6 +19,7 @@ interface EpisodeGridProps {
   readonly onSelect: (entry: MediaEntry) => void;
   readonly showMedia: AniListMedia | undefined;
   readonly seasonNumber: number;
+  readonly transcode: SeasonTranscodeSummary;
 }
 
 export function EpisodeGrid({
@@ -142,6 +29,7 @@ export function EpisodeGrid({
   onSelect,
   showMedia,
   seasonNumber,
+  transcode,
 }: EpisodeGridProps): React.JSX.Element {
   const watchedState = useSetPlaybackWatched();
   const promptForScore = useSeriesCompletionPrompt();
@@ -176,9 +64,9 @@ export function EpisodeGrid({
           Could not update episode: {watchedState.error.message}
         </p>
       )}
-      <ul className="flex flex-col gap-4">
+      <ul className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 lg:grid-cols-4">
         {entries.map((entry) => (
-          <EpisodeCard
+          <EpisodeTile
             key={entry.rel}
             entry={entry}
             media={media}
@@ -188,6 +76,7 @@ export function EpisodeGrid({
             pending={watchedState.isPending && watchedState.variables?.rel === entry.rel}
             showMedia={showMedia}
             seasonNumber={seasonNumber}
+            transcode={transcode.episodes.get(entry.rel) ?? READY}
           />
         ))}
       </ul>

@@ -11,3 +11,6 @@ dist
 media
 test-results
 demo-dist
+
+# Real-show design preview snapshot (server/capturePreviewSnapshot.ts); never commit library media.
+src/preview/snapshot/

@@ -1,10 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/bricolage-grotesque";
 
 /*
  * Nanime theme.
- * Solid black surfaces, pink ("nako") accent. No semi-transparent backgrounds
- * anywhere — every surface color is fully opaque.
+ * Solid black surfaces, pink ("nako") accent, amber for needs-transcode.
+ * Panels stay opaque; scrims appear only over artwork for legibility.
  */
 
 @theme inline {
@@ -32,6 +34,11 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque Variable", "Geist Variable", ui-sans-serif, sans-serif;
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
 }
 
 :root {
@@ -65,6 +72,10 @@
   --border: #262626;
   --input: #262626;
   --ring: #ec4899;
+
+  /* Needs action: video that must be transcoded before it can play. */
+  --warning: #ffb547;
+  --warning-foreground: #241500;
 }
 
 @layer base {
@@ -81,8 +92,8 @@
   body {
     background-color: var(--background);
     color: var(--foreground);
-    font-family:
-      ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
   }
 
   body::before {

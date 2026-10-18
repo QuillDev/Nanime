@@ -26,6 +26,7 @@ import {
   nyaaSearchResultSchema,
   playbackProgressSchema,
   playbackAuditEventSchema,
+  playbackReadinessBodySchema,
   playbackReadinessSchema,
   provisionedUserSchema,
   schema,
@@ -35,7 +36,6 @@ import {
   torrentStatusSchema,
   trickplayManifestSchema,
 } from "./schemas.ts";
-
 
 const aniListLinkSchema = schema.object({
   key: schema.string({ minLength: 1 }), id: schema.integer({ minimum: 1 }),
@@ -237,8 +237,8 @@ export const app = new Elysia({ name: "nanime" })
     query: pathQuerySchema,
     response: schema.object({ duration: schema.number({ minimum: 0 }) }),
   })
-  .get("/api/playback-readiness", ({ request, server }) => handle(request, server), {
-    query: pathQuerySchema, response: playbackReadinessSchema,
+  .post("/api/playback-readiness", ({ request, server, body }) => handle(jsonRequest(request, body), server), {
+    body: playbackReadinessBodySchema, response: playbackReadinessSchema,
   })
   .post("/api/offline-media", ({ request, server, body }) => (
     handle(jsonRequest(request, body), server)
