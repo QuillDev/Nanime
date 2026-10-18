@@ -1,5 +1,5 @@
 import { api, unwrap } from "./api.ts";
-import type { MediaEntry } from "./types.ts";
+import type { MediaEntry, TranscodeJob } from "./types.ts";
 import { offlineMediaUrl } from "./offline/database.ts";
 import {
   canUseOfflineFallback,
@@ -54,4 +54,17 @@ export async function fetchMediaDuration(rel: string, signal: AbortSignal): Prom
     }
     throw error;
   }
+}
+
+export interface PlaybackReadiness {
+  readonly ready: boolean;
+  readonly transcode: { readonly status: TranscodeJob["status"]; readonly progress: number } | null;
+}
+
+export async function fetchPlaybackReadiness(rel: string, signal: AbortSignal): Promise<PlaybackReadiness> {
+  const response = await api.api["playback-readiness"].get({
+    query: { path: rel },
+    fetch: { signal },
+  });
+  return unwrap(response, "Playback readiness request");
 }

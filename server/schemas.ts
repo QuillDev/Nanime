@@ -237,20 +237,26 @@ export const storageStatusSchema = object({
   totalBytes: number(),
   availableBytes: number(),
 });
+const transcodeStatusSchema = union([
+  literal("cancelled"),
+  literal("complete"),
+  literal("failed"),
+  literal("processing"),
+  literal("queued"),
+]);
 export const transcodeJobSchema = object({
   id: string(),
   sourcePath: string(),
   preset: union([literal("space-saver"), literal("compatibility")]),
-  status: union([
-    literal("cancelled"),
-    literal("complete"),
-    literal("failed"),
-    literal("processing"),
-    literal("queued"),
-  ]),
+  status: transcodeStatusSchema,
   inputSize: number(), outputSize: nullableNumber, error: nullableString,
   progress: number(), speed: number(), startedAt: nullableNumber,
   originalDeleted: boolean(), createdAt: number(), updatedAt: number(),
+});
+const sourceTranscodeSchema = object({ status: transcodeStatusSchema, progress: number() });
+export const playbackReadinessSchema = object({
+  ready: boolean(),
+  transcode: union([sourceTranscodeSchema, nullValue()]),
 });
 export const mediaScanSchema = object({
   sourcePath: string(),

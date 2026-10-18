@@ -13,12 +13,16 @@ import {
 } from "../hooks/useMediaRoute.ts";
 import { Library, LibrarySkeleton } from "./Library.tsx";
 import { MediaHeader } from "./MediaHeader.tsx";
-import { loadPlayer, preloadPlayer } from "../routeModules.ts";
+import { loadPlaybackGate, loadPlayer, preloadPlayer } from "../routeModules.ts";
 import { useLibraryIndex, type LibraryIndex } from "../hooks/useLibraryIndex.ts";
 
 const Player = lazy(async () => {
   const module = await loadPlayer();
   return { default: module.Player };
+});
+const PlaybackGate = lazy(async () => {
+  const module = await loadPlaybackGate();
+  return { default: module.PlaybackGate };
 });
 
 const PLAYER_LOADING = (
@@ -94,16 +98,26 @@ function LibraryContent({ library, index, progress, route, user, onSelect, onSho
   );
 }
 
+function seasonStreamPaths(entries: readonly MediaEntry[] | undefined, selected: MediaEntry): readonly string[] {
+  return (entries ?? []).flatMap((entry) => (
+    entry.folder === selected.folder && !entry.direct ? [entry.rel] : []
+  ));
+}
+
 function PlayerLayer({
   navigation,
   progress,
   mediaDuration,
   preferredAudioLanguage,
+  entries,
+  canTranscode,
 }: {
   readonly navigation: ReturnType<typeof useEpisodeNavigation>;
   readonly progress: ReturnType<typeof usePlaybackProgress>;
   readonly mediaDuration: ReturnType<typeof useMediaDuration>;
   readonly preferredAudioLanguage: AuthUser["preferredAudioLanguage"];
+  readonly entries: readonly MediaEntry[] | undefined;
+  readonly canTranscode: boolean;
 }): React.JSX.Element | null {
   if (navigation.selected === null || progress.status === "pending") {
     return null;
@@ -114,7 +128,9 @@ function PlayerLayer({
     : initialProgress?.duration ?? 0;
   return (
     <Suspense fallback={PLAYER_LOADING}>
-      <Player key={navigation.selected.rel} entry={navigation.selected} episodeDisplay={navigation.display} anilistTarget={navigation.target} nextAvailable={navigation.next !== null} previousAvailable={navigation.previous !== null} initialProgress={initialProgress} knownDuration={knownDuration} preferredAudioLanguage={preferredAudioLanguage} onClose={closeEpisode} onNext={navigation.handleNext} onPrevious={navigation.handlePrevious} />
+      <PlaybackGate key={navigation.selected.rel} entry={navigation.selected} canTranscode={canTranscode} seasonPaths={seasonStreamPaths(entries, navigation.selected)} onClose={closeEpisode}>
+        <Player key={navigation.selected.rel} entry={navigation.selected} episodeDisplay={navigation.display} anilistTarget={navigation.target} nextAvailable={navigation.next !== null} previousAvailable={navigation.previous !== null} initialProgress={initialProgress} knownDuration={knownDuration} preferredAudioLanguage={preferredAudioLanguage} onClose={closeEpisode} onNext={navigation.handleNext} onPrevious={navigation.handlePrevious} />
+      </PlaybackGate>
     </Suspense>
   );
 }
@@ -149,7 +165,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
       <main className="mx-auto max-w-7xl px-6 py-6">
         <LibraryContent library={library} index={index} progress={playbackProgress} route={route} user={user} onSelect={handleSelect} onShowSelect={handleShowSelect} />
       </main>
-      <PlayerLayer navigation={navigation} progress={playbackProgress} mediaDuration={mediaDuration} preferredAudioLanguage={user.preferredAudioLanguage} />
+      <PlayerLayer navigation={navigation} progress={playbackProgress} mediaDuration={mediaDuration} preferredAudioLanguage={user.preferredAudioLanguage} entries={library.data} canTranscode={user.isAdmin} />
     </div>
   );
 }

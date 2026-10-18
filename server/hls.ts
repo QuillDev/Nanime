@@ -2,14 +2,13 @@ import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { selectedAudioTrack } from "./audioTracks.ts";
 import { SingleFlight } from "./singleFlight.ts";
 import {
   HlsStoppingCapacity,
   hlsCapacityAvailable,
   reserveHlsPlaybackCapacity,
 } from "./hlsCapacity.ts";
-import { HLS_SEGMENT_SECONDS, HLS_SESSION_IDLE_MS, hlsSessionKey, transcodeArgs, type HlsOptions } from "./hlsTranscode.ts";
+import { HLS_SEGMENT_SECONDS, HLS_SESSION_IDLE_MS, hlsSessionKey, sessionStreams, transcodeArgs, type HlsSourceOptions } from "./hlsTranscode.ts";
 import { stopHlsProcess } from "./hlsProcess.ts";
 import { hlsOwnershipKey, supersedeHlsLease } from "./hlsLeaseOwnership.ts";
 
@@ -22,7 +21,7 @@ const MAX_ACTIVE_SESSIONS_PER_USER = 2;
 const PLAYLIST_WAIT_MS = 20 * 1000;
 const cacheRoot = mkdtemp(join(tmpdir(), "nanime-hls-"));
 
-export interface HlsPlaylistOptions extends HlsOptions {
+export interface HlsPlaylistOptions extends HlsSourceOptions {
   readonly abs: string;
   readonly audioIndex: number | null;
   readonly duration: number;
@@ -104,11 +103,7 @@ async function createSession(
   segmentIndex: number,
   key: string,
 ): Promise<HlsSession | undefined> {
-  const audioTrack = await selectedAudioTrack(
-    options.abs,
-    options.audioIndex,
-    options.preferredAudioLanguage,
-  );
+  const { audioTrack, source } = await sessionStreams(options);
   if (audioTrack === null) {
     return undefined;
   }
@@ -120,6 +115,7 @@ async function createSession(
       "ffmpeg",
       ...transcodeArgs({
         ...options,
+        source,
         audioTrack,
         directory,
         segmentIndex,

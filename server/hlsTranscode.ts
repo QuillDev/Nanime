@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { HLS_SEGMENT_SECONDS } from "../shared/playback.ts";
-import type { AudioTrack } from "./audioTracks.ts";
+import { audioTracks, selectedAudioTrack, type AudioTrack } from "./audioTracks.ts";
 
 export { HLS_SEGMENT_SECONDS } from "../shared/playback.ts";
 export { HLS_SESSION_IDLE_MS } from "../shared/playback.ts";
@@ -11,8 +11,34 @@ export interface HlsOptions {
   readonly vaapiDevice: string;
 }
 
+/**
+ * Where a live HLS session reads video from. `copy` streams a stored transcode
+ * whose keyframes sit on every segment boundary; `encode` re-encodes the video.
+ */
+export interface HlsStreamSource {
+  readonly input: string;
+  readonly videoMode: "copy" | "encode";
+  /** Output-relative audio map for a stored transcode; absent maps the source index. */
+  readonly audioMap?: string;
+}
+
+export interface HlsSourceOptions extends HlsOptions {
+  readonly abs: string;
+  readonly audioIndex: number | null;
+  readonly preferredAudioLanguage: string | null;
+  readonly source: HlsStreamSource;
+}
+
+/**
+ * Stored keyframes land on the first frame at or after each boundary, so a
+ * copy session seeks a quarter segment past the boundary and lets the demuxer
+ * snap back to that keyframe. Audio follows the same demuxer position.
+ */
+const COPY_SEEK_LEAD_SECONDS = HLS_SEGMENT_SECONDS / 4;
+
 interface HlsSessionKeyOptions extends HlsOptions {
   readonly abs: string;
+  readonly source?: HlsStreamSource;
   readonly audioIndex: number | null;
   readonly leaseId: string | null;
   readonly preferredAudioLanguage: string | null;
@@ -24,6 +50,7 @@ export function hlsSessionKey(options: HlsSessionKeyOptions, segmentIndex: numbe
     String(options.userId), options.abs, String(options.audioIndex),
     String(options.preferredAudioLanguage), String(segmentIndex),
     options.hardwareAcceleration, options.leaseId === null ? "legacy" : "managed",
+    options.source?.input ?? options.abs, options.source?.videoMode ?? "encode",
   ].join("\0")).digest("hex");
 }
 
@@ -34,9 +61,13 @@ interface TranscodeCommand extends HlsOptions {
   readonly duration: number;
   readonly segmentIndex: number;
   readonly start: number;
+  readonly source?: HlsStreamSource;
 }
 
 function videoArgs(command: TranscodeCommand): readonly string[] {
+  if (command.source?.videoMode === "copy") {
+    return ["-c:v", "copy"];
+  }
   const keyframes = [
     "-flags", "+cgop",
     "-force_key_frames", `expr:gte(t,n_forced*${String(HLS_SEGMENT_SECONDS)})`,
@@ -66,23 +97,39 @@ function inputHardwareArgs(command: TranscodeCommand): readonly string[] {
     : [];
 }
 
+function audioMap(command: TranscodeCommand): readonly string[] {
+  if (command.audioTrack === undefined) {
+    return [];
+  }
+  return ["-map", command.source?.audioMap ?? `0:${String(command.audioTrack.index)}`];
+}
+
+function inputArgs(command: TranscodeCommand): readonly string[] {
+  const input = command.source?.input ?? command.abs;
+  return command.source?.videoMode === "copy"
+    ? ["-noaccurate_seek", "-ss", String(command.start + COPY_SEEK_LEAD_SECONDS), "-i", input]
+    : ["-ss", String(command.start), "-i", input];
+}
+
+function outputOffset(command: TranscodeCommand): number {
+  return command.source?.videoMode === "copy" ? command.start + COPY_SEEK_LEAD_SECONDS : command.start;
+}
+
 export function transcodeArgs(command: TranscodeCommand): readonly string[] {
   const remaining = Math.max(0, command.duration - command.start);
-  const streams = command.audioTrack === undefined
-    ? ["-map", "0:v:0"]
-    : ["-map", "0:v:0", "-map", `0:${String(command.audioTrack.index)}`];
+  const streams = ["-map", "0:v:0", ...audioMap(command)];
   const audio = command.audioTrack === undefined
     ? []
     : ["-c:a", "aac", "-ac", "2", "-b:a", "160k"];
   return [
     "-hide_banner", "-loglevel", "error",
     ...inputHardwareArgs(command),
-    "-ss", String(command.start), "-i", command.abs,
+    ...inputArgs(command),
     "-t", String(remaining),
     ...streams,
     ...videoArgs(command),
     ...audio,
-    "-output_ts_offset", String(command.start),
+    "-output_ts_offset", String(outputOffset(command)),
     "-muxdelay", "0",
     "-f", "hls",
     "-hls_time", String(HLS_SEGMENT_SECONDS),
@@ -93,4 +140,36 @@ export function transcodeArgs(command: TranscodeCommand): readonly string[] {
     "-hls_segment_filename", join(command.directory, "segment-%06d.ts"),
     join(command.directory, "index.m3u8"),
   ];
+}
+
+/**
+ * A stored transcode keeps every source audio stream in source order, so the
+ * selected source track maps to the same position among the output's audio.
+ */
+async function storedAudioSource(
+  abs: string,
+  source: HlsStreamSource,
+  audioTrack: AudioTrack | undefined,
+): Promise<HlsStreamSource> {
+  if (audioTrack === undefined || source.input === abs) {
+    return source;
+  }
+  const tracks = await audioTracks(abs);
+  const position = tracks.findIndex((track) => track.index === audioTrack.index);
+  if (position === -1) {
+    throw new Error("Selected audio track is missing from the stored transcode");
+  }
+  return { ...source, audioMap: `0:a:${String(position)}` };
+}
+
+/** The selected source audio track (null: requested track missing) and where to read streams. */
+export async function sessionStreams(options: HlsSourceOptions): Promise<{
+  readonly audioTrack: AudioTrack | undefined | null;
+  readonly source: HlsStreamSource;
+}> {
+  const audioTrack = await selectedAudioTrack(options.abs, options.audioIndex, options.preferredAudioLanguage);
+  const source = audioTrack === null
+    ? options.source
+    : await storedAudioSource(options.abs, options.source, audioTrack);
+  return { audioTrack, source };
 }

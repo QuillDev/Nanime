@@ -10,7 +10,7 @@ import { episodeNumber } from "../lib/anilist.ts";
 
 const PRESETS = {
   "space-saver": { name: "Space Saver", detail: "AV1 10-bit + Opus · smallest files" },
-  compatibility: { name: "Compatibility", detail: "H.264 + AAC · widest playback support" },
+  compatibility: { name: "Compatibility", detail: "H.264 · original resolution and audio" },
 } as const;
 
 type TranscodeScope = "episode" | "season";
