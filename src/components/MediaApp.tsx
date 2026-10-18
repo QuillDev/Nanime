@@ -152,7 +152,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen overflow-x-clip bg-background text-foreground">
       <MediaHeader
         user={user}
         view="library"
@@ -161,6 +161,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
         metadata={index.metadata}
         onQueryChange={handleQueryChange}
         onShowSelect={handleShowSelect}
+        overlay={route.showName === null && route.query.trim() === ""}
       />
       <main className="mx-auto max-w-7xl px-6 py-6">
         <LibraryContent library={library} index={index} progress={playbackProgress} route={route} user={user} onSelect={handleSelect} onShowSelect={handleShowSelect} />

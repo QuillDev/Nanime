@@ -43,6 +43,8 @@
 
 :root {
   --radius: 0.625rem;
+  /* Fixed so the home banner can slide under the transparent header exactly. */
+  --header-height: 4.5rem;
 
   --background: #000000;
   --foreground: #fafafa;
@@ -370,7 +372,7 @@
     .library-search {
       flex: 1;
       margin-left: 0;
-      max-width: none;
+      max-width: 32rem;
     }
 
     .player-subtitle-small {

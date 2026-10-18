@@ -217,9 +217,13 @@ database.run(`
     name TEXT NOT NULL,
     folder TEXT NOT NULL,
     size INTEGER NOT NULL,
-    direct INTEGER NOT NULL
+    direct INTEGER NOT NULL,
+    added_at INTEGER NOT NULL DEFAULT 0
   )
 `);
+if (!database.query<TableColumn, []>("PRAGMA table_info(media_library)").all().some((column) => column.name === "added_at")) {
+  database.run("ALTER TABLE media_library ADD COLUMN added_at INTEGER NOT NULL DEFAULT 0");
+}
 database.run(`
   CREATE TABLE IF NOT EXISTS media_library_state (
     id INTEGER PRIMARY KEY CHECK (id = 1),

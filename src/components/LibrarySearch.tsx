@@ -169,7 +169,7 @@ export function LibrarySearch({
         aria-autocomplete="list"
         aria-controls="library-search-results"
         aria-expanded={showSuggestions}
-        className="pl-9 text-base"
+        className="rounded-full border-transparent bg-white/10 pl-9 text-base"
       />
       <Collapsible open={showSuggestions}>
         <CollapsibleContent className="absolute inset-x-0 top-full z-50 mt-2 rounded-lg border border-border bg-popover shadow-xl">
