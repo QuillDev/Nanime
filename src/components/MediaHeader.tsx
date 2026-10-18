@@ -1,16 +1,12 @@
 import type { ChangeEvent } from "react";
-import { Library, Settings } from "lucide-react";
 import type { AuthUser, ShowMetadata } from "../types.ts";
 import type { ShowGroup } from "../lib/library.ts";
-import { navigateToAdmin, navigateToShows } from "../hooks/useMediaRoute.ts";
+import { navigateToShows } from "../hooks/useMediaRoute.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
 import { LibrarySearch } from "./LibrarySearch.tsx";
-import { UserMenu } from "./UserMenu.tsx";
-import { HeaderActivity } from "./HeaderActivity.tsx";
-import {
-  preloadAdminApp,
-  preloadMediaApp,
-} from "../routeModules.ts";
+import { PrimaryNav } from "./PrimaryNav.tsx";
+import { useHeaderSurface } from "../hooks/useScrolled.ts";
+import { preloadMediaApp } from "../routeModules.ts";
 
 type MediaHeaderProps = {
   readonly user: AuthUser;
@@ -20,6 +16,8 @@ type MediaHeaderProps = {
   readonly metadata: ShowMetadata;
   readonly onQueryChange: (event: ChangeEvent<HTMLInputElement>) => void;
   readonly onShowSelect: (show: ShowGroup) => void;
+  /** Transparent over the home banner until the page scrolls. */
+  readonly overlay?: boolean;
 } | {
   readonly user: AuthUser;
   readonly view: "admin" | "profile";
@@ -27,8 +25,9 @@ type MediaHeaderProps = {
 
 export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
   const { user, view } = props;
+  const surface = useHeaderSurface(props.view === "library" && props.overlay === true);
   return (
-    <header className="sticky top-[env(safe-area-inset-top)] z-10 flex items-center gap-2 border-b border-border bg-background px-4 py-4 sm:gap-4 sm:px-6">
+    <header className={surface}>
       <button
         type="button"
         onClick={navigateToShows}
@@ -49,38 +48,7 @@ export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
           onShowSelect={props.onShowSelect}
         />
       )}
-      <nav className="mobile-account-controls ml-auto" aria-label="Primary navigation">
-        <button
-          type="button"
-          data-active={view === "library"}
-          onClick={navigateToShows}
-          onFocus={preloadMediaApp}
-          onPointerDown={preloadMediaApp}
-          onPointerEnter={preloadMediaApp}
-          className="mobile-nav-item"
-          aria-label="Library"
-        >
-          <Library className="size-4" />
-          <span className="mobile-nav-label">Library</span>
-        </button>
-        {user.isAdmin && (
-          <button
-            type="button"
-            data-active={view === "admin"}
-            onClick={navigateToAdmin}
-            onFocus={preloadAdminApp}
-            onPointerDown={preloadAdminApp}
-            onPointerEnter={preloadAdminApp}
-            className="mobile-nav-item"
-            aria-label="Admin dashboard"
-          >
-            <Settings className="size-4" />
-            <span className="mobile-nav-label">Admin</span>
-          </button>
-        )}
-        <HeaderActivity isAdmin={user.isAdmin} />
-        <UserMenu active={view === "profile"} />
-      </nav>
+      <PrimaryNav user={user} view={view} />
     </header>
   );
 }

@@ -6,6 +6,7 @@ import {
   type ShowGroup,
 } from "../lib/library.ts";
 import { mediaTitle } from "../lib/anilist.ts";
+import { showFacts } from "../lib/libraryHome.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
 import { usePrefetchShowReadiness } from "../hooks/usePlaybackReadiness.ts";
 
@@ -32,6 +33,7 @@ function ShowCard({
   const prefetch = usePrefetchShowReadiness(show);
   const [preview] = show.entries;
   const cover = media?.coverImage.large ?? media?.coverImage.extraLarge;
+  const facts = showFacts(media);
 
   return (
     <div>
@@ -45,10 +47,10 @@ function ShowCard({
       >
         <span className="relative block">
           {preview !== undefined && (
-            <MediaThumbnail rel={preview.rel} source={cover} watched={watched} className="aspect-[2/3]" />
+            <MediaThumbnail rel={preview.rel} source={cover} watched={watched} className="aspect-[2/3] rounded-[10px] transition-transform duration-300 group-hover:scale-[1.02]" />
           )}
           {downloadPercent !== null && (
-            <span className="absolute inset-x-2 bottom-2 rounded-md bg-black p-2 text-xs font-semibold text-foreground">
+            <span className="absolute inset-x-2 bottom-2 rounded-lg bg-black/85 p-2 text-xs font-semibold text-foreground">
               <span className="flex items-center gap-1.5">
                 <Download aria-hidden="true" className="size-3.5 animate-pulse text-primary" />
                 <span>Downloading</span>
@@ -63,10 +65,11 @@ function ShowCard({
             </span>
           )}
         </span>
-        <span className="block pt-1">
-          <span className="block truncate text-sm font-semibold">
+        <span className="block pt-2">
+          <span className="block truncate text-[13px] font-semibold group-hover:text-primary">
             {media === undefined ? show.name : mediaTitle(media)}
           </span>
+          {facts !== null && <span className="block truncate text-xs text-muted-foreground">{facts}</span>}
         </span>
       </button>
     </div>
@@ -78,7 +81,7 @@ interface ShowGridProps {
   readonly metadata: ShowMetadata;
   readonly onSelect: (show: ShowGroup) => void;
   readonly downloads: readonly TorrentStatus[];
-  readonly watched?: boolean;
+  readonly watched?: boolean | ((show: ShowGroup) => boolean);
 }
 
 function showTransitionName(name: string): string {
@@ -144,7 +147,7 @@ function ShowGridItem({ show, metadata, onSelect, downloads, watched }: {
   readonly metadata: ShowMetadata;
   readonly onSelect: (show: ShowGroup) => void;
   readonly downloads: ReadonlyMap<string, DownloadTotals>;
-  readonly watched: boolean;
+  readonly watched: boolean | ((show: ShowGroup) => boolean);
 }): React.JSX.Element {
   const style = useMemo(() => ({
     viewTransitionName: showTransitionName(show.name),
@@ -157,7 +160,7 @@ function ShowGridItem({ show, metadata, onSelect, downloads, watched }: {
         media={primaryShowMetadata(show, metadata)}
         onSelect={onSelect}
         downloadPercent={downloadPercent}
-        watched={watched}
+        watched={typeof watched === "function" ? watched(show) : watched}
       />
     </li>
   );
@@ -178,7 +181,7 @@ export function ShowGrid({
   }, []);
   return (
     <>
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <ul className="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
         {visible.map((show) => (
           <ShowGridItem
             key={show.name}

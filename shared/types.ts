@@ -9,6 +9,8 @@ export interface MediaEntry {
   readonly folder: string;
   readonly size: number;
   readonly direct: boolean;
+  /** When the file landed in the library (its modification time, epoch ms). */
+  readonly addedAt?: number;
   /** Device-local service-worker source; absent from server library responses. */
   readonly offlineUrl?: string;
 }

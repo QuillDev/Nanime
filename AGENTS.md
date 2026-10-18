@@ -83,7 +83,8 @@ include AniList and qBittorrent; metadata also uses Jikan and TVmaze.
   artwork (hero banners, episode thumbnails). Headings use Bricolage Grotesque
   (`font-display`), everything else Geist.
 - Review UI states with the design preview, not a live server: `bun run dev`
-  serves `/preview/?state=loading|needs|partial|transcoding|ready`, the real show page
+  serves `/preview/?state=loading|needs|partial|transcoding|ready` (show page) and
+  `?state=home-watching|home-fresh` (library home), the real pages
   rendered from fictional fixtures in `src/preview/` with API calls stubbed.
   Add a state there when a new UI state needs review; it is not part of the
   production build. `server/capturePreviewSnapshot.ts` swaps the fictional

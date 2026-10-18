@@ -12,6 +12,7 @@ interface MediaRow {
   readonly folder: string;
   readonly size: number;
   readonly direct: number;
+  readonly added_at: number;
 }
 
 interface LibraryStateRow {
@@ -34,18 +35,18 @@ interface LibraryOptions {
 
 const LIBRARY_STALE_MS = 60_000;
 const rows = database.query<MediaRow, []>(`
-  SELECT rel, name, folder, size, direct FROM media_library ORDER BY rel
+  SELECT rel, name, folder, size, direct, added_at FROM media_library ORDER BY rel
 `);
 const state = database.query<LibraryStateRow, []>(`
   SELECT last_scanned_at, entry_count FROM media_library_state WHERE id = 1
 `);
-const insert = database.query<void, [string, string, string, number, number]>(`
-  INSERT INTO media_library (rel, name, folder, size, direct) VALUES (?, ?, ?, ?, ?)
+const insert = database.query<void, [string, string, string, number, number, number]>(`
+  INSERT INTO media_library (rel, name, folder, size, direct, added_at) VALUES (?, ?, ?, ?, ?, ?)
 `);
 const replaceLibrary = database.transaction((entries: readonly MediaEntry[], scannedAt: number) => {
   database.run("DELETE FROM media_library");
   for (const entry of entries) {
-    insert.run(entry.rel, entry.name, entry.folder, entry.size, entry.direct ? 1 : 0);
+    insert.run(entry.rel, entry.name, entry.folder, entry.size, entry.direct ? 1 : 0, entry.addedAt ?? 0);
   }
   database.query<void, [number, number]>(`
     INSERT INTO media_library_state (id, last_scanned_at, entry_count)
@@ -110,7 +111,7 @@ async function walk(
       if (stats === null) {
         continue;
       }
-      const { size } = stats;
+      const { size, mtimeMs } = stats;
       const rel = relative(options.mediaDir, absolutePath);
       const folder = dirname(rel);
       options.entries.push({
@@ -120,6 +121,7 @@ async function walk(
         folder: folder === "." ? "" : folder,
         size,
         direct: options.directPlayExtensions.has(extname(item.name).toLowerCase()),
+        addedAt: Math.round(mtimeMs),
       });
     }
   }
@@ -134,13 +136,15 @@ async function scanFiles(
 }
 
 function entryFromRow(row: MediaRow): MediaEntry {
-  return {
+  const entry = {
     rel: row.rel,
     name: row.name,
     folder: row.folder,
     size: row.size,
     direct: row.direct === 1,
-  };
+  } satisfies MediaEntry;
+  // Rows cached before added_at existed carry 0 until the next scan.
+  return row.added_at > 0 ? { ...entry, addedAt: row.added_at } : entry;
 }
 
 function cachedEntries(): readonly MediaEntry[] {
