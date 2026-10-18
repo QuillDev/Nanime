@@ -2,13 +2,15 @@ import type { PlaybackReadiness, PlaybackReadinessBatch } from "../libraryApi.ts
 
 export type EpisodeTranscodeState =
   | { readonly kind: "ready" }
+  /** Readiness not answered yet: show neither "ready" nor a warning. */
+  | { readonly kind: "loading" }
   | { readonly kind: "needs-transcode" }
   | { readonly kind: "failed" }
   | { readonly kind: "queued"; readonly next: boolean }
   | { readonly kind: "transcoding"; readonly progress: number; readonly remainingSeconds: number | null };
 
 export interface SeasonTranscodeSummary {
-  readonly kind: "ready" | "needs-transcode" | "transcoding";
+  readonly kind: "loading" | "ready" | "needs-transcode" | "transcoding";
   readonly total: number;
   readonly ready: number;
   /** Projected time until every queued and running episode is ready. */
@@ -60,7 +62,11 @@ function episodeStates(
   const states = new Map<string, EpisodeTranscodeState>();
   for (const path of streamedPaths) {
     const item = byPath.get(path);
-    states.set(path, item === undefined ? { kind: "ready" } : itemState(item));
+    if (batch === undefined) {
+      states.set(path, { kind: "loading" });
+    } else {
+      states.set(path, item === undefined ? { kind: "ready" } : itemState(item));
+    }
   }
   markNextQueued(streamedPaths, states);
   return states;
@@ -81,9 +87,12 @@ export function summarizeSeasonTranscode(
   total: number,
   batch: PlaybackReadinessBatch | undefined,
 ): SeasonTranscodeSummary {
+  if (batch === undefined && streamedPaths.length > 0) {
+    return { kind: "loading", total, ready: 0, remainingSeconds: null, episodes: episodeStates(streamedPaths, batch) };
+  }
   const states = episodeStates(streamedPaths, batch);
   const values = [...states.values()];
-  const notReady = values.filter((state) => state.kind !== "ready").length;
+  const notReady = values.filter((state) => state.kind !== "ready" && state.kind !== "loading").length;
   const active = values.some((state) => state.kind === "queued" || state.kind === "transcoding");
   return {
     kind: seasonKind(active, notReady),

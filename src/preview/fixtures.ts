@@ -74,7 +74,7 @@ export const previewShow: ShowGroup = {
 
 export const previewMetadata = { [snapshot.key]: previewMedia };
 
-export type PreviewState = "needs" | "partial" | "transcoding" | "ready";
+export type PreviewState = "loading" | "needs" | "partial" | "transcoding" | "ready";
 
 function readiness(index: number, state: PreviewState): PlaybackReadiness {
   const path = entries[index]?.rel ?? "";

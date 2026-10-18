@@ -7,6 +7,7 @@ import {
 } from "../lib/library.ts";
 import { mediaTitle } from "../lib/anilist.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
+import { usePrefetchShowReadiness } from "../hooks/usePlaybackReadiness.ts";
 
 interface ShowCardProps {
   readonly show: ShowGroup;
@@ -28,6 +29,7 @@ function ShowCard({
   const handleClick = useCallback(() => {
     onSelect(show);
   }, [onSelect, show]);
+  const prefetch = usePrefetchShowReadiness(show);
   const [preview] = show.entries;
   const cover = media?.coverImage.large ?? media?.coverImage.extraLarge;
 
@@ -36,6 +38,9 @@ function ShowCard({
       <button
         type="button"
         onClick={handleClick}
+        onFocus={prefetch}
+        onPointerEnter={prefetch}
+        onPointerDown={prefetch}
         className="group w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="relative block">

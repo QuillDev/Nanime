@@ -55,6 +55,16 @@ test("a failed transcode leaves the season needing action", () => {
   expect(summary.episodes.get("s/01.mkv")).toEqual({ kind: "failed" });
 });
 
+test("before readiness arrives a season claims neither ready nor needing a transcode", () => {
+  const summary = summarizeSeasonTranscode(paths, 4, undefined);
+  expect(summary.kind).toBe("loading");
+  expect(summary.episodes.get("s/01.mkv")).toEqual({ kind: "loading" });
+});
+
+test("a season of only directly playable episodes is ready without asking the server", () => {
+  expect(summarizeSeasonTranscode([], 3, undefined).kind).toBe("ready");
+});
+
 test("formats remaining time for people", () => {
   expect(formatRemaining(20)).toBe("1 min");
   expect(formatRemaining(31 * 60)).toBe("31 min");

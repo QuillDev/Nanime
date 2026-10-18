@@ -82,6 +82,11 @@ function captionDetail(state: EpisodeTranscodeState, media: AniListMedia | undef
   return media?.duration === null || media?.duration === undefined ? null : `${String(media.duration)} min`;
 }
 
+/** Loading counts as playable-looking, so tiles never flash a warning they may not need. */
+function blocksPlayback(state: EpisodeTranscodeState): boolean {
+  return state.kind !== "ready" && state.kind !== "loading";
+}
+
 export function EpisodeTile({
   entry, media, progress, onSelect, onSetWatched, pending, showMedia, seasonNumber, transcode,
 }: EpisodeTileProps): React.JSX.Element {
@@ -93,7 +98,7 @@ export function EpisodeTile({
   const number = movie ? null : episodeNumber(entry);
   const title = movie ? mediaTitle(media) : details?.title ?? entry.name;
   const watch = watchView(entry, progress);
-  const unavailable = transcode.kind !== "ready";
+  const unavailable = blocksPlayback(transcode);
   const detail = captionDetail(transcode, media);
   return (
     <li className="min-w-0">
@@ -106,7 +111,7 @@ export function EpisodeTile({
         className="group block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className={cn(
-          "relative block overflow-hidden rounded-xl transition-transform group-hover:scale-[1.015]",
+          "relative block overflow-hidden rounded-xl transition-transform group-hover:scale-[1.015] [&_img]:transition-[filter] [&_img]:duration-300",
           unavailable && "[&_img]:brightness-[.4] [&_img]:grayscale",
           transcode.kind === "transcoding" && "[&_img]:brightness-50 [&_img]:grayscale-[.6]",
         )}

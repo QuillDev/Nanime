@@ -15,7 +15,7 @@ import { AniListListControls } from "./AniListListControls.tsx";
 import { EpisodeGrid } from "./EpisodeGrid.tsx";
 import { SeasonActionsMenu } from "./SeasonActionsMenu.tsx";
 import { SeasonTranscodeStatus } from "./SeasonTranscodeStatus.tsx";
-import { useSeasonReadiness } from "../hooks/usePlaybackReadiness.ts";
+import { streamedSeasonPaths, useSeasonReadiness } from "../hooks/usePlaybackReadiness.ts";
 import { summarizeSeasonTranscode } from "../lib/seasonTranscode.ts";
 import {
   Collapsible,
@@ -38,7 +38,7 @@ interface SeasonSectionProps {
 }
 
 function useSeasonTranscode(season: SeasonGroup) {
-  const streamed = season.entries.flatMap((entry) => (entry.direct ? [] : [entry.rel]));
+  const streamed = streamedSeasonPaths(season.entries);
   const readiness = useSeasonReadiness(streamed);
   return summarizeSeasonTranscode(streamed, season.entries.length, readiness.data);
 }
