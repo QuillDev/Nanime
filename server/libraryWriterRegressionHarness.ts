@@ -13,6 +13,15 @@ await writeFile(join(media, rel), "original");
 let barrier: ReturnType<typeof Promise.withResolvers<void>> | null = null;
 let observed: ReturnType<typeof Promise.withResolvers<void>> | null = null;
 const qbPayloads: { readonly hash: string; readonly name: string; readonly content_path: string; readonly progress: number; readonly state: string; readonly tags: string }[] = [];
+const delayedQbPayloads: typeof qbPayloads = [];
+let delayedListings = 0;
+// Like a magnet the client is still registering: absent from the first listing
+// after the add, present from the next one on.
+function releaseDelayedPayloads(): void {
+  if (delayedQbPayloads.length > 0 && (delayedListings += 1) > 1) {
+    qbPayloads.push(...delayedQbPayloads.splice(0));
+  }
+}
 const qb = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
   if (barrier !== null) {
     observed?.resolve();
@@ -21,9 +30,9 @@ const qb = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
   const { pathname } = new URL(req.url);
   if (scenario === "torrent-outage") { return new Response("offline", { status: 503 }); }
   if (pathname.endsWith("/add")) {
-    if (scenario === "torrent-visible" || scenario === "torrent-visible-alias") {
+    if (scenario === "torrent-visible" || scenario === "torrent-visible-alias" || scenario === "torrent-delayed") {
       const form = await req.formData();
-      qbPayloads.push({ hash: "a".repeat(40), name: "Example torrent", content_path: scenario === "torrent-visible-alias" ? join(media, "Alias/episode.mkv") : join(media, rel), progress: 1, state: "uploading", tags: String(form.get("tags")) });
+      (scenario === "torrent-delayed" ? delayedQbPayloads : qbPayloads).push({ hash: "a".repeat(40), name: "Example torrent", content_path: scenario === "torrent-visible-alias" ? join(media, "Alias/episode.mkv") : join(media, rel), progress: 1, state: "uploading", tags: String(form.get("tags")) });
     }
     return new Response("Ok.");
   }
@@ -36,6 +45,7 @@ const qb = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
     }
     return new Response("Ok.");
   }
+  releaseDelayedPayloads();
   return Response.json(qbPayloads);
 } });
 process.env["QBITTORRENT_URL"] = `http://127.0.0.1:${qb.port}`;
@@ -158,7 +168,7 @@ try {
     assert.equal(await new Response(recovered.stdout).text(), "writer regressions passed\n");
   } else if (scenario === "torrent-recovered") {
     await assert.rejects(renameEpisode(), (error: unknown) => (error as { status: number }).status === 423);
-  } else if (scenario === "torrent-visible" || scenario === "torrent-visible-alias") {
+  } else if (scenario === "torrent-visible" || scenario === "torrent-visible-alias" || scenario === "torrent-delayed") {
     await visibleTorrentRegression();
   } else if (scenario === "torrent-outage") {
     await torrentOutageRegression();

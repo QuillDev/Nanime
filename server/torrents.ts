@@ -11,6 +11,10 @@ const QBITTORRENT_PASSWORD = process.env["QBITTORRENT_PASSWORD"] ?? "";
 const MAX_TORRENT_BYTES = 10 * 1024 * 1024;
 const MAX_MAGNET_LENGTH = 16_384;
 const OWNERSHIP_TIMEOUT_MS = 5000;
+// The client registers a magnet asynchronously, so a just-added torrent can be
+// missing from the first listing. Poll briefly before reporting it unobservable.
+const ADDITION_OBSERVE_ATTEMPTS = 10;
+const ADDITION_OBSERVE_INTERVAL_MS = 500;
 
 function configuredQbittorrentUrl(value: string): string {
   if (value === "") {
@@ -398,10 +402,22 @@ async function submitReservedTorrent(input: TorrentInput, savePath: string, tag:
   if (response?.ok !== true) {
     return new Response("Torrent addition outcome is unknown; its destination stays locked", { status: 502 });
   }
-  await torrentOwnership();
-  return torrentAdditionObserved(tag)
+  return await observeTorrentAddition(tag)
     ? Response.json({ added: true })
     : new Response("Torrent ownership is not observable yet; its destination stays locked", { status: 502 });
+}
+
+async function observeTorrentAddition(tag: string): Promise<boolean> {
+  for (let attempt = 1; attempt <= ADDITION_OBSERVE_ATTEMPTS; attempt += 1) {
+    await torrentOwnership();
+    if (torrentAdditionObserved(tag)) {
+      return true;
+    }
+    if (attempt < ADDITION_OBSERVE_ATTEMPTS) {
+      await Bun.sleep(ADDITION_OBSERVE_INTERVAL_MS);
+    }
+  }
+  return false;
 }
 
 interface CancelTorrentBody {
