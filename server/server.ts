@@ -17,6 +17,9 @@ import { playbackRoute } from "./playbackRoutes.ts";
 import {
   audioTracksResponse,
   hlsPlaylistResponse,
+  playbackPlan,
+  playbackReadinessResponse,
+  resumeTranscodeQueue,
   hlsSegmentResponse,
   offlineMediaRouteResponse,
   probeDuration,
@@ -94,6 +97,8 @@ const ADMIN_LIBRARY = adminLibraryRoutes({
   directPlayExtensions: DIRECT_PLAY,
 });
 await ADMIN_LIBRARY.recover();
+const TRANSCODE_OPTIONS = { mediaDir: MEDIA_DIR, mediaRoot: MEDIA_ROOT, videoExtensions: VIDEO_EXTS } as const;
+resumeTranscodeQueue(TRANSCODE_OPTIONS);
 async function safePath(rel: string | null): Promise<string | null> {
   if (rel === null || rel === "") {
     return null;
@@ -254,8 +259,13 @@ async function timedMediaResponse(context: RouteContext, abs: string): Promise<R
     if (!Number.isFinite(requestedStart) || requestedStart < 0) {
       return new Response("Bad request", { status: 400 });
     }
+    const plan = await playbackPlan(abs, url.searchParams.get("path") ?? "", { ...TRANSCODE_OPTIONS, hardwareAcceleration: HWACCEL });
+    if (plan.kind === "transcode-required") {
+      return new Response("This video must be transcoded before it can play", { status: 409 });
+    }
     return hlsPlaylistResponse({
       abs,
+      source: plan.source,
       audioIndex,
       duration: await probeDuration(abs),
       requestedStart,
@@ -292,6 +302,14 @@ async function libraryRoute(context: RouteContext): Promise<Response | null> {
   });
 }
 
+async function readinessRoute(rel: string | null): Promise<Response> {
+  const abs = await safePath(rel);
+  if (rel === null || abs === null || !VIDEO_EXTS.has(extname(abs).toLowerCase())) {
+    return new Response("Not found", { status: 404 });
+  }
+  return playbackReadinessResponse(abs, rel, { ...TRANSCODE_OPTIONS, hardwareAcceleration: HWACCEL });
+}
+
 async function libraryInformationRoute(context: RouteContext): Promise<Response | null> {
   const { pathname, url, req } = context;
   if (pathname === "/api/list" && req.method === "GET") {
@@ -310,6 +328,9 @@ async function libraryInformationRoute(context: RouteContext): Promise<Response 
       return new Response("Not found", { status: 404 });
     }
     return Response.json({ duration: await probeDuration(abs) });
+  }
+  if (pathname === "/api/playback-readiness" && req.method === "GET") {
+    return readinessRoute(url.searchParams.get("path"));
   }
   if (pathname === "/api/trickplay" && req.method === "GET") {
     const abs = await safePath(url.searchParams.get("path"));

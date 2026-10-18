@@ -10,6 +10,10 @@ export function loadPlayer() {
   return import("./components/Player.tsx");
 }
 
+export function loadPlaybackGate() {
+  return import("./components/PlaybackGate.tsx");
+}
+
 export function loadHlsPlayback() {
   return import("./lib/hlsPlayback.ts");
 }

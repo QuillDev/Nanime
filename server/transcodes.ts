@@ -1,13 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, realpath, rename, unlink } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
-import { availableParallelism, totalmem } from "node:os";
 import type { TranscodePreset } from "../shared/types.ts";
 import { database } from "./database.ts";
 import { claimTranscodeWorkerPaths, LibraryFileError, libraryWriterResponse, resolveExisting } from "./libraryWriterAdmission.ts";
 import { detachTorrentsForFiles } from "./torrents.ts";
 import { captureEncoder, captureProbe, readTranscodeProgress } from "./transcodeProgress.ts";
 import type { MediaLibraryOptions } from "./mediaLibraryOptions.ts";
+import { budget, encoderCommandPrefix, presetArgs, reapStrayEncodersOnce, reservedCpus, stopEncoder } from "./transcodeEncoder.ts";
 
 type TranscodeStatus = "cancelled" | "complete" | "failed" | "processing" | "queued";
 
@@ -64,16 +64,37 @@ database.run(`
   WHERE status = 'processing'
 `);
 
-const configuredWorkers = Number(process.env["NANIME_TRANSCODE_WORKERS"] ?? "");
-const automaticWorkers = availableParallelism() >= 24 && totalmem() >= 24 * 1024 ** 3 ? 2 : 1;
-const maxWorkers = Number.isInteger(configuredWorkers) && configuredWorkers > 0
-  ? Math.min(configuredWorkers, 4)
-  : automaticWorkers;
+const maxWorkers = budget.workers;
+const encoderPrefix = encoderCommandPrefix(await reservedCpus(budget.cpus));
 const activeJobs = new Set<string>();
 const editingJobs = new Set<string>();
 const cancelledJobs = new Set<string>();
-const activeProcesses = new Map<string, { kill: () => void }>();
+const activeProcesses = new Map<string, Bun.Subprocess<"ignore", "pipe", "pipe">>();
 const OUTPUT_NAME = /^(?<key>[a-f0-9]{24})-(?<id>[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.mkv$/u;
+
+const latestJobForSource = database.query<TranscodeRow, [string]>(`
+  SELECT * FROM transcode_jobs WHERE source_rel = ? ORDER BY created_at DESC LIMIT 1
+`);
+
+export interface SourceTranscodeState {
+  readonly status: TranscodeStatus;
+  readonly progress: number;
+}
+
+/** The newest stored-transcode job for a library video, if any. */
+export function sourceTranscodeState(rel: string): SourceTranscodeState | null {
+  const row = latestJobForSource.get(rel);
+  return row === null ? null : { status: row.status, progress: row.progress };
+}
+
+/** A finished compatibility copy that still sits beside its original. */
+export function storedCompatibilityCopy(rel: string, options: MediaLibraryOptions): Promise<string | null> {
+  const row = latestJobForSource.get(rel);
+  if (row?.status !== "complete" || row.preset !== "compatibility" || row.original_deleted === 1) {
+    return Promise.resolve(null);
+  }
+  return existingOutputPath(row, options);
+}
 
 function publicJob(row: TranscodeRow) {
   return {
@@ -91,12 +112,6 @@ function publicJob(row: TranscodeRow) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-
-function presetArgs(preset: TranscodePreset): readonly string[] {
-  return preset === "space-saver"
-    ? ["-c:v", "libsvtav1", "-preset", "5", "-crf", "30", "-pix_fmt", "yuv420p10le", "-c:a", "libopus", "-b:a", "128k"]
-    : ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k"];
 }
 
 function transcodePreset(value: string): TranscodePreset | null {
@@ -155,13 +170,15 @@ async function processJob(row: TranscodeRow, options: MediaLibraryOptions): Prom
   if (cancelledJobs.has(row.id)) {
     return;
   }
+  const threads = String(budget.threadsPerWorker);
   const proc = Bun.spawn([
+    ...encoderPrefix,
     "ffmpeg", "-hide_banner", "-loglevel", "error", "-progress", "pipe:1",
-    "-nostats", "-y", "-i", source,
+    "-nostats", "-y", "-threads", threads, "-filter_threads", threads, "-i", source,
     "-map", "0:v:0", "-map", "0:a?", "-map", "0:s?", "-map", "0:t?",
     "-map_metadata", "0", "-c:s", "copy", "-c:t", "copy",
     ...presetArgs(preset), output,
-  ], { stdout: "pipe", stderr: "pipe" });
+  ], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
   activeProcesses.set(row.id, proc);
   const stderr = new Response(proc.stderr).text();
   const progress = readTranscodeProgress(proc.stdout, sourceDuration, (sample) => {
@@ -220,6 +237,19 @@ async function executeJob(row: TranscodeRow, options: MediaLibraryOptions, relea
 }
 
 function runQueue(options: MediaLibraryOptions): void {
+  void (async (): Promise<void> => {
+    // Before this server's first worker starts, stop encoders a previous instance left behind.
+    await reapStrayEncodersOnce(resolve(options.mediaRoot, ".nanime-transcodes"));
+    startQueuedJobs(options);
+  })();
+}
+
+/** Resume queued work after a restart instead of waiting for an admin request. */
+export function resumeTranscodeQueue(options: MediaLibraryOptions): void {
+  runQueue(options);
+}
+
+function startQueuedJobs(options: MediaLibraryOptions): void {
   const queued = jobs.all().toReversed().filter((row) => (
     row.status === "queued" && !activeJobs.has(row.id) && !editingJobs.has(row.id)
   ));
@@ -343,7 +373,7 @@ function cancel(row: TranscodeRow, options: MediaLibraryOptions): Response | Pro
   if (activeJobs.has(row.id)) {
     updateJob.run("cancelled", null, null, Date.now(), row.id);
     cancelledJobs.add(row.id);
-    activeProcesses.get(row.id)?.kill();
+    stopEncoder(activeProcesses.get(row.id));
     return Response.json(publicJob(jobById.get(row.id) as TranscodeRow));
   }
   return editJob(row.id, options, async () => {

@@ -26,6 +26,7 @@ import {
   nyaaSearchResultSchema,
   playbackProgressSchema,
   playbackAuditEventSchema,
+  playbackReadinessSchema,
   provisionedUserSchema,
   schema,
   storageStatusSchema,
@@ -235,6 +236,9 @@ export const app = new Elysia({ name: "nanime" })
   .get("/api/media-info", ({ request, server }) => handle(request, server), {
     query: pathQuerySchema,
     response: schema.object({ duration: schema.number({ minimum: 0 }) }),
+  })
+  .get("/api/playback-readiness", ({ request, server }) => handle(request, server), {
+    query: pathQuerySchema, response: playbackReadinessSchema,
   })
   .post("/api/offline-media", ({ request, server, body }) => (
     handle(jsonRequest(request, body), server)
