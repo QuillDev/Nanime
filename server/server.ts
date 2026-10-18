@@ -302,12 +302,13 @@ async function libraryRoute(context: RouteContext): Promise<Response | null> {
   });
 }
 
-async function readinessRoute(rel: string | null): Promise<Response> {
+async function videoPath(rel: string): Promise<string | null> {
   const abs = await safePath(rel);
-  if (rel === null || abs === null || !VIDEO_EXTS.has(extname(abs).toLowerCase())) {
-    return new Response("Not found", { status: 404 });
-  }
-  return playbackReadinessResponse(abs, rel, { ...TRANSCODE_OPTIONS, hardwareAcceleration: HWACCEL });
+  return abs !== null && VIDEO_EXTS.has(extname(abs).toLowerCase()) ? abs : null;
+}
+
+function readinessRoute(req: Request): Promise<Response> {
+  return playbackReadinessResponse(req, videoPath, { ...TRANSCODE_OPTIONS, hardwareAcceleration: HWACCEL });
 }
 
 async function libraryInformationRoute(context: RouteContext): Promise<Response | null> {
@@ -329,8 +330,8 @@ async function libraryInformationRoute(context: RouteContext): Promise<Response 
     }
     return Response.json({ duration: await probeDuration(abs) });
   }
-  if (pathname === "/api/playback-readiness" && req.method === "GET") {
-    return readinessRoute(url.searchParams.get("path"));
+  if (pathname === "/api/playback-readiness" && req.method === "POST") {
+    return readinessRoute(req);
   }
   if (pathname === "/api/trickplay" && req.method === "GET") {
     const abs = await safePath(url.searchParams.get("path"));

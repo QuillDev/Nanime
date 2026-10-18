@@ -1,21 +1,34 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchPlaybackReadiness, type PlaybackReadiness } from "../libraryApi.ts";
+import { fetchPlaybackReadiness, type PlaybackReadiness, type PlaybackReadinessBatch } from "../libraryApi.ts";
 
-export function playbackReadinessKey(rel: string) {
-  return ["playback-readiness", rel] as const;
+const READINESS_KEY = "playback-readiness";
+const POLL_MS = 3000;
+
+export function playbackReadinessKey() {
+  return [READINESS_KEY] as const;
 }
 
-function pollWhileTranscoding(readiness: PlaybackReadiness | undefined): number | false {
-  const status = readiness?.transcode?.status;
-  return readiness?.ready === false && (status === "queued" || status === "processing") ? 3000 : false;
+export function transcodeActive(item: PlaybackReadiness): boolean {
+  const status = item.transcode?.status;
+  return status === "queued" || status === "processing";
 }
 
-/** Whether a streamed (non-direct) episode can play now or needs a stored transcode first. */
-export function usePlaybackReadiness(rel: string, enabled: boolean) {
+function pollWhileTranscoding(batch: PlaybackReadinessBatch | undefined): number | false {
+  return batch?.items.some(transcodeActive) === true ? POLL_MS : false;
+}
+
+/** Readiness of streamed (non-direct) episodes: playable now, or needing a stored transcode. */
+export function useSeasonReadiness(paths: readonly string[]) {
   return useQuery({
-    queryKey: playbackReadinessKey(rel),
-    queryFn: ({ signal }) => fetchPlaybackReadiness(rel, signal),
-    enabled,
+    queryKey: [READINESS_KEY, ...paths],
+    queryFn: ({ signal }) => fetchPlaybackReadiness(paths, signal),
+    enabled: paths.length > 0,
     refetchInterval: (query) => pollWhileTranscoding(query.state.data),
   });
+}
+
+export function usePlaybackReadiness(rel: string, enabled: boolean) {
+  const paths = enabled ? [rel] : [];
+  const query = useSeasonReadiness(paths);
+  return { data: query.data?.items[0], error: query.error };
 }

@@ -79,12 +79,19 @@ const latestJobForSource = database.query<TranscodeRow, [string]>(`
 export interface SourceTranscodeState {
   readonly status: TranscodeStatus;
   readonly progress: number;
+  /** Projected from elapsed time once a running job has made measurable progress. */
+  readonly remainingSeconds: number | null;
+}
+
+function remainingSeconds(row: TranscodeRow): number | null {
+  const measurable = row.status === "processing" && row.started_at !== null && row.progress >= 0.01;
+  return measurable ? Math.round((Date.now() - (row.started_at ?? 0)) / 1000 / row.progress * (1 - row.progress)) : null;
 }
 
 /** The newest stored-transcode job for a library video, if any. */
 export function sourceTranscodeState(rel: string): SourceTranscodeState | null {
   const row = latestJobForSource.get(rel);
-  return row === null ? null : { status: row.status, progress: row.progress };
+  return row === null ? null : { status: row.status, progress: row.progress, remainingSeconds: remainingSeconds(row) };
 }
 
 /** A finished compatibility copy that still sits beside its original. */

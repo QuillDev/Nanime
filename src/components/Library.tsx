@@ -67,6 +67,7 @@ interface SelectedTitleProps {
   readonly onShowLink?: (() => void) | undefined;
   readonly onSeasonLink?: ((season: SeasonGroup) => void) | undefined;
   readonly onSelect: (entry: MediaEntry) => void;
+  readonly canTranscode: boolean;
 }
 
 function SelectedTitle({
@@ -74,6 +75,7 @@ function SelectedTitle({
   media,
   metadata,
   progress,
+  canTranscode,
   onBack,
   onShowLink,
   onSeasonLink,
@@ -97,6 +99,7 @@ function SelectedTitle({
       media={media}
       metadata={metadata}
       progress={progress}
+      canTranscode={canTranscode}
       onBack={onBack}
       onShowLink={onShowLink}
       onSeasonLink={onSeasonLink}
@@ -184,7 +187,7 @@ interface LibraryViewProps extends Pick<
 function LibraryView(props: LibraryViewProps): React.JSX.Element {
   if (props.selectedShow !== null) {
     return (
-      <SelectedTitle show={props.selectedShow} media={props.showMedia} metadata={props.metadata} progress={props.progress} onBack={props.onShowsBack} onShowLink={props.canManageMappings ? props.navigation.handleShowLink : undefined} onSeasonLink={props.canManageMappings ? props.navigation.handleSeasonLink : undefined} onSelect={props.onSelect} />
+      <SelectedTitle show={props.selectedShow} media={props.showMedia} metadata={props.metadata} progress={props.progress} canTranscode={props.canManageMappings} onBack={props.onShowsBack} onShowLink={props.canManageMappings ? props.navigation.handleShowLink : undefined} onSeasonLink={props.canManageMappings ? props.navigation.handleSeasonLink : undefined} onSelect={props.onSelect} />
     );
   }
   return (

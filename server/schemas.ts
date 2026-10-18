@@ -253,11 +253,10 @@ export const transcodeJobSchema = object({
   progress: number(), speed: number(), startedAt: nullableNumber,
   originalDeleted: boolean(), createdAt: number(), updatedAt: number(),
 });
-const sourceTranscodeSchema = object({ status: transcodeStatusSchema, progress: number() });
-export const playbackReadinessSchema = object({
-  ready: boolean(),
-  transcode: union([sourceTranscodeSchema, nullValue()]),
-});
+const sourceTranscodeSchema = object({ status: transcodeStatusSchema, progress: number(), remainingSeconds: nullableNumber });
+const readinessItemSchema = object({ path: string(), ready: boolean(), transcode: union([sourceTranscodeSchema, nullValue()]) });
+export const playbackReadinessSchema = object({ workers: number(), items: t.Array(readinessItemSchema) });
+export const playbackReadinessBodySchema = object({ paths: t.Array(string(), { maxItems: 500 }) });
 export const mediaScanSchema = object({
   sourcePath: string(),
   status: union([

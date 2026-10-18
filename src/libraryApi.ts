@@ -57,14 +57,22 @@ export async function fetchMediaDuration(rel: string, signal: AbortSignal): Prom
 }
 
 export interface PlaybackReadiness {
+  readonly path: string;
   readonly ready: boolean;
-  readonly transcode: { readonly status: TranscodeJob["status"]; readonly progress: number } | null;
+  readonly transcode: {
+    readonly status: TranscodeJob["status"];
+    readonly progress: number;
+    readonly remainingSeconds: number | null;
+  } | null;
 }
 
-export async function fetchPlaybackReadiness(rel: string, signal: AbortSignal): Promise<PlaybackReadiness> {
-  const response = await api.api["playback-readiness"].get({
-    query: { path: rel },
-    fetch: { signal },
-  });
+export interface PlaybackReadinessBatch {
+  /** Stored transcodes the server runs in parallel. */
+  readonly workers: number;
+  readonly items: readonly PlaybackReadiness[];
+}
+
+export async function fetchPlaybackReadiness(paths: readonly string[], signal: AbortSignal): Promise<PlaybackReadinessBatch> {
+  const response = await api.api["playback-readiness"].post({ paths: [...paths] }, { fetch: { signal } });
   return unwrap(response, "Playback readiness request");
 }
