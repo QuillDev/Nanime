@@ -28,7 +28,7 @@ function HeroBackdrop({ feature }: { readonly feature: HomeFeature }): React.JSX
       {source !== null && (
         <img src={source} alt="" className={`absolute inset-0 size-full object-cover object-[50%_25%] ${banner === null && frame === null ? "scale-110 blur-md" : ""}`} />
       )}
-      <span aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(90deg,rgb(0_0_0)_0%,rgb(0_0_0/0.85)_32%,rgb(0_0_0/0.2)_65%,rgb(0_0_0/0.45)_100%),linear-gradient(0deg,rgb(0_0_0)_0%,transparent_38%)]" />
+      <span aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(90deg,rgb(0_0_0)_0%,rgb(0_0_0/0.85)_32%,rgb(0_0_0/0.3)_52%,rgb(0_0_0/0.75)_72%,rgb(0_0_0/0.9)_100%),linear-gradient(0deg,rgb(0_0_0)_0%,transparent_38%)]" />
     </>
   );
 }

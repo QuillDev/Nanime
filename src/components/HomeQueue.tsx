@@ -53,7 +53,7 @@ function QueueRow({ item, onSelect, onDismiss }: QueueProps & { readonly item: C
 /** The rest of Continue Watching, beside the banner. */
 export function HomeQueue({ items, onSelect, onDismiss }: QueueProps & { readonly items: readonly ContinueWatchingItem[] }): React.JSX.Element {
   return (
-    <section aria-labelledby="home-queue" className="w-full rounded-2xl bg-black/80 p-3.5 lg:w-[22.5rem]">
+    <section aria-labelledby="home-queue" className="w-full lg:w-[22.5rem]">
       <h2 id="home-queue" className="mb-2 text-[13px] font-semibold text-muted-foreground">Also in progress</h2>
       <ul className="grid gap-2">
         {items.map((item) => <QueueRow key={item.entry.rel} item={item} onSelect={onSelect} onDismiss={onDismiss} />)}
