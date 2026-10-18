@@ -79,6 +79,13 @@ include AniList and qBittorrent. AniList is the only metadata source.
   avoid private data beyond the selected media path already shown to the user,
   and stay out of the normal viewing experience when disabled.
 
+## Android shell
+
+`android/` is a native WebView host for this web client, not a second UI. Build
+features and screens in the web client. Keep the shell limited to platform glue:
+server selection, navigation policy, fullscreen video, file pickers, insets and
+self-updates.
+
 ## Client and design
 
 - Use Tailwind CSS v4 and the existing shadcn/ui patterns. Surfaces are solid
