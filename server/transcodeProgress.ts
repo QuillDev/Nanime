@@ -33,8 +33,10 @@ export async function readTranscodeProgress(
       const separator = line.indexOf("=");
       const key = line.slice(0, separator);
       const value = line.slice(separator + 1).trim();
-      if (key === "out_time_us") {
-        outputSeconds = Number(value) / 1_000_000;
+      const microseconds = Number(value);
+      // FFmpeg reports N/A until the first frame is muxed.
+      if (key === "out_time_us" && Number.isFinite(microseconds)) {
+        outputSeconds = microseconds / 1_000_000;
       } else if (key === "speed") {
         speed = speedValue(value);
       }

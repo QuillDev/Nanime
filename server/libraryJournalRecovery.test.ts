@@ -69,9 +69,10 @@ const DONE = { state: "done", created: null } as const;
 test("never moves an unrelated entry that appeared at the target back to the source", async () => {
   const root = await library("foreign-target", { "Show/a.mkv": "original", "Target/keep.txt": "k" });
   const id = await idOf(join(root, "Show/a.mkv"));
-  // Interrupted before the step ran; meanwhile the source vanished and something else took the target.
-  await rm(join(root, "Show/a.mkv"));
+  // Interrupted before the step ran; meanwhile something else took the target and the source vanished.
+  // Create the unrelated file first so it cannot reuse the source's freed inode (and so its identity).
   await writeFile(join(root, "Target/a.mkv"), "unrelated file");
+  await rm(join(root, "Show/a.mkv"));
   const result = await startupRecovery("foreign-target", [{ kind: "move-file", from: "Show/a.mkv", to: "Target/a.mkv", id }], [STARTED]);
   expect(result).toEqual({ status: "recovery-required", locks: ["Show/a.mkv", "Target/a.mkv"] });
   expect(await exists(join(root, "Show/a.mkv"))).toBe(false);
