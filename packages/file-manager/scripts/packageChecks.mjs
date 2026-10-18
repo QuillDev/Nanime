@@ -62,12 +62,18 @@ function unscopedSelectors(css) {
 }
 
 async function surfaceProblems(dir) {
-  const lib = await import(`${dir}/dist/index.js`);
-  const dts = await Bun.file(`${dir}/dist/index.d.ts`).text();
+  const [lib, dts] = await Promise.all([
+    // The package under test is only known at runtime.
+    // eslint-disable-next-line react-doctor/no-dynamic-import-path
+    import(`${dir}/dist/index.js`),
+    Bun.file(`${dir}/dist/index.d.ts`).text(),
+  ]);
   const model = modelProblems(lib);
   const problems = [
     ...EXPORTED_FUNCTIONS.filter((name) => typeof lib[name] !== "function").map((name) => `export ${name} missing`),
     ...model.problems,
+    // The declaration file is one string, so includes() is a substring search.
+    // eslint-disable-next-line react-doctor/js-set-map-lookups
     ...DECLARED_TYPES.filter((name) => !dts.includes(name)).map((name) => `index.d.ts lacks ${name}`),
   ];
   return { count: model.count, problems };
@@ -78,10 +84,12 @@ async function surfaceProblems(dir) {
  * one-line summary of what passed.
  */
 export async function checkPackage(dir) {
-  const missing = await missingFiles(dir);
-  const js = await Bun.file(`${dir}/dist/index.js`).text();
-  const css = await Bun.file(`${dir}/dist/styles.css`).text();
-  const surface = await surfaceProblems(dir);
+  const [missing, js, css, surface] = await Promise.all([
+    missingFiles(dir),
+    Bun.file(`${dir}/dist/index.js`).text(),
+    Bun.file(`${dir}/dist/styles.css`).text(),
+    surfaceProblems(dir),
+  ]);
   const unscoped = unscopedSelectors(css);
   const problems = [...missing, ...bundleProblems(js), ...surface.problems];
   return {
