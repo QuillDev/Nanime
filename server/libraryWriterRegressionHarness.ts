@@ -17,11 +17,15 @@ const delayedQbPayloads: typeof qbPayloads = [];
 let delayedListings = 0;
 // Like a magnet the client is still registering: absent from the first listing
 // after the add, present from the next one on.
+// "torrent-late" stays hidden until the add-time observation window has closed.
+let lateTorrentListed = scenario !== "torrent-late";
 function releaseDelayedPayloads(): void {
-  if (delayedQbPayloads.length > 0 && (delayedListings += 1) > 1) {
+  if (delayedQbPayloads.length > 0 && (delayedListings += 1) > 1 && lateTorrentListed) {
     qbPayloads.push(...delayedQbPayloads.splice(0));
   }
 }
+const RECORDED_ADDS = new Set(["torrent-visible", "torrent-visible-alias", "torrent-delayed", "torrent-late"]);
+const DELAYED_ADDS = new Set(["torrent-delayed", "torrent-late"]);
 const qb = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
   if (barrier !== null) {
     observed?.resolve();
@@ -30,9 +34,9 @@ const qb = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
   const { pathname } = new URL(req.url);
   if (scenario === "torrent-outage") { return new Response("offline", { status: 503 }); }
   if (pathname.endsWith("/add")) {
-    if (scenario === "torrent-visible" || scenario === "torrent-visible-alias" || scenario === "torrent-delayed") {
+    if (RECORDED_ADDS.has(scenario)) {
       const form = await req.formData();
-      (scenario === "torrent-delayed" ? delayedQbPayloads : qbPayloads).push({ hash: "a".repeat(40), name: "Example torrent", content_path: scenario === "torrent-visible-alias" ? join(media, "Alias/episode.mkv") : join(media, rel), progress: 1, state: "uploading", tags: String(form.get("tags")) });
+      (DELAYED_ADDS.has(scenario) ? delayedQbPayloads : qbPayloads).push({ hash: "a".repeat(40), name: "Example torrent", content_path: scenario === "torrent-visible-alias" ? join(media, "Alias/episode.mkv") : join(media, rel), progress: 1, state: "uploading", tags: String(form.get("tags")) });
     }
     return new Response("Ok.");
   }
@@ -170,6 +174,8 @@ try {
     await assert.rejects(renameEpisode(), (error: unknown) => (error as { status: number }).status === 423);
   } else if (scenario === "torrent-visible" || scenario === "torrent-visible-alias" || scenario === "torrent-delayed") {
     await visibleTorrentRegression();
+  } else if (scenario === "torrent-late") {
+    await lateTorrentRegression();
   } else if (scenario === "torrent-outage") {
     await torrentOutageRegression();
   } else if (scenario === "upload") {
@@ -339,6 +345,29 @@ async function uploadRegression(): Promise<void> {
   assert.equal(await readFile(join(media, "Show/uploaded.mkv"), "utf8"), "uploaded");
   await renameShow();
   assert.equal(await readFile(join(media, "Renamed Show/uploaded.mkv"), "utf8"), "uploaded");
+}
+
+function lockedStatus(paths: readonly string[]): number | null {
+  try {
+    claimLibraryPaths(paths)();
+    return null;
+  } catch (error) {
+    return (error as { status: number }).status;
+  }
+}
+
+async function lateTorrentRegression(): Promise<void> {
+  const response = await torrentsResponse(torrentRequest(), media, new URL("http://nanime.test/api/torrents"));
+  assert.equal(response.status, 502, "a torrent still hidden after the add window stays pending");
+  assert.equal(lockedStatus(["Show/extra.mkv"]), 423);
+  lateTorrentListed = true;
+  // No library write reads ownership here; only background reconciliation can observe the payload.
+  const deadline = Date.now() + 5000;
+  while (lockedStatus(["Show/extra.mkv"]) !== null && Date.now() < deadline) {
+    await Bun.sleep(50);
+  }
+  assert.equal(lockedStatus(["Show/extra.mkv"]), null, "reconciliation releases the pending reservation once qBittorrent lists the payload");
+  assert.equal(lockedStatus(["Show"]), 423);
 }
 
 async function visibleTorrentRegression(): Promise<void> {
