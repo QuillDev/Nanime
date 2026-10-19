@@ -105,3 +105,16 @@ test("seeking anywhere serves the segment that starts on that keyframe, sharing 
     await rm(directory, { recursive: true, force: true });
   }
 }, 30_000);
+
+test("probed keyframes survive a restart without reading the episode again", async () => {
+  const abs = join(root, rel);
+  const probed = await sourceKeyframes(abs);
+  const module = join(import.meta.dir, "hlsPassthrough.ts");
+  // A fresh process with no ffprobe on PATH can only answer from the stored probe.
+  const script = `const { sourceKeyframes } = await import(${JSON.stringify(module)}); console.log(JSON.stringify(await sourceKeyframes(${JSON.stringify(abs)})));`;
+  const proc = Bun.spawn([process.execPath, "-e", script], { env: { ...process.env, PATH: "/nonexistent" }, stdout: "pipe", stderr: "pipe" });
+  const [code, out, err] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+
+  expect({ code, err }).toEqual({ code: 0, err: "" });
+  expect(JSON.parse(out)).toEqual([...probed]);
+});

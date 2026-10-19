@@ -52,9 +52,33 @@ function hlsErrorDetail(data: ErrorData): string {
   ].join("\n");
 }
 
+/**
+ * A complete (VOD) playlist is the untouched source: its bitrate swings with
+ * the scene, peaking at several times its average. Buffering minutes ahead
+ * banks quiet scenes so a link near the average rides through the peaks.
+ * Live sessions keep the short buffer, since their segments only exist as the
+ * encoder reaches them.
+ */
+const VOD_BUFFER_SECONDS = 600;
+const VOD_BUFFER_BYTES = 120 * 1000 * 1000;
+const VOD_BACK_BUFFER_SECONDS = 60;
+
+function bufferDeeplyForVod(hls: Hls): void {
+  hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => {
+    if (data.details.live) {
+      return;
+    }
+    hls.config.maxBufferLength = VOD_BUFFER_SECONDS;
+    hls.config.maxMaxBufferLength = VOD_BUFFER_SECONDS;
+    hls.config.maxBufferSize = VOD_BUFFER_BYTES;
+    hls.config.backBufferLength = VOD_BACK_BUFFER_SECONDS;
+  });
+}
+
 function bindHlsEvents(hls: Hls, options: HlsAttachment): void {
   const { video, onError, resumeAt = 0, shouldPlay = true, timelineOffset = 0 } = options;
   let recoveredMediaError = false;
+  bufferDeeplyForVod(hls);
   hls.on(Hls.Events.MANIFEST_PARSED, () => {
     hls.startLoad(Math.max(0, resumeAt - timelineOffset));
     if (shouldPlay) {
