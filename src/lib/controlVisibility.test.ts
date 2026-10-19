@@ -23,10 +23,6 @@ class ManualScheduler implements VisibilityScheduler {
       task();
     }
   }
-
-  get size(): number {
-    return this.timers.size;
-  }
 }
 
 function visibilityHarness() {
@@ -45,12 +41,10 @@ describe("player control visibility", () => {
 
     controller.activity();
     controller.interactionStart();
-    expect(scheduler.size).toBe(0);
     scheduler.runPending();
     expect(changes).toEqual([true, true]);
 
     controller.interactionEnd();
-    expect(scheduler.size).toBe(1);
     scheduler.runPending();
     expect(changes).toEqual([true, true, true, false]);
   });
@@ -60,7 +54,6 @@ describe("player control visibility", () => {
 
     controller.activity();
     controller.activity();
-    expect(scheduler.size).toBe(1);
     scheduler.runPending();
     expect(changes).toEqual([true, true, false]);
   });

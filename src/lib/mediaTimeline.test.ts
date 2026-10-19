@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { containsTime, planHlsSeek, type TimeRangesLike } from "./mediaTimeline.ts";
+import {
+  absoluteBufferedEnd,
+  boundedSeekPosition,
+  containsTime,
+  hlsTimelineOffset,
+  planHlsSeek,
+  type TimeRangesLike,
+} from "./mediaTimeline.ts";
 
 function ranges(...values: readonly [number, number][]): TimeRangesLike {
   return {
@@ -26,5 +33,24 @@ describe("HLS timeline seeking", () => {
 
   test("restarts when the media element has not exposed a seekable window yet", () => {
     expect(planHlsSeek(30, 0, ranges())).toEqual({ kind: "restart" });
+  });
+
+  test("reports the absolute buffered edge from the range containing playback", () => {
+    const buffered = ranges([0, 4], [8, 22], [30, 40]);
+    expect(absoluteBufferedEnd(buffered, 10, 610)).toBe(622);
+    expect(absoluteBufferedEnd(buffered, 6, 606)).toBe(606);
+  });
+
+  test("clamps relative seeks to the playable timeline", () => {
+    expect(boundedSeekPosition(5, -10, 100)).toBe(0);
+    expect(boundedSeekPosition(95, 10, 100)).toBe(100);
+    expect(boundedSeekPosition(50, 10, 100)).toBe(60);
+    expect(boundedSeekPosition(50, 10, Number.NaN)).toBe(0);
+  });
+
+  test("sanitizes invalid resume positions before segment alignment", () => {
+    expect(hlsTimelineOffset(-20)).toBe(0);
+    expect(hlsTimelineOffset(Number.POSITIVE_INFINITY)).toBe(0);
+    expect(hlsTimelineOffset(9.9)).toBe(8);
   });
 });

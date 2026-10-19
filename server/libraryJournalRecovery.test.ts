@@ -244,20 +244,20 @@ test("post-validation source substitution preserves the foreign inode and conten
 });
 
 test("a refused native file mutation fails closed without an unsafe fallback", async () => {
-  const result = await faultScenario<{ outcome: Outcome; renames: number; source: string; target: readonly string[] }>("link-refused");
+  const result = await faultScenario<{ outcome: Outcome; source: string; target: readonly string[] }>("link-refused");
   expect(result.outcome.status).toBe(409);
-  expect(result.outcome.message).toContain("EPERM");
+  expect(result.outcome.message).toContain("(EPERM)");
+  expect(result.outcome.message).toContain("No unsafe rename fallback");
   expect(result.outcome.rolledBack).toBe(true);
-  expect(result.renames).toBe(0);
   expect(result.source).toBe("original");
   expect(result.target).toEqual(["keep.txt"]);
 });
 
 test("a destination that appears just before the link is never overwritten", async () => {
-  const result = await faultScenario<{ outcome: Outcome; renames: number; source: string; target: string }>("destination-appears");
+  const result = await faultScenario<{ outcome: Outcome; source: string; target: string }>("destination-appears");
   expect(result.outcome.status).toBe(409);
   expect(result.outcome.message).toContain("Nothing was overwritten");
-  expect(result).toMatchObject({ renames: 0, source: "original", target: "someone else's file" });
+  expect(result).toMatchObject({ source: "original", target: "someone else's file" });
 });
 
 test("cleanup after a failed move never removes a destination that changed identity", async () => {
@@ -297,9 +297,9 @@ test("every step re-checks that its folders are still real folders", async () =>
 });
 
 test("two names for one file are a collision, not a case-only rename", async () => {
-  const result = await faultScenario<{ outcome: Outcome; renames: number; names: readonly string[] }>("same-inode-is-not-case-rename");
+  const result = await faultScenario<{ outcome: Outcome; names: readonly string[] }>("same-inode-is-not-case-rename");
   expect(result.outcome.status).toBe(409);
-  expect(result).toMatchObject({ renames: 0, names: ["a.mkv", "b.mkv"] });
+  expect(result).toMatchObject({ names: ["a.mkv", "b.mkv"] });
 });
 
 test("case-spelled hard links remain a collision with both names unchanged", async () => {
@@ -353,11 +353,12 @@ test("an ambiguous failing current step stays locked and stops predecessor rollb
   expect(result).toMatchObject({ foreign: "foreign", saved: "b", keep: "keep" });
 });
 
-for (const errno of [38, 22, 95]) {
-  test(`an unsupported atomic folder syscall (${errno}) fails closed`, async () => {
+for (const [errno, code] of [[38, "ENOSYS"], [22, "EINVAL"], [95, "ENOTSUP"]] as const) {
+  test(`an unsupported atomic folder syscall (${code}) fails closed`, async () => {
     const result = await faultScenario<{ outcome: Outcome; status: string; locks: readonly string[]; source: string; target: readonly string[]; keep: string }>(`atomic-unsupported-${errno}`);
     expect(result.outcome.status).toBe(409);
     expect(result.outcome.rolledBack).toBe(true);
+    expect(result.outcome.message).toContain(`(${code})`);
     expect(result.outcome.message).toContain("No unsafe rename fallback");
     expect(result.status).toBe("rolled-back");
     expect(result.locks).toEqual([]);

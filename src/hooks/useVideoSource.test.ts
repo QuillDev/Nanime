@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { attachNativeHls, type NativeHlsVideo } from "../lib/nativeHlsPlayback.ts";
 import {
   attachDirectVideoSource,
@@ -7,91 +7,109 @@ import {
 import { selectHlsPlaybackEngine } from "../lib/hlsPlaybackSelection.ts";
 import { backgroundRecoveryDue } from "./useHlsBackgroundRecovery.ts";
 
-function nativeVideo(supported = true) {
-  const play = mock(() => Promise.resolve());
-  const load = mock(() => undefined);
-  const pause = mock(() => undefined);
-  const removeAttribute = mock((_name: string) => undefined);
-  const video: NativeHlsVideo = Object.assign(new EventTarget(), {
-    currentTime: 0,
-    src: "",
-    canPlayType: () => supported ? "maybe" as const : "" as const,
-    load,
-    pause,
-    play,
-    removeAttribute,
-  });
-  return {
-    video, play, load, pause, removeAttribute,
-    loadedMetadata: () => video.dispatchEvent(new Event("loadedmetadata")),
-  };
+/** A media element that keeps the state a viewer would see: source, time, paused. */
+class FakeNativeVideo extends EventTarget implements NativeHlsVideo {
+  currentTime = 0;
+  src = "";
+  paused = true;
+  private readonly hlsSupport: CanPlayTypeResult;
+
+  constructor(hlsSupport: CanPlayTypeResult) {
+    super();
+    this.hlsSupport = hlsSupport;
+  }
+
+  canPlayType(): CanPlayTypeResult {
+    return this.hlsSupport;
+  }
+
+  load(): void {
+    this.currentTime = 0;
+  }
+
+  pause(): void {
+    this.paused = true;
+  }
+
+  play(): Promise<void> {
+    this.paused = this.src === "";
+    return Promise.resolve();
+  }
+
+  removeAttribute(name: string): void {
+    if (name === "src") {
+      this.src = "";
+    }
+  }
+
+  loadedMetadata(): void {
+    this.dispatchEvent(new Event("loadedmetadata"));
+  }
 }
 
 describe("native HLS playback adapter", () => {
   test("positions Safari-style native HLS at the requested VOD time", () => {
-    const native = nativeVideo();
-    const onError = mock((_message: string) => undefined);
+    const video = new FakeNativeVideo("maybe");
+    const errors: string[] = [];
 
     attachNativeHls({
-      video: native.video,
+      video,
       url: "/hls?start=367",
-      onError,
+      onError: (message) => errors.push(message),
       resumeAt: 367,
       timelineOffset: 366,
     });
+    video.loadedMetadata();
 
-    expect(native.video.src).toBe("/hls?start=367");
-    expect(native.play).toHaveBeenCalledTimes(1);
-    native.loadedMetadata();
-    expect(native.video.currentTime).toBe(1);
-    expect(native.play).toHaveBeenCalledTimes(2);
-    expect(onError).not.toHaveBeenCalled();
+    expect(video.src).toBe("/hls?start=367");
+    expect(video.currentTime).toBe(1);
+    expect(video.paused).toBe(false);
+    expect(errors).toEqual([]);
   });
 
   test("loads a paused replacement without forcing playback", () => {
-    const native = nativeVideo();
+    const video = new FakeNativeVideo("maybe");
 
     attachNativeHls({
-      video: native.video,
+      video,
       url: "/hls",
       onError: () => undefined,
       resumeAt: 901,
       shouldPlay: false,
       timelineOffset: 900,
     });
-    native.loadedMetadata();
+    video.loadedMetadata();
 
-    expect(native.video.currentTime).toBe(1);
-    expect(native.play).not.toHaveBeenCalled();
+    expect(video.currentTime).toBe(1);
+    expect(video.paused).toBe(true);
   });
 
-  test("stops native loading and removes delayed metadata work on detach", () => {
-    const native = nativeVideo();
+  test("detaching stops playback, unloads the source and ignores late metadata", () => {
+    const video = new FakeNativeVideo("maybe");
     const detach = attachNativeHls({
-      video: native.video,
+      video,
       url: "/hls",
       onError: () => undefined,
       resumeAt: 20,
     });
 
     detach?.();
-    native.loadedMetadata();
+    video.loadedMetadata();
 
-    expect(native.pause).toHaveBeenCalledTimes(1);
-    expect(native.removeAttribute).toHaveBeenCalledWith("src");
-    expect(native.load).toHaveBeenCalledTimes(1);
-    expect(native.play).toHaveBeenCalledTimes(1);
+    expect(video.paused).toBe(true);
+    expect(video.src).toBe("");
+    expect(video.currentTime).toBe(0);
   });
 
   test("reports unsupported native playback without attaching a source", () => {
-    const native = nativeVideo(false);
-    const onError = mock((_message: string) => undefined);
+    const video = new FakeNativeVideo("");
+    const errors: string[] = [];
 
-    attachNativeHls({ video: native.video, url: "/hls", onError });
+    attachNativeHls({ video, url: "/hls", onError: (message) => errors.push(message) });
 
-    expect(native.video.src).toBe("");
-    expect(native.play).not.toHaveBeenCalled();
-    expect(onError).toHaveBeenCalledWith("This browser does not support HLS video playback.");
+    expect(video.src).toBe("");
+    expect(video.paused).toBe(true);
+    expect(errors).toEqual(["This browser does not support HLS video playback."]);
   });
 });
 
@@ -116,13 +134,18 @@ describe("HLS background recovery", () => {
 });
 
 describe("direct video playback", () => {
-  test("enables CORS mode before attaching an offline service-worker URL", async () => {
+  test("enables CORS mode before attaching an offline service-worker URL, then plays", async () => {
+    // The browser fixes the request mode when src is assigned, so the order
+    // of these assignments is the contract with the media element.
     const assignments: string[] = [];
-    const play = mock(() => Promise.resolve());
     let crossOrigin: string | null = null;
     let src = "";
+    let playing = false;
     const video: DirectVideoElement = {
-      play,
+      play: () => {
+        playing = src !== "";
+        return Promise.resolve();
+      },
       get crossOrigin() {
         return crossOrigin;
       },
@@ -146,6 +169,6 @@ describe("direct video playback", () => {
       "crossOrigin:anonymous",
       "src:/offline-download/episode-1/media",
     ]);
-    expect(play).toHaveBeenCalledTimes(1);
+    expect(playing).toBe(true);
   });
 });
