@@ -5,7 +5,8 @@ import { MediaHeader } from "../components/MediaHeader.tsx";
 import { ShowPage } from "../components/ShowPage.tsx";
 import { SessionProviders } from "../components/SessionProviders.tsx";
 import { HomePreview, type HomeState } from "./homePreview.tsx";
-import { ProfilePreview } from "./ProfilePreview.tsx";
+import { AdminPreview, ProfilePreview } from "./AppPreviews.tsx";
+import { isAdminTab, type AdminTab } from "../hooks/useMediaRoute.ts";
 import "../styles.css";
 import {
   previewJobs, previewMedia, previewMetadata, previewProgress, previewReadiness, previewShow, previewUser,
@@ -78,7 +79,12 @@ function ShowPreview(): React.JSX.Element {
   );
 }
 
+const adminTab = requested.startsWith("admin-") && isAdminTab(requested.slice(6)) ? requested.slice(6) as AdminTab : null;
+
 function PreviewPage(): React.JSX.Element {
+  if (adminTab !== null) {
+    return <AdminPreview tab={adminTab} />;
+  }
   if (profileState) {
     return <ProfilePreview />;
   }

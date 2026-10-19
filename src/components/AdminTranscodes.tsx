@@ -1,169 +1,91 @@
-import { useCallback, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
-import { Film } from "lucide-react";
-import { formatDuration, formatSize } from "../format.ts";
-import { useCancelTranscode, useDeleteTranscode, useStartTranscode, useTranscodes } from "../hooks/useTranscodes.ts";
-import type { MediaEntry, TranscodeJob, TranscodePreset } from "../types.ts";
-import { AdminPanel } from "./AdminPanel.tsx";
-import { SearchableSelect, type SearchableSelectOption } from "./ui/SearchableSelect.tsx";
-import { groupShows } from "../lib/library.ts";
-import { episodeNumber } from "../lib/anilist.ts";
+import { useMemo } from "react";
+import { useProfileEpisodes } from "../hooks/useProfileEpisodes.ts";
+import { useTranscodes } from "../hooks/useTranscodes.ts";
+import { episodeShortLabel, profileEpisode, type ProfileEpisodes } from "../lib/profileMedia.ts";
+import { isActiveJob, jobSizes, jobStatus } from "../lib/transcodeDisplay.ts";
+import type { TranscodeJob } from "../types.ts";
+import { AdminPage } from "./AdminPage.tsx";
+import { MediaThumbnail } from "./MediaThumbnail.tsx";
+import { ListSkeleton } from "./Skeleton.tsx";
+import { TranscodeJobActions } from "./TranscodeJobActions.tsx";
 
-const PRESETS = {
-  "space-saver": { name: "Space Saver", detail: "AV1 10-bit + Opus · smallest files" },
-  compatibility: { name: "Compatibility", detail: "H.264 · original resolution and audio" },
-} as const;
+const STATUS_CLASS = {
+  processing: "text-primary",
+  queued: "text-muted-foreground",
+  complete: "text-muted-foreground",
+  failed: "text-destructive",
+  cancelled: "text-muted-foreground",
+} as const satisfies Record<TranscodeJob["status"], string>;
 
-type TranscodeScope = "episode" | "season";
-
-function transcodeChoices(entries: readonly MediaEntry[]) {
-  const shows = groupShows(entries);
-  const episodes = shows.flatMap((show) => show.seasons.flatMap((season) => (
-    season.entries.map((entry) => {
-      const episode = episodeNumber(entry);
-      return {
-        value: entry.rel,
-        label: show.name,
-        description: `${season.name} · ${episode === null ? entry.name : `Episode ${String(episode)}`} · ${formatSize(entry.size)}`,
-        keywords: `${entry.name} ${entry.folder}`,
-      };
-    })
-  )));
-  const seasons = shows.flatMap((show) => show.seasons.map((season) => ({
-    option: {
-      value: `${show.name}\0${season.sourceShow}\0${season.name}`,
-      label: show.name,
-      description: `${season.name} · ${String(season.entries.length)} episodes · ${formatSize(season.entries.reduce((total, entry) => total + entry.size, 0))}`,
-      keywords: `${season.sourceShow} ${season.entries.map((entry) => entry.name).join(" ")}`,
-    },
-    paths: season.entries.map((entry) => entry.rel),
-  })));
-  return { episodes, seasons };
-}
-
-function useTranscodeSelection(entries: readonly MediaEntry[]) {
-  const [scope, setScope] = useState<TranscodeScope>("episode");
-  const [selection, setSelection] = useState("");
-  const choices = useMemo(() => transcodeChoices(entries), [entries]);
-  const seasonOptions = useMemo(() => choices.seasons.map((season) => season.option), [choices]);
-  const handleScope = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setScope(event.target.value as TranscodeScope);
-    setSelection("");
-  }, []);
-  return { scope, selection, setSelection, choices, seasonOptions, handleScope };
-}
-
-function submitLabel(scope: TranscodeScope, pending: boolean): string {
-  if (pending) {
-    return "Queueing…";
-  }
-  return scope === "season" ? "Queue season" : "Create optimized copy";
-}
-
-function progressDetail(job: TranscodeJob): string {
-  if (job.status !== "processing") {
-    return job.status;
-  }
-  const percent = job.progress * 100;
-  const elapsed = job.startedAt === null ? 0 : (Date.now() - job.startedAt) / 1000;
-  const remaining = job.progress > 0 ? elapsed / job.progress * (1 - job.progress) : 0;
-  const speed = job.speed > 0 ? ` · ${job.speed.toFixed(2)}x` : "";
-  const eta = remaining > 0 ? ` · ${formatDuration(remaining)} remaining` : "";
-  return `${percent.toFixed(1)}%${speed}${eta}`;
-}
-
-function JobActions({ job, onCancel, onRemove, onRemoveOriginal, cancelPending, removePending }: {
+function JobRow({ job, episodes }: {
   readonly job: TranscodeJob;
-  readonly onCancel: () => void;
-  readonly onRemove: () => void;
-  readonly onRemoveOriginal: () => void;
-  readonly cancelPending: boolean;
-  readonly removePending: boolean;
-}): React.JSX.Element | null {
-  if (job.status === "queued" || job.status === "processing") {
-    return <button type="button" onClick={onCancel} disabled={cancelPending} className="h-9 shrink-0 rounded-md border border-destructive px-3 text-xs font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-50">{cancelPending ? "Cancelling…" : "Cancel"}</button>;
-  }
-  if (job.originalDeleted || job.status !== "complete") {
-    return null;
-  }
+  readonly episodes: ProfileEpisodes;
+}): React.JSX.Element {
+  const episode = profileEpisode(episodes, job.sourcePath);
+  const { status, detail } = jobStatus(job);
   return (
-    <div className="flex shrink-0 gap-2">
-      <button type="button" onClick={onRemove} disabled={removePending} className="h-9 rounded-md border border-border px-3 text-xs hover:bg-accent">Delete optimized</button>
-      <button type="button" onClick={onRemoveOriginal} disabled={removePending} className="h-9 rounded-md bg-destructive px-3 text-xs font-semibold text-destructive-foreground">Delete original</button>
-    </div>
-  );
-}
-
-function JobRow({ job, media }: { readonly job: TranscodeJob; readonly media: SearchableSelectOption | undefined }): React.JSX.Element {
-  const remove = useDeleteTranscode(false);
-  const removeOriginal = useDeleteTranscode(true);
-  const cancel = useCancelTranscode();
-  const saved = job.outputSize === null ? null : job.inputSize - job.outputSize;
-  const handleRemove = useCallback(() => remove.mutate(job.id), [job.id, remove]);
-  const handleOriginal = useCallback(() => removeOriginal.mutate(job.id), [job.id, removeOriginal]);
-  const handleCancel = useCallback(() => cancel.mutate(job.id), [cancel, job.id]);
-  return (
-    <li className="flex flex-col gap-3 border-t border-border py-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{media?.label ?? job.sourcePath}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {media?.description === undefined ? "" : `${media.description} · `}{PRESETS[job.preset].name} · {progressDetail(job)}
-          {saved !== null && saved > 0 ? ` · ${formatSize(saved)} saved` : ""}
+    <li className="flex items-center gap-4 border-b border-border py-3">
+      <span className="w-20 shrink-0 overflow-hidden rounded-md sm:w-24">
+        <MediaThumbnail rel={job.sourcePath} source={episode.thumbnail} className="w-full" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate" title={job.sourcePath}>
+          <span className="font-semibold">{episode.showTitle}</span>
+          <span className="text-muted-foreground"> {episodeShortLabel(episode)}</span>
+        </p>
+        <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
+          <span className={`font-semibold sm:hidden ${STATUS_CLASS[job.status]}`}>{status} · </span>
+          {jobSizes(job)}
         </p>
         {job.status === "processing" && (
-          <progress aria-label={`${media?.label ?? job.sourcePath} transcode progress`} value={job.progress} max={1} className="playback-progress mt-2 h-1.5 w-full max-w-md overflow-hidden rounded-full" />
+          <progress aria-label={`${episode.showTitle} transcode progress`} max={1} value={job.progress} className="playback-progress mt-2 block h-0.75 w-full max-w-md" />
         )}
-        {job.error !== null && <p className="mt-1 text-xs text-destructive">{job.error}</p>}
       </div>
-      <JobActions job={job} onCancel={handleCancel} onRemove={handleRemove} onRemoveOriginal={handleOriginal} cancelPending={cancel.isPending} removePending={remove.isPending || removeOriginal.isPending} />
+      <div className="hidden w-44 shrink-0 text-right text-[13px] sm:block">
+        <p className={`text-xs font-semibold ${STATUS_CLASS[job.status]}`}>{status}</p>
+        <p className="mt-0.5 truncate text-muted-foreground" title={detail}>{detail}</p>
+      </div>
+      <TranscodeJobActions job={job} />
     </li>
   );
 }
 
-export function AdminTranscodes({ entries, hideForm = false }: { readonly entries: readonly MediaEntry[]; readonly hideForm?: boolean }): React.JSX.Element {
-  const selectionState = useTranscodeSelection(entries);
-  const { scope, selection, setSelection, choices, seasonOptions, handleScope } = selectionState;
-  const [preset, setPreset] = useState<TranscodePreset>("space-saver");
-  const transcodes = useTranscodes();
-  const start = useStartTranscode();
-  const handlePreset = useCallback((event: ChangeEvent<HTMLInputElement>) => setPreset(event.target.value as TranscodePreset), []);
-  const handleSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const paths = scope === "episode"
-      ? [selection]
-      : choices.seasons.find((season) => season.option.value === selection)?.paths ?? [];
-    if (selection !== "" && paths.length > 0) {
-      start.mutate({ paths, preset }, { onSuccess: () => setSelection("") });
-    }
-  }, [choices.seasons, preset, scope, selection, setSelection, start]);
+function JobList({ jobs, episodes }: { readonly jobs: readonly TranscodeJob[]; readonly episodes: ProfileEpisodes }): React.JSX.Element {
+  return <ul>{jobs.map((job) => <JobRow key={job.id} job={job} episodes={episodes} />)}</ul>;
+}
+
+/** Running first, then queued, then failed or cancelled; finished jobs listed separately. */
+function splitJobs(jobs: readonly TranscodeJob[]) {
+  const active = jobs.filter((job) => isActiveJob(job)).toSorted((a, b) => Number(b.status === "processing") - Number(a.status === "processing"));
+  const attention = jobs.filter((job) => job.status === "failed" || job.status === "cancelled");
+  return { current: [...active, ...attention], finished: jobs.filter((job) => job.status === "complete") };
+}
+
+function TranscodeLists({ jobs }: { readonly jobs: readonly TranscodeJob[] }): React.JSX.Element {
+  const episodes = useProfileEpisodes();
+  const { current, finished } = useMemo(() => splitJobs(jobs), [jobs]);
   return (
-    <AdminPanel title="Media processing" description="Create an optimized copy without touching the raw." icon={Film}>
-      {!hideForm && <form onSubmit={handleSubmit} className="space-y-4">
-        <fieldset className="flex gap-1 rounded-md border border-border bg-background p-1">
-          <legend className="sr-only">Transcode scope</legend>
-          {(["episode", "season"] as const).map((value) => (
-            <label key={value} className={scope === value ? "flex-1 cursor-pointer rounded-sm bg-primary px-3 py-2 text-center text-sm font-semibold capitalize text-primary-foreground" : "flex-1 cursor-pointer rounded-sm px-3 py-2 text-center text-sm capitalize text-muted-foreground hover:bg-accent hover:text-foreground"}>
-              <input type="radio" name="scope" value={value} checked={scope === value} onChange={handleScope} className="sr-only" />
-              {value}
-            </label>
-          ))}
-        </fieldset>
-        <div className="space-y-2">
-          <p className="text-sm font-medium">{scope === "episode" ? "Video" : "Season"}</p>
-          <SearchableSelect value={selection} options={scope === "episode" ? choices.episodes : seasonOptions} onValueChange={setSelection} placeholder={scope === "episode" ? "Choose a library episode…" : "Choose a library season…"} searchPlaceholder="Search shows or seasons…" emptyText="No library media match." ariaLabel={scope === "episode" ? "Video to transcode" : "Season to transcode"} />
-        </div>
-        <fieldset className="grid gap-2 sm:grid-cols-2">
-          <legend className="mb-2 text-sm font-medium">Preset</legend>
-          {(Object.entries(PRESETS) as [TranscodePreset, typeof PRESETS[TranscodePreset]][]).map(([value, copy]) => (
-            <label key={value} aria-label={copy.name} className="flex cursor-pointer gap-3 rounded-md border border-border bg-background p-3">
-              <input type="radio" name="preset" value={value} checked={preset === value} onChange={handlePreset} className="mt-0.5 accent-primary" />
-              <span><span className="block text-sm font-medium">{copy.name}</span><span className="text-xs text-muted-foreground">{copy.detail}</span></span>
-            </label>
-          ))}
-        </fieldset>
-        {start.error !== null && <p className="text-sm text-destructive">{start.error.message}</p>}
-        <button type="submit" disabled={selection === "" || start.isPending} className="h-10 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:bg-muted disabled:text-muted-foreground">{submitLabel(scope, start.isPending)}</button>
-      </form>}
-      {transcodes.data !== undefined && transcodes.data.length > 0 && <ul className="mt-5">{transcodes.data.map((job) => <JobRow key={job.id} job={job} media={choices.episodes.find((option) => option.value === job.sourcePath)} />)}</ul>}
-    </AdminPanel>
+    <>
+      {current.length === 0
+        ? <p className="py-6 text-sm text-muted-foreground">Nothing transcoding.</p>
+        : <JobList jobs={current} episodes={episodes} />}
+      {finished.length > 0 && (
+        <section aria-labelledby="transcodes-finished" className="mt-10">
+          <h2 id="transcodes-finished" className="font-display text-lg font-bold tracking-tight">Finished</h2>
+          <JobList jobs={finished} episodes={episodes} />
+        </section>
+      )}
+    </>
+  );
+}
+
+export function AdminTranscodes(): React.JSX.Element {
+  const transcodes = useTranscodes();
+  return (
+    <AdminPage title="Transcodes">
+      {transcodes.status === "pending" && <ListSkeleton />}
+      {transcodes.status === "error" && <p className="select-text py-4 text-sm text-destructive">{transcodes.error.message}</p>}
+      {transcodes.status === "success" && <TranscodeLists jobs={transcodes.data} />}
+    </AdminPage>
   );
 }

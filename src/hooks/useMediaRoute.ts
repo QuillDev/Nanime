@@ -31,11 +31,21 @@ export interface MediaRoute {
   readonly watchTogether: string | null;
 }
 
-export type AdminTab = "downloads" | "files" | "videos" | "users" | "system";
+export type AdminTab = "downloads" | "transcodes" | "files" | "videos" | "users" | "system";
+
+const ADMIN_TABS: ReadonlySet<string> = new Set<AdminTab>(["downloads", "transcodes", "files", "videos", "users", "system"]);
+
+export function isAdminTab(value: string | null): value is AdminTab {
+  return value !== null && ADMIN_TABS.has(value);
+}
+
+export function adminTabHref(tab: AdminTab): string {
+  return tab === "downloads" ? "/admin" : `/admin?tab=${tab}`;
+}
 
 function adminTabFromUrl(url: URL): AdminTab {
   const tab = url.searchParams.get("tab");
-  return tab === "files" || tab === "videos" || tab === "users" || tab === "system" ? tab : "downloads";
+  return isAdminTab(tab) ? tab : "downloads";
 }
 
 function showFromPath(pathname: string): string | null {

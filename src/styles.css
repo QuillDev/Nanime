@@ -427,6 +427,34 @@
     background-color: var(--primary);
   }
 
+  .storage-meter,
+  .warning-progress {
+    appearance: none;
+    background-color: var(--muted);
+    border: 0;
+  }
+
+  .storage-meter::-webkit-progress-bar,
+  .warning-progress::-webkit-progress-bar {
+    background-color: var(--muted);
+  }
+
+  .storage-meter::-webkit-progress-value {
+    background-color: var(--muted-foreground);
+  }
+
+  .storage-meter::-moz-progress-bar {
+    background-color: var(--muted-foreground);
+  }
+
+  .warning-progress::-webkit-progress-value {
+    background-color: var(--warning);
+  }
+
+  .warning-progress::-moz-progress-bar {
+    background-color: var(--warning);
+  }
+
   .player-buffered-range,
   .player-played-range {
     appearance: none;
