@@ -6,29 +6,38 @@ import {
   offlineTranscodeArgs,
 } from "./offlineMedia.ts";
 import { parseByteRange, rangedFileResponse, responseByteRange } from "./httpRange.ts";
+import { makeClip, probeStreams, run, withTemporaryDirectory } from "./testMedia.ts";
+
+async function moovPrecedesMdat(path: string): Promise<boolean> {
+  const bytes = Buffer.from(await Bun.file(path).bytes());
+  return bytes.indexOf("moov") < bytes.indexOf("mdat");
+}
 
 describe("offline media packaging", () => {
-  test("creates a seekable broadly compatible MP4 with a selected audio track", () => {
-    const args = offlineTranscodeArgs(
-      "/library/Show/Episode 01.mkv",
-      3,
-      "/cache/artifact.mp4",
-    );
+  test("creates a faststart H.264/AAC MP4 carrying only the selected audio track", async () => {
+    await withTemporaryDirectory("nanime-offline-package-", async (directory) => {
+      const source = await makeClip(join(directory, "Episode 01.mkv"), { seconds: 3, audio: ["eng", "jpn"] });
+      const output = join(directory, "artifact.mp4");
+      await run(["ffmpeg", ...offlineTranscodeArgs(source, 2, output)]);
 
-    expect(args).toContain("libx264");
-    expect(args).toContain("aac");
-    expect(args).toContain("+faststart");
-    expect(args).toContain("0:3");
-    expect(args.at(-1)).toBe("/cache/artifact.mp4");
-    expect(args.slice(-2)).toEqual(["+faststart", "/cache/artifact.mp4"]);
-  });
+      const streams = await probeStreams(output);
+      expect(streams.map((stream) => [stream.codec_type, stream.codec_name])).toEqual([["video", "h264"], ["audio", "aac"]]);
+      expect(streams[1]?.tags?.language).toBe("jpn");
+      expect(streams[1]?.channels).toBe(2);
+      expect(await moovPrecedesMdat(output)).toBe(true);
+    });
+  }, 30_000);
 
-  test("does not invent an audio stream for silent media", () => {
-    const args = offlineTranscodeArgs("/library/silent.mkv", null, "/cache/silent.mp4");
+  test("does not invent an audio stream for silent media", async () => {
+    await withTemporaryDirectory("nanime-offline-silent-", async (directory) => {
+      const source = await makeClip(join(directory, "silent.mkv"), { seconds: 2 });
+      const output = join(directory, "silent.mp4");
+      await run(["ffmpeg", ...offlineTranscodeArgs(source, null, output)]);
 
-    expect(args).not.toContain("-c:a");
-    expect(args).not.toContain("0:a:0?");
-  });
+      const streams = await probeStreams(output);
+      expect(streams.map((stream) => stream.codec_type)).toEqual(["video"]);
+    });
+  }, 30_000);
 });
 
 describe("offline media byte ranges", () => {

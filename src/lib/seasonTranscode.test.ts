@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { PlaybackReadiness } from "../libraryApi.ts";
-import { formatRemaining, summarizeSeasonTranscode } from "./seasonTranscode.ts";
+import { summarizeSeasonTranscode } from "./seasonTranscode.ts";
 
 function item(path: string, ready: boolean, transcode: PlaybackReadiness["transcode"] = null): PlaybackReadiness {
   return { path, ready, transcode };
@@ -63,11 +63,4 @@ test("before readiness arrives a season claims neither ready nor needing a trans
 
 test("a season of only directly playable episodes is ready without asking the server", () => {
   expect(summarizeSeasonTranscode([], 3, undefined).kind).toBe("ready");
-});
-
-test("formats remaining time for people", () => {
-  expect(formatRemaining(20)).toBe("1 min");
-  expect(formatRemaining(31 * 60)).toBe("31 min");
-  expect(formatRemaining(95 * 60)).toBe("1 h 35 min");
-  expect(formatRemaining(120 * 60)).toBe("2 h");
 });

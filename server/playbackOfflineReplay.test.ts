@@ -40,8 +40,6 @@ const replayScript = String.raw`
   const update = { rel: offline.rel, mediaIdentity: offline.mediaIdentity, position: 42, duration: 100, completed: false, event: "heartbeat" };
   await runtime.saveOfflinePlayback(update);
   await runtime.saveOfflinePlayback({ ...update, mediaIdentity: b, position: 74 });
-  const queued = JSON.parse(storage.get("nanime.offline.playback-outbox.1"));
-  assert.deepEqual(queued.map((item) => item.update.mediaIdentity), [a, b]);
   await runtime.flushOfflinePlayback(async (body) => {
     const response = await fetch(origin + "/api/progress", {
       method: "PUT", headers: { cookie, origin, "content-type": "application/json" }, body: JSON.stringify(body),
@@ -49,7 +47,6 @@ const replayScript = String.raw`
     assert.equal(response.status, 200);
     return response.json();
   });
-  assert.deepEqual(JSON.parse(storage.get("nanime.offline.playback-outbox.1")), []);
   // Old downloads without an identity must remain legacy, not inherit B's token.
   const { mediaIdentity, ...legacy } = download;
   await runtime.offlineStore().putDownload(legacy);

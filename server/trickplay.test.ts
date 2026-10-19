@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
+import { makeClip, probeStreams, run, withTemporaryDirectory } from "./testMedia.ts";
 import { trickplayFrameArgs, trickplayPlan, trickplaySheetArgs } from "./trickplay.ts";
 
 test("uses a dense interval for episodes and bounds long-video frame counts", () => {
@@ -6,21 +8,22 @@ test("uses a dense interval for episodes and bounds long-video frame counts", ()
   expect(trickplayPlan(3 * 60 * 60)).toEqual({ interval: 40, frameCount: 270, sheetCount: 11 });
 });
 
-test("builds one low-resolution contact sheet at a time", () => {
-  const args = trickplaySheetArgs({
-    abs: "/media/example.mkv",
-    output: "/cache/sheet-000.jpg",
-    start: 125,
-    duration: 125,
-    interval: 5,
-  });
-  expect(args.slice(args.indexOf("-ss"), args.indexOf("-ss") + 2)).toEqual(["-ss", "125"]);
-  expect(args).toContain("fps=1/5,scale=240:136:force_original_aspect_ratio=decrease,pad=240:136:(ow-iw)/2:(oh-ih)/2:black,setsar=1,tile=5x5");
-  expect(args).toContain("/cache/sheet-000.jpg");
-});
+test("a contact sheet is one 5x5 grid of 240x136 tiles, letterboxing non-16:9 video", async () => {
+  await withTemporaryDirectory("nanime-trickplay-sheet-", async (directory) => {
+    const abs = await makeClip(join(directory, "square.mkv"), { seconds: 12, size: "320x320" });
+    const output = join(directory, "sheet-000.jpg");
+    await run(["ffmpeg", ...trickplaySheetArgs({ abs, output, start: 0, duration: 12, interval: 5 })]);
 
-test("uses input seeking for responsive live fallback frames", () => {
-  const args = trickplayFrameArgs("/media/example.mkv", 365);
-  expect(args.indexOf("-ss")).toBeLessThan(args.indexOf("-i"));
-  expect(args).toContain("image2pipe");
-});
+    expect(await probeStreams(output)).toMatchObject([{ codec_name: "mjpeg", width: 1200, height: 680 }]);
+  });
+}, 30_000);
+
+test("a live fallback frame is a single 240x136 JPEG", async () => {
+  await withTemporaryDirectory("nanime-trickplay-frame-", async (directory) => {
+    const abs = await makeClip(join(directory, "episode.mkv"), { seconds: 6 });
+    const output = join(directory, "frame.jpg");
+    await Bun.write(output, await run(["ffmpeg", ...trickplayFrameArgs(abs, 3)]));
+
+    expect(await probeStreams(output)).toMatchObject([{ codec_name: "mjpeg", width: 240, height: 136 }]);
+  });
+}, 30_000);

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { MediaEntry, PlaybackProgress, PlaybackProgressMap } from "../types.ts";
-import type { ShowGroup } from "../lib/library.ts";
-import { buildContinueWatchingItems } from "../lib/continueWatching.ts";
+import type { ShowGroup } from "./library.ts";
+import { buildContinueWatchingItems } from "./continueWatching.ts";
 
 function entry(show: string, episode: number): MediaEntry {
   return {

@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { stopHlsProcess, type HlsProcess } from "./hlsProcess.ts";
 
 function fakeProcess() {
@@ -23,10 +23,10 @@ function fakeProcess() {
 describe("HLS encoder shutdown", () => {
   test("allows a graceful exit without force killing", async () => {
     const fake = fakeProcess();
-    const wait = mock(() => {
+    const wait = (): Promise<void> => {
       fake.exit();
       return Promise.resolve();
-    });
+    };
 
     await stopHlsProcess(fake.process, 2000, wait);
 
@@ -35,9 +35,13 @@ describe("HLS encoder shutdown", () => {
 
   test("force kills an encoder that ignores the grace period", async () => {
     const fake = fakeProcess();
-    const wait = mock(() => Promise.resolve());
+    const graceElapsed = Promise.withResolvers<void>();
+    const wait = (): Promise<void> => {
+      graceElapsed.resolve();
+      return Promise.resolve();
+    };
     const stopping = stopHlsProcess(fake.process, 2000, wait);
-    await wait.mock.results[0]?.value;
+    await graceElapsed.promise;
     await Promise.resolve();
 
     expect(fake.signals).toEqual(["SIGTERM", "SIGKILL"]);
