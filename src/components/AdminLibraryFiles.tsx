@@ -2,7 +2,6 @@ import "@nanime/file-manager/styles.css";
 import { useCallback, useMemo } from "react";
 import { FileManager, modifiedColumn, sizeColumn, type FileOperation, type OperationResult } from "@nanime/file-manager";
 import { TriangleAlert } from "lucide-react";
-import { SectionHelp } from "./SectionHelp.tsx";
 import type { LibraryFileItem } from "../../shared/libraryFiles.ts";
 import { useLibraryFileOperation, useLibraryFiles } from "../hooks/useLibraryFiles.ts";
 import {
@@ -37,8 +36,8 @@ function useOperationHandler(items: readonly LibraryFile[]): (operation: FileOpe
 
 function OwnershipNotice(): React.JSX.Element {
   return (
-    <output className="flex items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
-      <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" />
+    <output className="flex items-start gap-2 text-sm text-muted-foreground">
+      <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
       qBittorrent can’t be reached, so torrent-owned files can’t be identified. Renaming, moving, and deleting are paused; you can still browse and create folders.
     </output>
   );
@@ -49,19 +48,13 @@ export function AdminLibraryFiles(): React.JSX.Element {
   const items = useMemo(() => (files.data === undefined ? NO_FILES : libraryFileItems(files.data.items)), [files.data]);
   const handleOperation = useOperationHandler(items);
   return (
-    <section aria-labelledby="library-files-title" className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <h2 id="library-files-title" className="text-sm font-semibold">Library files</h2>
-        <SectionHelp label="About library files">
-          Organize folders and files under the library root. Watch progress, history, and mappings follow moved media; deleted items go to Nanime’s trash and can be undone.
-        </SectionHelp>
-      </div>
+    <section aria-label="Library files" className="admin-files space-y-3">
       {files.data?.torrentOwnership === "unavailable" && <OwnershipNotice />}
       {files.error !== null && <p className="select-text text-sm text-destructive">{files.error.message}</p>}
       {files.isPending ? (
         <p className="py-10 text-center text-sm text-muted-foreground">Loading library files…</p>
       ) : (
-        <div className="h-[min(78dvh,52rem)] min-h-[28rem]">
+        <div className="h-[calc(100dvh-var(--header-height)-10rem)] min-h-[28rem]">
           <FileManager items={items} columns={COLUMNS} getLock={libraryFileLock} labels={LABELS} onOperation={handleOperation} />
         </div>
       )}

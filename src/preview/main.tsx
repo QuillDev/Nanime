@@ -79,8 +79,14 @@ function ShowPreview(): React.JSX.Element {
   );
 }
 
-const adminRequest = requested === "admin-videos-selected" ? "admin-videos" : requested;
+const adminRequest = { "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users" }[requested] ?? requested;
 const adminTab = adminRequest.startsWith("admin-") && isAdminTab(adminRequest.slice(6)) ? adminRequest.slice(6) as AdminTab : null;
+// "admin-users-invite" opens the invite dialog.
+if (requested === "admin-users-invite") {
+  setTimeout(() => {
+    [...document.querySelectorAll<HTMLButtonElement>("main header button")].at(0)?.click();
+  }, 400);
+}
 // "admin-videos-selected" expands the first show and selects it, so the bulk bar shows.
 if (requested === "admin-videos-selected") {
   setTimeout(() => {

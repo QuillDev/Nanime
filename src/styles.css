@@ -427,6 +427,12 @@
     background-color: var(--primary);
   }
 
+  .admin-files .nfm {
+    --fm-font: var(--font-sans);
+    --fm-row: 42px;
+    --fm-radius: 12px;
+  }
+
   .storage-meter,
   .warning-progress {
     appearance: none;

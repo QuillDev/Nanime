@@ -43,10 +43,10 @@ function AdminContent({ showFolders, entries, metadata, tab }: AdminContentProps
       return <AdminPage title="Videos"><AdminVideoManagement entries={entries} metadata={metadata} /></AdminPage>;
     }
     case "users": {
-      return <AdminPage title="Users"><AdminUsers /></AdminPage>;
+      return <AdminUsers />;
     }
     case "system": {
-      return <AdminPage title="System"><AdminSystem /></AdminPage>;
+      return <AdminSystem />;
     }
   }
 }

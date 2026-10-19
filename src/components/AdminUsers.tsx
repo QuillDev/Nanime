@@ -1,106 +1,56 @@
-import { useCallback, useState, type ChangeEvent, type FormEvent } from "react";
-import { Users } from "lucide-react";
-import { useProvisionUser, useUsers } from "../hooks/useAuth.ts";
-import { AdminPanel } from "./AdminPanel.tsx";
-import { Input } from "./ui/input.tsx";
-import {
-  CancelProvisionDialog,
-  ProvisionResultPanel,
-  type ProvisionResult,
-} from "./UserProvisionDialogs.tsx";
+import { useCallback, useState } from "react";
+import { UserPlus } from "lucide-react";
+import { useUsers } from "../hooks/useAuth.ts";
+import type { ProvisionedUser } from "../types.ts";
+import { AdminPage } from "./AdminPage.tsx";
+import { InviteUserDialog } from "./InviteUserDialog.tsx";
+import { ListSkeleton } from "./Skeleton.tsx";
+import { CancelProvisionDialog } from "./UserProvisionDialogs.tsx";
+
+const AVATAR_TONES = ["bg-pink-400", "bg-violet-400", "bg-sky-400", "bg-emerald-400", "bg-amber-300", "bg-rose-300"] as const;
+
+function avatarTone(user: ProvisionedUser): string {
+  return user.passwordSet ? AVATAR_TONES[user.id % AVATAR_TONES.length] ?? "bg-pink-400" : "bg-muted";
+}
+
+function UserRow({ user }: { readonly user: ProvisionedUser }): React.JSX.Element {
+  return (
+    <li className="flex items-center gap-4 border-b border-border py-3">
+      <span aria-hidden="true" className={`flex size-9 shrink-0 items-center justify-center rounded-full font-display text-sm font-extrabold text-black ${avatarTone(user)} ${user.passwordSet ? "" : "text-muted-foreground"}`}>
+        {user.username.slice(0, 1).toLocaleUpperCase()}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-2">
+          <span className="truncate font-semibold">{user.username}</span>
+          {user.isAdmin && <span className="rounded bg-secondary px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">Admin</span>}
+        </p>
+        <p className="mt-0.5 text-[13px] text-muted-foreground">{user.passwordSet ? "Active" : "Invite pending · waiting for setup"}</p>
+      </div>
+      {!user.passwordSet && <CancelProvisionDialog user={user} />}
+    </li>
+  );
+}
+
+function UserList(): React.JSX.Element {
+  const users = useUsers(true);
+  if (users.status === "pending") {
+    return <ListSkeleton />;
+  }
+  if (users.status === "error") {
+    return <p className="select-text py-4 text-sm text-destructive">{users.error.message}</p>;
+  }
+  const ordered = users.data.toSorted((a, b) => Number(a.passwordSet === false) - Number(b.passwordSet === false) || Number(b.isAdmin) - Number(a.isAdmin) || a.username.localeCompare(b.username));
+  return <ul>{ordered.map((user) => <UserRow key={user.id} user={user} />)}</ul>;
+}
 
 export function AdminUsers(): React.JSX.Element {
-  const [username, setUsername] = useState<string>("");
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [provisionResult, setProvisionResult] = useState<ProvisionResult | null>(null);
-  const users = useUsers(true);
-  const provision = useProvisionUser();
-  const handleUsernameChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setUsername(event.target.value);
-  }, []);
-  const handleAdminChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setIsAdmin(event.target.checked);
-  }, []);
-  const handleSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    provision.mutate({ username, isAdmin }, {
-      onSuccess: (token) => {
-        setUsername("");
-        setProvisionResult({ username, setupToken: token });
-      },
-    });
-  }, [isAdmin, provision, username]);
-  const handleResultClose = useCallback(() => setProvisionResult(null), []);
-
+  const [inviting, setInviting] = useState(false);
+  const handleInvite = useCallback(() => setInviting(true), []);
+  const handleClose = useCallback(() => setInviting(false), []);
   return (
-    <AdminPanel
-      title="Users"
-      description="Provision accounts and review access."
-      icon={Users}
-      className="xl:col-span-5"
-    >
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-col gap-3 rounded-md border border-border bg-background p-4 md:flex-row md:items-end"
-      >
-        <label htmlFor="provision-username" className="min-w-0 flex-1 text-sm font-medium">
-          Username
-          <Input
-            value={username}
-            id="provision-username"
-            onChange={handleUsernameChange}
-            minLength={2}
-            maxLength={32}
-            className="mt-2"
-          />
-        </label>
-        <label htmlFor="provision-admin" className="flex h-10 items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            id="provision-admin"
-            checked={isAdmin}
-            onChange={handleAdminChange}
-            className="size-4 accent-pink-500"
-          />
-          Administrator
-        </label>
-        <button
-          type="submit"
-          disabled={username === "" || provision.isPending}
-          className="h-10 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:bg-muted disabled:text-muted-foreground"
-        >
-          {provision.isPending ? "Provisioning…" : "Provision user"}
-        </button>
-      </form>
-      {provision.error !== null && (
-        <p className="mt-4 text-sm text-destructive">{provision.error.message}</p>
-      )}
-      <ProvisionResultPanel
-        key={provisionResult?.setupToken}
-        result={provisionResult}
-        onClose={handleResultClose}
-      />
-      {users.status === "error" && (
-        <p className="mt-4 text-sm text-destructive">{users.error.message}</p>
-      )}
-      <ul className="mt-5 divide-y divide-border">
-        {users.data?.map((listedUser) => (
-          <li key={listedUser.id} className="flex items-center justify-between gap-4 py-4 text-sm">
-            <div>
-              <p className="font-medium">{listedUser.username}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {listedUser.isAdmin ? "Administrator" : "Viewer"}
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <span className={listedUser.passwordSet ? "text-primary" : "text-muted-foreground"}>
-                {listedUser.passwordSet ? "Active" : "Awaiting setup"}
-              </span>
-              {!listedUser.passwordSet && <CancelProvisionDialog user={listedUser} />}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </AdminPanel>
+    <AdminPage title="Users" actionLabel="Invite user" actionIcon={UserPlus} onAction={handleInvite}>
+      <UserList />
+      {inviting && <InviteUserDialog onClose={handleClose} />}
+    </AdminPage>
   );
 }
