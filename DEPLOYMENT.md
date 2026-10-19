@@ -124,38 +124,7 @@ bun test
 That setup token is a test fixture, never a production credential. Do not use the
 production database, media, or credentials as test fixtures.
 
-For player UI, playback hooks, HLS, media routing, or direct-streaming changes,
-run `bun run test:player` immediately before committing/pushing. It builds the
-client and exercises generated media against an isolated server/database. It
-also replaces `dist/` in its working directory: run it in an isolated worktree
-when production is serving this checkout, then build the approved release in
-step 5. Documentation-only changes do not need this browser suite.
-
-If automatic browser startup hangs on the desktop keyring, start Chrome
-explicitly and connect the harness to its **WebSocket** debugger URL:
-
-```bash
-NANIME_CHROME_PROFILE="$(mktemp -d /tmp/nanime-deploy-chrome.XXXXXX)"
-chromium --headless --no-sandbox --disable-gpu --no-proxy-server \
-  --password-store=basic --use-mock-keychain \
-  --remote-debugging-address=127.0.0.1 --remote-debugging-port=19331 \
-  --user-data-dir="$NANIME_CHROME_PROFILE" \
-  --autoplay-policy=no-user-gesture-required about:blank \
-  > "$NANIME_CHROME_PROFILE/browser.log" 2>&1 &
-NANIME_CHROME_PID=$!
-```
-
-Use an unused port, and wait until its `/json/version` endpoint responds. Then:
-
-```bash
-export NANIME_CHROME_URL="$(curl --fail --silent http://127.0.0.1:19331/json/version | bun -e 'console.log((await Bun.stdin.json()).webSocketDebuggerUrl)')"
-bun run test:player
-kill "$NANIME_CHROME_PID"
-unset NANIME_CHROME_URL
-```
-
-Close only the browser process started for this test. Keep failure screenshots
-and harness logs when diagnosing a failure. Do not bypass a failed gate.
+Do not bypass a failed gate.
 
 ## 4. Record recovery information and back up state
 

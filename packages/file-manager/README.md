@@ -18,7 +18,6 @@ bun ci
 bun run build:packages
 bun run --cwd packages/file-manager check
 bun run --cwd packages/file-manager smoke:consumer
-bun run test:library-files
 ```
 
 To use it elsewhere, `bun pm pack` from the package folder and install the tarball,

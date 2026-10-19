@@ -158,16 +158,7 @@ deterministic, use isolated temporary state, and never depend on an operator's
 library, database, network services, or credentials.
 
 Common commands: `bun install`, `bun run dev`, `bun run start`, `bun run check`,
-`bun test`, `bun run test:player`, and `bun run build`.
+`bun test`, and `bun run build`.
 
-Run `bun run test:player` for changes to the player UI, playback hooks or
-libraries, HLS server, media routing, or direct streaming. It uses `bun:test`
-and `Bun.WebView` to exercise the production player in a real browser against
-generated media and an isolated server/database. Keep iteration fast: use
-targeted unit tests, type-checking, and linting while developing, and reserve
-the full real-browser player suite for final verification immediately before
-committing and pushing. Run it earlier only when diagnosing a browser- or
-player-specific failure that requires the real harness. Preserve the harness's
-phase profiling, Chrome prewarming, FFmpeg cache, parallel CI shards, failure
-screenshots, network observations, and fresh-process retry behavior when
-extending it.
+No browser or UI-driven test suites: cover behavior with `bun test` against
+the backend and pure modules.
