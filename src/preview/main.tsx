@@ -79,7 +79,16 @@ function ShowPreview(): React.JSX.Element {
   );
 }
 
-const adminTab = requested.startsWith("admin-") && isAdminTab(requested.slice(6)) ? requested.slice(6) as AdminTab : null;
+const adminRequest = requested === "admin-videos-selected" ? "admin-videos" : requested;
+const adminTab = adminRequest.startsWith("admin-") && isAdminTab(adminRequest.slice(6)) ? adminRequest.slice(6) as AdminTab : null;
+// "admin-videos-selected" expands the first show and selects it, so the bulk bar shows.
+if (requested === "admin-videos-selected") {
+  setTimeout(() => {
+    const show = [...document.querySelectorAll("main ul > li[data-state]")].at(3);
+    show?.querySelector<HTMLButtonElement>("[data-slot=collapsible-trigger]")?.click();
+    show?.querySelector<HTMLInputElement>("input[type=checkbox]")?.click();
+  }, 400);
+}
 
 function PreviewPage(): React.JSX.Element {
   if (adminTab !== null) {

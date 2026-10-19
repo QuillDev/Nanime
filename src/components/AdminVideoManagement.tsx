@@ -1,21 +1,15 @@
 import { useCallback, useMemo, useState, type ChangeEvent } from "react";
-import { Search, WandSparkles } from "lucide-react";
-import { useStartTranscode } from "../hooks/useTranscodes.ts";
-import { mediaTitle } from "../lib/anilist.ts";
-import { groupShows, showMetadataKey, type ShowGroup } from "../lib/library.ts";
-import type { MediaEntry, ShowMetadata, TranscodePreset } from "../types.ts";
-import { AdminPanel } from "./AdminPanel.tsx";
-import { AdminVideoTree } from "./AdminVideoTree.tsx";
-import {
-  AdminVideoActions,
-  AdminVideoDialogs,
-  type PruneMode,
-} from "./AdminVideoDialogs.tsx";
+import { Search } from "lucide-react";
+import { useMediaScans } from "../hooks/useMediaScans.ts";
+import { useProfileEpisodes } from "../hooks/useProfileEpisodes.ts";
+import { useTranscodes } from "../hooks/useTranscodes.ts";
+import { groupShows } from "../lib/library.ts";
+import { filterShows, type VideoFilter } from "../lib/videoFilters.ts";
+import { buildVideoStatuses } from "../lib/videoStatus.ts";
+import type { MediaEntry, ShowMetadata } from "../types.ts";
+import { VideoListView, type VideoListState } from "./AdminVideoList.tsx";
 
-function resolvedShowTitle(show: ShowGroup, metadata: ShowMetadata): string {
-  const media = metadata[showMetadataKey(show.name)];
-  return media === undefined ? show.name : mediaTitle(media);
-}
+const SELECTION_LIMIT = 100;
 
 function useVideoSelection(entries: readonly MediaEntry[]) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
@@ -25,10 +19,10 @@ function useVideoSelection(entries: readonly MediaEntry[]) {
       const next = new Set(current);
       const shouldSelect = targets.some((entry) => !next.has(entry.rel));
       for (const entry of targets) {
-        if (shouldSelect && next.size < 100) {
-          next.add(entry.rel);
-        } else if (!shouldSelect) {
+        if (!shouldSelect) {
           next.delete(entry.rel);
+        } else if (next.size < SELECTION_LIMIT) {
+          next.add(entry.rel);
         }
       }
       return next;
@@ -38,56 +32,68 @@ function useVideoSelection(entries: readonly MediaEntry[]) {
   return { selected, selectedEntries, handleToggleEntries, handleClear };
 }
 
-function useFilteredShows(entries: readonly MediaEntry[], metadata: ShowMetadata, query: string): readonly ShowGroup[] {
-  return useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase();
-    return groupShows(entries, metadata).filter((show) => needle === "" || [resolvedShowTitle(show, metadata), show.name, ...show.entries.map((entry) => entry.name)].join(" ").toLocaleLowerCase().includes(needle));
-  }, [entries, metadata, query]);
+function useStatuses() {
+  const scans = useMediaScans();
+  const transcodes = useTranscodes();
+  return useMemo(() => buildVideoStatuses(scans.data ?? [], transcodes.data ?? []), [scans.data, transcodes.data]);
 }
 
-function useManagementFilters() {
+function useFilters() {
   const [query, setQuery] = useState("");
-  const [preset, setPreset] = useState<TranscodePreset>("space-saver");
+  const [filter, setFilter] = useState<VideoFilter>("all");
   const handleQuery = useCallback((event: ChangeEvent<HTMLInputElement>) => setQuery(event.currentTarget.value), []);
-  const handlePreset = useCallback((event: ChangeEvent<HTMLSelectElement>) => setPreset(event.currentTarget.value as TranscodePreset), []);
-  return { query, preset, handleQuery, handlePreset };
+  const handleFilter = useCallback((event: ChangeEvent<HTMLInputElement>) => setFilter(event.currentTarget.value as VideoFilter), []);
+  return { query, filter, handleQuery, handleFilter };
 }
 
-function useManagementDialogs(selectedEntries: readonly MediaEntry[], onFinished: () => void) {
-  const [pruneMode, setPruneMode] = useState<PruneMode | null>(null);
-  const [subtitleEntry, setSubtitleEntry] = useState<MediaEntry | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const handleAddSubtitles = useCallback(() => {
-    const [entry] = selectedEntries;
-    if (selectedEntries.length === 1 && entry !== undefined) {setSubtitleEntry(entry);}
-  }, [selectedEntries]);
-  const handleClosePrune = useCallback(() => setPruneMode(null), []);
-  const handleCloseSubtitles = useCallback(() => setSubtitleEntry(null), []);
-  const handleDelete = useCallback(() => setDeleteOpen(true), []);
-  const handleCloseDelete = useCallback(() => setDeleteOpen(false), []);
-  const handleFinished = useCallback(() => {setPruneMode(null); setDeleteOpen(false); onFinished();}, [onFinished]);
-  return { pruneMode, subtitleEntry, deleteOpen, setPruneMode, handleAddSubtitles, handleClosePrune, handleCloseSubtitles, handleDelete, handleCloseDelete, handleFinished };
+const FILTERS = [["all", "All"], ["needs-transcode", "Needs transcode"], ["unmapped", "Unmapped"]] as const;
+
+function Toolbar({ query, filter, onQuery, onFilter }: {
+  readonly query: string;
+  readonly filter: VideoFilter;
+  readonly onQuery: (event: ChangeEvent<HTMLInputElement>) => void;
+  readonly onFilter: (event: ChangeEvent<HTMLInputElement>) => void;
+}): React.JSX.Element {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <label className="flex h-10 min-w-56 flex-1 items-center gap-2 rounded-lg border border-input bg-secondary px-3 focus-within:ring-2 focus-within:ring-ring">
+        <Search aria-hidden="true" className="size-4 text-muted-foreground" />
+        <span className="sr-only">Filter videos</span>
+        <input type="search" value={query} onChange={onQuery} placeholder="Filter shows or episodes" className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
+      </label>
+      <fieldset aria-label="Show" className="inline-flex rounded-lg bg-secondary p-0.5">
+        {FILTERS.map(([value, label]) => (
+          <label key={value} className="cursor-pointer">
+            <input type="radio" name="video-filter" value={value} checked={filter === value} onChange={onFilter} className="peer sr-only" />
+            <span className="block rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground peer-checked:bg-accent peer-checked:text-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring">{label}</span>
+          </label>
+        ))}
+      </fieldset>
+    </div>
+  );
 }
 
 export function AdminVideoManagement({ entries, metadata }: { readonly entries: readonly MediaEntry[]; readonly metadata: ShowMetadata }): React.JSX.Element {
-  const filters = useManagementFilters();
-  const transcode = useStartTranscode();
+  const filters = useFilters();
   const selection = useVideoSelection(entries);
-  const dialogs = useManagementDialogs(selection.selectedEntries, selection.handleClear);
-  const { setPruneMode: handlePrune } = dialogs;
-  const shows = useFilteredShows(entries, metadata, filters.query);
-  const handleTranscode = useCallback(() => transcode.mutate({ paths: selection.selectedEntries.map((entry) => entry.rel), preset: filters.preset }), [filters.preset, selection.selectedEntries, transcode]);
+  const statuses = useStatuses();
+  const episodes = useProfileEpisodes();
+  const shows = useMemo(
+    () => filterShows(groupShows(entries, metadata), { metadata, query: filters.query, filter: filters.filter, statuses }),
+    [entries, filters.filter, filters.query, metadata, statuses],
+  );
+  const forceOpen = filters.query.trim() !== "" || filters.filter === "needs-transcode";
+  const state = useMemo<VideoListState>(() => ({
+    shows,
+    forceOpen,
+    context: { metadata, episodes, statuses, selected: selection.selected, selectionFull: selection.selected.size >= SELECTION_LIMIT, onToggleEntries: selection.handleToggleEntries },
+    selectedEntries: selection.selectedEntries,
+    onClear: selection.handleClear,
+  }), [episodes, forceOpen, metadata, selection.handleClear, selection.handleToggleEntries, selection.selected, selection.selectedEntries, shows, statuses]);
   return (
-    <div className="space-y-4">
-      <AdminPanel title="Video management" description="Select shows, seasons, or individual episodes, then process up to 100 videos together." icon={WandSparkles}>
-        <div className="space-y-3">
-          <div className="relative"><label htmlFor="video-management-filter" className="sr-only">Filter videos</label><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><input id="video-management-filter" type="search" value={filters.query} onChange={filters.handleQuery} placeholder="Filter shows or episodes…" className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-          <AdminVideoActions selectedEntries={selection.selectedEntries} preset={filters.preset} pending={transcode.isPending} onPreset={filters.handlePreset} onTranscode={handleTranscode} onPrune={handlePrune} onAddSubtitles={dialogs.handleAddSubtitles} onDelete={dialogs.handleDelete} />
-          {transcode.error !== null && <p className="select-text text-sm text-destructive">{transcode.error.message}</p>}
-          <div className="max-h-[65dvh] overflow-y-auto rounded-md border border-border bg-background"><AdminVideoTree shows={shows} metadata={metadata} selected={selection.selected} forceOpen={filters.query.trim() !== ""} onToggleEntries={selection.handleToggleEntries} />{shows.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">No videos match.</p>}</div>
-        </div>
-      </AdminPanel>
-      <AdminVideoDialogs selected={selection.selectedEntries} pruneMode={dialogs.pruneMode} subtitleEntry={dialogs.subtitleEntry} deleteOpen={dialogs.deleteOpen} onClosePrune={dialogs.handleClosePrune} onCloseSubtitles={dialogs.handleCloseSubtitles} onCloseDelete={dialogs.handleCloseDelete} onFinished={dialogs.handleFinished} />
-    </div>
+    <>
+      <Toolbar query={filters.query} filter={filters.filter} onQuery={filters.handleQuery} onFilter={filters.handleFilter} />
+      <VideoListView state={state} />
+    </>
   );
 }

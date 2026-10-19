@@ -5,7 +5,6 @@ import { DeleteMediaDialog } from "./DeleteMediaDialog.tsx";
 import { SubtitleUploadDialog } from "./SubtitleUploadDialog.tsx";
 import { TrackPruneDialog } from "./TrackPruneDialog.tsx";
 
-export { AdminVideoActions } from "./AdminVideoActions.tsx";
 export type { PruneMode } from "../trackPruning.ts";
 
 export function AdminVideoDialogs({
