@@ -14,8 +14,8 @@ export interface HlsOptions {
 /**
  * Where a live HLS session reads video from. `copy` streams a stored transcode
  * whose keyframes sit on every segment boundary; `encode` re-encodes the video;
- * `passthrough` repackages HEVC untouched into fMP4 segments for clients that
- * decode HEVC, cutting at the source's own (irregular) keyframes.
+ * `passthrough` repackages HEVC untouched into fMP4 segments, on demand, for
+ * clients that decode HEVC (see hlsPassthrough.ts).
  */
 export interface HlsStreamSource {
   readonly input: string;
@@ -83,10 +83,6 @@ function videoArgs(command: TranscodeCommand): readonly string[] {
   if (command.source?.videoMode === "copy") {
     return ["-c:v", "copy"];
   }
-  if (command.source?.videoMode === "passthrough") {
-    // Browsers only accept HEVC in MP4 under the hvc1 sample entry.
-    return ["-c:v", "copy", "-tag:v", "hvc1"];
-  }
   const keyframes = [
     "-flags", "+cgop",
     "-force_key_frames", `expr:gte(t,n_forced*${String(HLS_SEGMENT_SECONDS)})`,
@@ -123,17 +119,11 @@ function audioMap(command: TranscodeCommand): readonly string[] {
   return ["-map", command.source?.audioMap ?? `0:${String(command.audioTrack.index)}`];
 }
 
-/**
- * Copy sessions seek without decoding, so they begin on the keyframe at or
- * before the seek point. With the output offset equal to the seek point, that
- * keyframe keeps its source timestamp: a passthrough session therefore starts
- * at the preceding source keyframe, which `passthroughSessionStart` reports.
- */
 function inputArgs(command: TranscodeCommand): readonly string[] {
   const input = command.source?.input ?? command.abs;
-  return command.source?.videoMode === "encode" || command.source === undefined
-    ? ["-ss", String(command.start), "-i", input]
-    : ["-noaccurate_seek", "-ss", String(outputOffset(command)), "-i", input];
+  return command.source?.videoMode === "copy"
+    ? ["-noaccurate_seek", "-ss", String(outputOffset(command)), "-i", input]
+    : ["-ss", String(command.start), "-i", input];
 }
 
 function outputOffset(command: TranscodeCommand): number {
@@ -150,13 +140,43 @@ function audioArgs(audioTrack: AudioTrack | undefined): readonly string[] {
     : ["-c:a", "aac", "-ac", "2", "-b:a", "160k"];
 }
 
-function segmentArgs(command: TranscodeCommand): readonly string[] {
-  return command.source?.videoMode === "passthrough"
-    ? [
-        "-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init.mp4",
-        "-hls_segment_filename", join(command.directory, "segment-%06d.m4s"),
-      ]
-    : ["-hls_segment_filename", join(command.directory, "segment-%06d.ts")];
+/**
+ * Shift passthrough timestamps forward by a constant. A run from the first
+ * keyframe has negative decode times (B-frame delay), which the MP4 muxer would
+ * otherwise shift to zero for that run alone, misaligning it with later runs.
+ */
+export const PASSTHROUGH_TIMESTAMP_OFFSET = 10;
+
+interface PassthroughRunCommand {
+  readonly input: string;
+  readonly audioTrack: AudioTrack | undefined;
+  readonly directory: string;
+  readonly seek: number;
+}
+
+/**
+ * One passthrough run: repackage HEVC from the keyframe at or before `seek` to
+ * the end. `-copyts` with `frag_discont` writes absolute fragment times, so
+ * segments from separate runs share one init segment; a tiny target duration
+ * cuts a segment at every source keyframe, matching the precomputed playlist.
+ * Browsers only accept HEVC in MP4 under the hvc1 sample entry.
+ */
+export function passthroughRunArgs(run: PassthroughRunCommand): readonly string[] {
+  const audio = run.audioTrack === undefined ? [] : ["-map", `0:${String(run.audioTrack.index)}`];
+  return [
+    "-hide_banner", "-loglevel", "error",
+    "-copyts", "-noaccurate_seek", "-ss", String(run.seek), "-i", run.input,
+    "-map", "0:v:0", ...audio,
+    "-c:v", "copy", "-tag:v", "hvc1", ...audioArgs(run.audioTrack),
+    "-output_ts_offset", String(PASSTHROUGH_TIMESTAMP_OFFSET),
+    "-hls_segment_options", "movflags=+frag_discont",
+    "-muxdelay", "0", "-f", "hls",
+    "-hls_time", "0.001", "-hls_list_size", "0", "-hls_playlist_type", "event",
+    "-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init.mp4",
+    "-hls_flags", "independent_segments+temp_file",
+    "-hls_segment_filename", join(run.directory, "segment-%06d.m4s"),
+    join(run.directory, "index.m3u8"),
+  ];
 }
 
 export function transcodeArgs(command: TranscodeCommand): readonly string[] {
@@ -178,7 +198,7 @@ export function transcodeArgs(command: TranscodeCommand): readonly string[] {
     "-hls_playlist_type", "event",
     "-start_number", String(command.segmentIndex),
     "-hls_flags", "independent_segments+temp_file",
-    ...segmentArgs(command),
+    "-hls_segment_filename", join(command.directory, "segment-%06d.ts"),
     join(command.directory, "index.m3u8"),
   ];
 }

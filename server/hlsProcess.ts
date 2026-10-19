@@ -4,6 +4,15 @@ export interface HlsProcess {
   readonly kill: (signal?: NodeJS.Signals | number) => void;
 }
 
+/** What an HLS session runs: one ffmpeg process, or a passthrough producer that manages several. */
+export interface HlsProducer extends HlsProcess {
+  readonly stderr: ReadableStream<Uint8Array>;
+  /** Episode time of the playlist's local zero when it isn't the requested segment boundary. */
+  readonly start?: number;
+  /** Producers that repackage on demand resolve (and wait for) segment files themselves. */
+  readonly segmentPath?: (name: string) => Promise<string | null>;
+}
+
 type GraceWait = (milliseconds: number) => Promise<void>;
 
 export async function stopHlsProcess(

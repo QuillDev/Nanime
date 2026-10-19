@@ -5,6 +5,7 @@ import type { MediaLibraryOptions } from "./mediaLibraryOptions.ts";
 import { captureProbe } from "./transcodeProgress.ts";
 import { sourceTranscodeState, storedCompatibilityCopy, type SourceTranscodeState } from "./transcodes.ts";
 import { budget, STORED_KEYFRAME_TAG } from "./transcodeEncoder.ts";
+import { sourceKeyframes } from "./hlsPassthrough.ts";
 
 export { resumeTranscodeQueue } from "./transcodes.ts";
 
@@ -134,6 +135,15 @@ async function readinessRequest(req: Request): Promise<{ readonly paths: readonl
 }
 
 /** Readiness for several library videos at once (a whole season); unknown paths are omitted. */
+/** Probe keyframes while the show page is open, so pressing play needn't wait for them. */
+async function warmKeyframes(abs: string): Promise<void> {
+  try {
+    await sourceKeyframes(abs);
+  } catch {
+    // The playlist request probes again and reports any failure.
+  }
+}
+
 export async function playbackReadinessResponse(
   req: Request,
   resolve: (rel: string) => Promise<string | null>,
@@ -149,6 +159,9 @@ export async function playbackReadinessResponse(
       return [];
     }
     const plan = await playbackPlan(abs, rel, { ...options, hevcClient: request.hevc });
+    if (plan.kind === "stream" && plan.source.videoMode === "passthrough") {
+      void warmKeyframes(abs);
+    }
     return [plan.kind === "stream"
       ? { path: rel, ready: true, transcode: sourceTranscodeState(rel) }
       : { path: rel, ready: false, transcode: plan.transcode }];
