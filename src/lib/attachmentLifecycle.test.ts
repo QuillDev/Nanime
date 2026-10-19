@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { attachmentLifecycle } from "./attachmentLifecycle.ts";
 
 describe("managed media attachment lifecycle", () => {
@@ -14,15 +14,13 @@ describe("managed media attachment lifecycle", () => {
   });
 
   test("immediately tears down an engine attached after disposal", () => {
-    const detach = mock(() => undefined);
-    const release = mock(() => undefined);
-    const lifecycle = attachmentLifecycle(release);
+    const order: string[] = [];
+    const lifecycle = attachmentLifecycle(() => order.push("release"));
 
     lifecycle.dispose();
-    lifecycle.attach(detach);
+    lifecycle.attach(() => order.push("detach"));
 
     expect(lifecycle.active()).toBe(false);
-    expect(detach).toHaveBeenCalledTimes(1);
-    expect(release).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["release", "detach"]);
   });
 });

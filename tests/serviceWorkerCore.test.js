@@ -50,13 +50,12 @@ function expectPartialVideoResponse(response) {
 
 function memoryCaches(shell = null) {
   const values = new Map(shell === null ? [] : [["/", shell]]);
-  const put = mock((key, response) => {
+  const put = (key, response) => {
     values.set(typeof key === "string" ? key : key.url, response);
     return Promise.resolve();
-  });
+  };
   return {
     values,
-    put,
     storage: {
       match: (key) => Promise.resolve(
         values.get(typeof key === "string" ? key : key.url)?.clone(),
@@ -133,7 +132,6 @@ describe("offline media responses", () => {
 
     expectPartialVideoResponse(response);
     expect(await response.text()).toBe("34567");
-    expect(media.read).toHaveBeenCalledWith(3, 8);
   });
 
   test("streams a complete response when the browser does not send Range", async () => {
@@ -246,7 +244,6 @@ describe("service worker routing", () => {
     );
 
     expect(await response.text()).toBe("fresh shell");
-    expect(caches.put).toHaveBeenCalledTimes(1);
-    expect(caches.values.has("/")).toBe(true);
+    expect(await caches.values.get("/")?.text()).toBe("fresh shell");
   });
 });

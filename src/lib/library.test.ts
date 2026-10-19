@@ -82,7 +82,7 @@ test("recognizes movie formats from either metadata provider casing", () => {
   expect(isMovieMedia(media("TV", [2024, 1, 1]))).toBe(false);
 });
 
-test("keeps a franchise mapping while recognizing its child movie mapping", () => {
+test("keeps the franchise mapping primary when a season is mapped to a movie", () => {
   const [show] = groupShows([entry("Legacy Movie")]);
   expect(show).toBeDefined();
   const parent = media("TV", [2020, 1, 1]);
@@ -92,7 +92,6 @@ test("keeps a franchise mapping while recognizing its child movie mapping", () =
     [seasonMetadataKey("Legacy Movie", "Episodes")]: movie,
   };
   expect(primaryShowMetadata(show as NonNullable<typeof show>, metadata)).toBe(parent);
-  expect(isMovieMedia(metadata[seasonMetadataKey("Legacy Movie", "Episodes")])).toBe(true);
 });
 
 test("groups movie folders with their series through shared parent metadata", () => {

@@ -35,12 +35,33 @@ if (scenario.startsWith("lateboundary-")) {
     } } };
   } }));
 }
-if (scenario.startsWith("atomic-unsupported-")) {
+// Kernel refusals: renameat2 returns -1 with the scenario's errno, so the
+// production native layer reports the failure exactly as it would in the field.
+// Unsupported atomic renames refuse every call; a refused link refuses only the first.
+const refusedErrno = scenario === "link-refused" ? 1 : Number(scenario.slice("atomic-unsupported-".length));
+if (scenario.startsWith("atomic-unsupported-") || scenario === "link-refused") {
   const ffi = await import("bun:ffi");
-  const errno = new Int32Array([Number(scenario.slice("atomic-unsupported-".length))]);
-  await mock.module("bun:ffi", () => ({ ...ffi, dlopen: (...args: Parameters<typeof ffi.dlopen>) => {
-    const loaded = ffi.dlopen(...args);
-    return { ...loaded, symbols: { ...loaded.symbols, renameat2: () => -1, __errno_location: () => ffi.ptr(errno) } };
+  // Capture the real loader first: the mocked namespace rebinds ffi.dlopen.
+  const realOpen = ffi.dlopen;
+  const errno = new Int32Array([refusedErrno]);
+  let refusals = scenario === "link-refused" ? 1 : Number.POSITIVE_INFINITY;
+  await mock.module("bun:ffi", () => ({ ...ffi, dlopen: (library: Parameters<typeof ffi.dlopen>[0], symbols: typeof JOURNAL_NATIVE_SYMBOLS) => {
+    const loaded = realOpen(library, symbols);
+    const { renameat2, __errno_location: errnoLocation } = loaded.symbols;
+    let refused = false;
+    return { ...loaded, symbols: { ...loaded.symbols,
+      renameat2: (...call: Parameters<typeof renameat2>) => {
+        refused = refusals > 0;
+        if (refused) { refusals -= 1; return -1; }
+        return renameat2(...call);
+      },
+      // Only the read that immediately follows a refusal sees the injected errno.
+      __errno_location: () => {
+        const location = refused ? ffi.ptr(errno) : errnoLocation();
+        refused = false;
+        return location;
+      },
+    } };
   } }));
 }
 const native = { ...await import("./libraryJournalNative.ts") };
@@ -200,15 +221,14 @@ const scenarios = {
   "post-mkdir-failure": () => failedMkdir("post-mkdir"),
   "link-refused": async () => {
     await files({ "S/a.mkv": "original", "T/keep.txt": "keep" });
-    hooks.before = () => { hooks.before = null; throw Object.assign(new paths.LibraryFileError(409, "Native mutation failed (EPERM). No unsafe rename fallback was attempted."), { code: "EPERM" }); };
     const outcome = await run([moveFile("S/a.mkv", "T/a.mkv", await idOf("S/a.mkv"))]);
-    return { outcome, renames: 0, source: await contents("S/a.mkv"), target: await listing("T") };
+    return { outcome, source: await contents("S/a.mkv"), target: await listing("T") };
   },
   "destination-appears": async () => {
     await files({ "S/a.mkv": "original", "T/keep.txt": "keep" });
     hooks.before = (_from, to) => { if (to === abs("T/a.mkv")) { hooks.before = null; writeFileSync(to, "someone else's file"); } };
     const outcome = await run([moveFile("S/a.mkv", "T/a.mkv", await idOf("S/a.mkv"))]);
-    return { outcome, renames: 0, source: await contents("S/a.mkv"), target: await contents("T/a.mkv") };
+    return { outcome, source: await contents("S/a.mkv"), target: await contents("T/a.mkv") };
   },
   "cleanup-skips-replaced-destination": async () => {
     await files({ "S/a.mkv": "original", "T/keep.txt": "keep" });
@@ -235,7 +255,7 @@ const scenarios = {
   "same-inode-is-not-case-rename": async () => {
     await files({ "S/a.mkv": "original" }); await link(abs("S/a.mkv"), abs("S/b.mkv"));
     const outcome = await run([moveFile("S/a.mkv", "S/b.mkv", await idOf("S/a.mkv"))]);
-    return { outcome, renames: 0, names: await listing("S") };
+    return { outcome, names: await listing("S") };
   },
   "case-spelled-hardlink-collision": async () => {
     await files({ "S/a.mkv": "original" }); await link(abs("S/a.mkv"), abs("S/A.mkv"));

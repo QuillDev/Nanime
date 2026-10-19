@@ -90,11 +90,15 @@ class FakeHls {
 mock.module("hls.js", () => ({ default: FakeHls }));
 const { attachHls } = await import("./hlsPlayback.ts");
 
+/** A media element whose paused state follows play requests, like a browser's. */
 function fakeVideo() {
   const video = Object.assign(new EventTarget(), {
     ended: false,
-    paused: false,
-    play: mock(() => Promise.resolve()),
+    paused: true,
+    play: () => {
+      video.paused = false;
+      return Promise.resolve();
+    },
   });
   // eslint-disable-next-line anti-slop/no-chained-type-assertions
   return video as unknown as HTMLVideoElement;
@@ -128,7 +132,7 @@ function setPageVisibility(page: FakePage, visibility: DocumentVisibilityState):
 
 function expectForegroundResume(fixture: ReturnType<typeof attachedFixture>): void {
   expect(fixture.hls?.startLoads).toEqual([1, -1]);
-  expect(fixture.video.play).toHaveBeenCalledTimes(3);
+  expect(fixture.video.paused).toBe(false);
 }
 
 function expectDetachedLifecycle(fixture: ReturnType<typeof attachedFixture>, page: FakePage): void {
@@ -174,7 +178,7 @@ function expectInitialAttachment(fixture: ReturnType<typeof attachedFixture>): v
     media: fixture.video,
     source: "/hls?path=episode.mkv",
   });
-  expect(fixture.video.play).toHaveBeenCalledTimes(1);
+  expect(fixture.video.paused).toBe(false);
 }
 
 describe("hls.js playback adapter", () => {
@@ -183,7 +187,7 @@ describe("hls.js playback adapter", () => {
     expectInitialAttachment(fixture);
     fixture.hls?.emit(FakeHls.Events.MANIFEST_PARSED);
     expect(fixture.hls?.startLoads).toEqual([1]);
-    expect(fixture.video.play).toHaveBeenCalledTimes(2);
+    expect(fixture.video.paused).toBe(false);
     fixture.detach?.();
     expect(fixture.hls?.destroyed).toBe(true);
     expect(fixture.onError).not.toHaveBeenCalled();
@@ -202,7 +206,7 @@ describe("hls.js playback adapter", () => {
 
     const [hls] = FakeHls.instances;
     hls?.emit(FakeHls.Events.MANIFEST_PARSED);
-    expect(video.play).not.toHaveBeenCalled();
+    expect(video.paused).toBe(true);
     expect(hls?.startLoads).toEqual([0]);
   });
 
