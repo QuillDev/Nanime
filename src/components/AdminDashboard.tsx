@@ -7,13 +7,14 @@ import { AdminSidebar } from "./AdminSidebar.tsx";
 import { AdminSystem, AdminVideoManagement } from "./AdminSystem.tsx";
 import { AdminTranscodes } from "./AdminTranscodes.tsx";
 import { AdminUsers } from "./AdminUsers.tsx";
+import { ListSkeleton } from "./Skeleton.tsx";
 
 // The file manager package and its stylesheet load only when the Files page opens.
 const AdminLibraryFiles = lazy(async () => {
   const module = await import("./AdminLibraryFiles.tsx");
   return { default: module.AdminLibraryFiles };
 });
-const FILES_LOADING = <p className="py-10 text-center text-sm text-muted-foreground">Loading library files…</p>;
+const FILES_LOADING = <ListSkeleton rows={6} />;
 
 interface AdminContentProps {
   readonly showFolders: readonly string[];

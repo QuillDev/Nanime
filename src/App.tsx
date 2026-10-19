@@ -12,7 +12,8 @@ import {
   loadMediaApp,
   loadProfileApp,
 } from "./routeModules.ts";
-import { AppShellSkeleton, SessionSkeleton } from "./components/Skeleton.tsx";
+import { PageSkeleton } from "./components/PageSkeleton.tsx";
+import { skeletonPage } from "./lib/skeletonPage.ts";
 import { SessionProviders } from "./components/SessionProviders.tsx";
 
 const AdminApp = lazy(async () => {
@@ -27,7 +28,14 @@ const ProfileApp = lazy(async () => {
   const module = await loadProfileApp();
   return { default: module.ProfileApp };
 });
-const ROUTE_LOADING = <AppShellSkeleton />;
+// Placeholders shaped like the page the URL opens, shown before the session check and page code finish.
+const PAGE_LOADING = {
+  home: <PageSkeleton page="home" />,
+  show: <PageSkeleton page="show" />,
+  results: <PageSkeleton page="results" />,
+  profile: <PageSkeleton page="profile" />,
+  admin: <PageSkeleton page="admin" />,
+} as const;
 
 function AdminForbidden(): React.JSX.Element {
   return (
@@ -48,8 +56,9 @@ function AdminForbidden(): React.JSX.Element {
 export function App(): React.JSX.Element {
   const currentUser = useCurrentUser();
   const route = useMediaRoute();
+  const loading = PAGE_LOADING[skeletonPage(route)];
   if (currentUser.status === "pending") {
-    return <SessionSkeleton />;
+    return loading;
   }
   if (currentUser.status === "error") {
     return (
@@ -62,7 +71,7 @@ export function App(): React.JSX.Element {
     return <LoginScreen />;
   }
   return (
-    <Suspense fallback={ROUTE_LOADING}>
+    <Suspense fallback={loading}>
       <SessionProviders key={currentUser.data.id} userId={currentUser.data.id}>
         {authenticatedView(currentUser.data, route)}
       </SessionProviders>
