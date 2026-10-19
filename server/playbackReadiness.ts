@@ -134,8 +134,12 @@ async function readinessRequest(req: Request): Promise<{ readonly paths: readonl
   return valid ? { paths: paths as string[], hevc: body?.hevc === true } : null;
 }
 
-/** Readiness for several library videos at once (a whole season); unknown paths are omitted. */
-/** Probe keyframes while the show page is open, so pressing play needn't wait for them. */
+/**
+ * Probe keyframes for the episode a player is opening (a single-path readiness
+ * request), so its playlist needn't wait. Never for a whole season: probing
+ * reads every file in full, and a dozen cold reads at once stalled playback
+ * start by ~20 s.
+ */
 async function warmKeyframes(abs: string): Promise<void> {
   try {
     await sourceKeyframes(abs);
@@ -144,6 +148,7 @@ async function warmKeyframes(abs: string): Promise<void> {
   }
 }
 
+/** Readiness for several library videos at once (a whole season); unknown paths are omitted. */
 export async function playbackReadinessResponse(
   req: Request,
   resolve: (rel: string) => Promise<string | null>,
@@ -159,7 +164,7 @@ export async function playbackReadinessResponse(
       return [];
     }
     const plan = await playbackPlan(abs, rel, { ...options, hevcClient: request.hevc });
-    if (plan.kind === "stream" && plan.source.videoMode === "passthrough") {
+    if (request.paths.length === 1 && plan.kind === "stream" && plan.source.videoMode === "passthrough") {
       void warmKeyframes(abs);
     }
     return [plan.kind === "stream"
