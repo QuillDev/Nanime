@@ -25,7 +25,7 @@ import { useTorrents } from "../hooks/useTorrents.ts";
 import { UnmappedShowsNotice } from "./UnmappedShowsNotice.tsx";
 import { LibraryHome } from "./LibraryHome.tsx";
 
-export { LibrarySkeleton } from "./Skeleton.tsx";
+export { RouteLibrarySkeleton } from "./LibrarySkeletons.tsx";
 
 const EMPTY_TORRENTS: readonly TorrentStatus[] = [];
 

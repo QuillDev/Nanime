@@ -11,7 +11,7 @@ import {
   updateSearch,
   useMediaRoute,
 } from "../hooks/useMediaRoute.ts";
-import { Library, LibrarySkeleton } from "./Library.tsx";
+import { Library, RouteLibrarySkeleton } from "./Library.tsx";
 import { MediaHeader } from "./MediaHeader.tsx";
 import { loadPlaybackGate, loadPlayer, preloadPlayer } from "../routeModules.ts";
 import { useLibraryIndex, type LibraryIndex } from "../hooks/useLibraryIndex.ts";
@@ -85,7 +85,7 @@ interface LibraryContentProps {
 
 function LibraryContent({ library, index, progress, route, user, onSelect, onShowSelect }: LibraryContentProps): React.JSX.Element {
   if (library.status === "pending" || library.status === "success" && index.metadataPending) {
-    return <LibrarySkeleton />;
+    return <RouteLibrarySkeleton showName={route.showName} query={route.query} />;
   }
   if (library.status === "error") {
     return <p className="py-16 text-center text-destructive">Failed to load library: {library.error.message}</p>;

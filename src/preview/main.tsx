@@ -5,7 +5,7 @@ import { MediaHeader } from "../components/MediaHeader.tsx";
 import { ShowPage } from "../components/ShowPage.tsx";
 import { SessionProviders } from "../components/SessionProviders.tsx";
 import { HomePreview, type HomeState } from "./homePreview.tsx";
-import { AdminPreview, ProfilePreview } from "./AppPreviews.tsx";
+import { AdminPreview, ProfilePreview, SkeletonPreview } from "./AppPreviews.tsx";
 import { isAdminTab, type AdminTab } from "../hooks/useMediaRoute.ts";
 import "../styles.css";
 import {
@@ -17,7 +17,8 @@ import {
  * Design preview: the real show page rendered from fixtures, no backend.
  * Open /preview/?state=loading|needs|partial|transcoding|ready (show page)
  * ?state=home-watching|home-fresh (library home)
- * or ?state=profile|profile-open (profile page) under `bun run dev`.
+ * ?state=profile|profile-open (profile page)
+ * or ?state=skeleton-home|show|results|profile|admin (loading placeholders) under `bun run dev`.
  */
 const STATES = new Set<PreviewState>(["loading", "needs", "partial", "transcoding", "ready"]);
 const HOME_STATES = new Set<HomeState>(["watching", "fresh"]);
@@ -97,6 +98,9 @@ if (requested === "admin-videos-selected") {
 }
 
 function PreviewPage(): React.JSX.Element {
+  if (requested.startsWith("skeleton-")) {
+    return <SkeletonPreview page={requested.slice("skeleton-".length)} />;
+  }
   if (adminTab !== null) {
     return <AdminPreview tab={adminTab} />;
   }

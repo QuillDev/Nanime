@@ -7,6 +7,7 @@ import { useLibraryFileOperation, useLibraryFiles } from "../hooks/useLibraryFil
 import {
   LIBRARY_FILE_COLUMNS, libraryFileItems, libraryFileLock, libraryFileRequest, operationMessage, type LibraryFile,
 } from "../lib/libraryFileManager.ts";
+import { ListSkeleton } from "./Skeleton.tsx";
 
 const COLUMNS = [...LIBRARY_FILE_COLUMNS, sizeColumn<LibraryFileItem>(), modifiedColumn<LibraryFileItem>()];
 const LABELS = {
@@ -52,7 +53,7 @@ export function AdminLibraryFiles(): React.JSX.Element {
       {files.data?.torrentOwnership === "unavailable" && <OwnershipNotice />}
       {files.error !== null && <p className="select-text text-sm text-destructive">{files.error.message}</p>}
       {files.isPending ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">Loading library files…</p>
+        <ListSkeleton rows={6} />
       ) : (
         <div className="h-[calc(100dvh-var(--header-height)-10rem)] min-h-[28rem]">
           <FileManager items={items} columns={COLUMNS} getLock={libraryFileLock} labels={LABELS} onOperation={handleOperation} />
