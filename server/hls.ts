@@ -8,12 +8,12 @@ import {
   hlsCapacityAvailable,
   reserveHlsPlaybackCapacity,
 } from "./hlsCapacity.ts";
-import { HLS_SEGMENT_SECONDS, HLS_SESSION_IDLE_MS, hlsSessionKey, sessionStreams, transcodeArgs, type HlsSourceOptions } from "./hlsTranscode.ts";
+import { HLS_SEGMENT_SECONDS, HLS_SESSION_IDLE_MS, hlsSessionKey, playlistReadyToServe, sessionStreams, transcodeArgs, type HlsSourceOptions } from "./hlsTranscode.ts";
 import { stopHlsProcess } from "./hlsProcess.ts";
 import { hlsOwnershipKey, supersedeHlsLease } from "./hlsLeaseOwnership.ts";
 
 export { audioTracksResponse } from "./audioTracks.ts";
-export { transcodeArgs } from "./hlsTranscode.ts";
+export { playlistReadyToServe, transcodeArgs } from "./hlsTranscode.ts";
 
 const PROCESS_STOP_GRACE_MS = 2 * 1000;
 const MAX_ACTIVE_SESSIONS = 4;
@@ -223,17 +223,20 @@ function activeSession(options: HlsPlaylistOptions): Promise<HlsSession | null |
 
 async function waitForPlaylist(session: HlsSession): Promise<string | null> {
   const startedAt = Date.now();
+  let latest: string | null = null;
   while (Date.now() - startedAt < PLAYLIST_WAIT_MS) {
     const playlist = await readFile(session.playlistPath, "utf8").catch(() => null);
-    if (playlist !== null) {
-      return playlist;
+    latest = playlist ?? latest;
+    const finished = session.process.exitCode !== null;
+    if (latest !== null && (finished || playlistReadyToServe(latest))) {
+      return latest;
     }
     if (session.error !== null || session.stopping) {
       return null;
     }
     await Bun.sleep(25);
   }
-  return null;
+  return latest;
 }
 
 export function rewritePlaylist(

@@ -36,6 +36,19 @@ export interface HlsSourceOptions extends HlsOptions {
  */
 const COPY_SEEK_LEAD_SECONDS = HLS_SEGMENT_SECONDS / 4;
 
+/**
+ * Hls.js treats an event playlist as live and only learns about new segments on
+ * its next reload (one target duration later). Handing out a one-segment
+ * playlist therefore stalls startup after the first segment, so the first
+ * response waits until several segments exist or the encode has finished.
+ */
+const STARTUP_PLAYLIST_SEGMENTS = 3;
+
+export function playlistReadyToServe(playlist: string): boolean {
+  const segments = playlist.split("\n").filter((line) => line !== "" && !line.startsWith("#")).length;
+  return segments >= STARTUP_PLAYLIST_SEGMENTS || playlist.includes("#EXT-X-ENDLIST");
+}
+
 interface HlsSessionKeyOptions extends HlsOptions {
   readonly abs: string;
   readonly source?: HlsStreamSource;

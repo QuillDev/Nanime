@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseCpuList, reapStrayEncoders, transcodeWorkerBudget } from "./transcodeEncoder.ts";
+import { parseCpuList, presetArgs, reapStrayEncoders, transcodeWorkerBudget } from "./transcodeEncoder.ts";
 
 test("stored transcodes share a quarter of the host across parallel workers", () => {
   expect(transcodeWorkerBudget(16, Number.NaN)).toEqual({ cpus: 4, workers: 2, threadsPerWorker: 2 });
@@ -14,6 +14,21 @@ test("a configured worker count never exceeds the quarter budget", () => {
   expect(transcodeWorkerBudget(16, 4)).toEqual({ cpus: 4, workers: 4, threadsPerWorker: 1 });
   expect(transcodeWorkerBudget(16, 9)).toEqual({ cpus: 4, workers: 4, threadsPerWorker: 1 });
   expect(transcodeWorkerBudget(8, 3)).toEqual({ cpus: 2, workers: 2, threadsPerWorker: 1 });
+});
+
+function argValue(args: readonly string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  return index === -1 ? undefined : args[index + 1];
+}
+
+test("compatibility copies cap their peak bitrate so heavy scenes stay streamable", () => {
+  const args = presetArgs("compatibility");
+
+  expect(argValue(args, "-c:v")).toBe("libx264");
+  expect(argValue(args, "-crf")).toBe("20");
+  expect(argValue(args, "-maxrate")).toBe("6M");
+  expect(argValue(args, "-bufsize")).toBe("12M");
+  expect(argValue(args, "-force_key_frames")).toBe("expr:gte(t,n_forced*2)");
 });
 
 test("reads kernel CPU lists", () => {
