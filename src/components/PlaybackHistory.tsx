@@ -1,19 +1,13 @@
-import { History, RotateCcw } from "lucide-react";
-import { useCallback } from "react";
-import type { PlaybackAuditEvent, PlaybackAuditOrigin, PlaybackProgress } from "../types.ts";
+import { RotateCcw } from "lucide-react";
+import { useCallback, useState } from "react";
+import type { PlaybackAuditEvent, PlaybackAuditOrigin } from "../types.ts";
 import { usePlaybackHistory, useRestorePlaybackHistory } from "../hooks/usePlaybackHistory.ts";
+import { useProfileEpisodes } from "../hooks/useProfileEpisodes.ts";
 import { formatDuration } from "../format.ts";
-import { ProfileEmptyState, ProfileSection } from "./ProfileSection.tsx";
+import { episodeShortLabel, groupByDay, profileEpisode, type ProfileEpisodes } from "../lib/profileMedia.ts";
+import { ProfileEmptyState, ProfileMediaRow, ProfileSection } from "./ProfileSection.tsx";
 
-const actionLabels = {
-  completed: "Finished watching",
-  "playback-started": "Started watching",
-  "playback-stopped": "Stopped watching",
-  restored: "Restored an earlier state",
-  "snapshot-imported": "Recorded existing state",
-  watched: "Marked watched",
-  unwatched: "Marked unwatched",
-} as const;
+const RECENT_COUNT = 8;
 
 const originLabels = {
   "episode-menu": "episode menu",
@@ -26,106 +20,110 @@ const originLabels = {
   "series-menu": "series menu",
 } as const satisfies Readonly<Record<PlaybackAuditOrigin, string>>;
 
-function mediaName(rel: string): string {
-  return rel.split("/").at(-1) ?? rel;
+function actionLabel(event: PlaybackAuditEvent): string {
+  switch (event.action) {
+    case "completed": {
+      return "Finished";
+    }
+    case "playback-started": {
+      return "Started";
+    }
+    case "playback-stopped": {
+      return event.next === null ? "Stopped" : `Stopped at ${formatDuration(event.next.position)}`;
+    }
+    case "restored": {
+      return "Restored an earlier state";
+    }
+    case "snapshot-imported": {
+      return "Recorded existing state";
+    }
+    case "watched": {
+      return "Marked watched";
+    }
+    case "unwatched": {
+      return "Marked unwatched";
+    }
+  }
 }
 
-function playbackSummary(progress: PlaybackProgress | null): string {
-  if (progress === null) {
-    return "No saved state";
-  }
-  if (progress.completed) {
-    return "Watched";
-  }
-  const percent = progress.duration > 0
-    ? Math.round(progress.position / progress.duration * 100)
-    : 0;
-  const position = `${formatDuration(progress.position)} / ${formatDuration(progress.duration)}`;
-  return `${position} · ${String(percent)}%${progress.dismissedAt === null ? "" : " · hidden from home"}`;
+function isUndoable(event: PlaybackAuditEvent): boolean {
+  return event.action === "completed" || event.action === "watched" || event.action === "unwatched";
 }
 
-function HistoryEvent({ event }: { readonly event: PlaybackAuditEvent }): React.JSX.Element {
+function eventTime(event: PlaybackAuditEvent): string {
+  return new Date(event.createdAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function HistoryEvent({ episodes, event }: { readonly episodes: ProfileEpisodes; readonly event: PlaybackAuditEvent }): React.JSX.Element {
   const restore = useRestorePlaybackHistory();
   const handleRestore = useCallback(() => restore.mutate(event.id), [event.id, restore]);
+  const episode = profileEpisode(episodes, event.rel);
+  const label = episodeShortLabel(episode);
   return (
-    <li className="px-4 py-4 sm:px-5">
-      <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
-        <div className="min-w-0">
-          <p className="font-medium">{actionLabels[event.action]}</p>
-          <p className="mt-1 truncate text-sm text-muted-foreground" title={event.rel}>
-            {mediaName(event.rel)}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {playbackSummary(event.previous)} → {playbackSummary(event.next)}
-          </p>
-          {event.sessionSeconds !== null && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Session duration: {formatDuration(event.sessionSeconds)}
-            </p>
-          )}
-          <p className="mt-1 text-xs text-muted-foreground">
-            {new Date(event.createdAt).toLocaleString()} · {originLabels[event.origin]}
-          </p>
-        </div>
-        {(event.action === "completed" || event.action === "watched" || event.action === "unwatched") && (
-          <button
-            type="button"
-            onClick={handleRestore}
-            disabled={restore.isPending}
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-secondary px-2.5 text-xs font-medium text-secondary-foreground hover:bg-accent disabled:text-muted-foreground"
-          >
-            <RotateCcw className="size-3.5" />
-            Undo
-          </button>
+    <ProfileMediaRow rel={event.rel} thumbnail={episode.thumbnail}>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm" title={event.rel}>
+          <span className="font-medium">{episode.showTitle}</span>
+          {label !== "" && <span className="text-muted-foreground"> {label}</span>}
+        </p>
+        <p className="truncate text-[13px] text-muted-foreground" title={`${new Date(event.createdAt).toLocaleString()} · ${originLabels[event.origin]}`}>
+          {actionLabel(event)} · {eventTime(event)}
+        </p>
+        {restore.error !== null && (
+          <p className="mt-1 select-text text-xs text-destructive">{restore.error.message}</p>
         )}
       </div>
-      {restore.error !== null && (
-        <p className="mt-2 select-text text-xs text-destructive">{restore.error.message}</p>
-      )}
-    </li>
-  );
-}
-
-function HistoryList({ events }: { readonly events: readonly PlaybackAuditEvent[] }): React.JSX.Element {
-  return (
-    <ul className="divide-y divide-border">
-      {events.map((event) => <HistoryEvent key={event.id} event={event} />)}
-    </ul>
-  );
-}
-
-export function PlaybackHistory({ className }: { readonly className?: string }): React.JSX.Element {
-  const history = usePlaybackHistory();
-  const events = history.data ?? [];
-  const recent = events.slice(0, 5);
-  const older = events.slice(5);
-  return (
-    <ProfileSection
-      className={className}
-      description="Recent watched-state changes."
-      icon={History}
-      id="playback-history-title"
-      title="Playback history"
+      {isUndoable(event) && (
+    <button
+      type="button"
+      onClick={handleRestore}
+      disabled={restore.isPending}
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-60"
     >
-      {history.isPending && <p className="px-4 py-6 text-sm text-muted-foreground sm:px-5">Loading…</p>}
+      <RotateCcw className="size-3.5" />
+      Undo
+    </button>
+      )}
+    </ProfileMediaRow>
+  );
+}
+
+function HistoryDays({ episodes, events }: { readonly episodes: ProfileEpisodes; readonly events: readonly PlaybackAuditEvent[] }): React.JSX.Element {
+  return (
+    <>
+      {groupByDay(events).map((day) => (
+        <section key={day.label} aria-label={day.label}>
+          <h3 className="mb-1 mt-3 text-xs font-semibold text-muted-foreground first:mt-0">{day.label}</h3>
+          <ul>
+            {day.items.map((event) => <HistoryEvent key={event.id} episodes={episodes} event={event} />)}
+          </ul>
+        </section>
+      ))}
+    </>
+  );
+}
+
+export function PlaybackHistory(): React.JSX.Element {
+  const history = usePlaybackHistory();
+  const episodes = useProfileEpisodes();
+  const [showAll, setShowAll] = useState(false);
+  const handleShowAll = useCallback(() => setShowAll(true), []);
+  const events = history.data ?? [];
+  const visible = showAll ? events : events.slice(0, RECENT_COUNT);
+  return (
+    <ProfileSection id="playback-history" title="History">
+      {history.isPending && <ProfileEmptyState>Loading…</ProfileEmptyState>}
       {history.error !== null && (
-        <p className="select-text px-4 py-6 text-sm text-destructive sm:px-5">{history.error.message}</p>
+        <p className="select-text py-2 text-sm text-destructive">{history.error.message}</p>
       )}
       {history.status === "success" && events.length === 0 && (
         <ProfileEmptyState>No playback changes yet.</ProfileEmptyState>
       )}
-      {events.length > 0 && (
-        <>
-          <HistoryList events={recent} />
-          {older.length > 0 && (
-            <details className="group border-t border-border">
-              <summary className="cursor-pointer px-4 py-3 text-center text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground sm:px-5">
-                Show {older.length} older {older.length === 1 ? "change" : "changes"}
-              </summary>
-              <HistoryList events={older} />
-            </details>
-          )}
-        </>
+      {visible.length > 0 && <HistoryDays episodes={episodes} events={visible} />}
+      {visible.length < events.length && (
+        <button type="button" onClick={handleShowAll} className="mt-2 rounded-md py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          Show older
+        </button>
       )}
     </ProfileSection>
   );

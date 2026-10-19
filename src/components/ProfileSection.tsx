@@ -1,69 +1,76 @@
-import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils.ts";
+import { MediaThumbnail } from "./MediaThumbnail.tsx";
 
 interface ProfileSectionProps {
   readonly children: ReactNode;
   readonly className?: string | undefined;
-  readonly description?: ReactNode;
-  readonly icon: LucideIcon;
+  readonly defaultOpen?: boolean;
   readonly id: string;
+  readonly summary?: ReactNode;
   readonly title: string;
 }
 
+/** A collapsible profile row: title on the left, its current value on the right. */
 export function ProfileSection({
   children,
   className,
-  description,
-  icon: Icon,
+  defaultOpen = false,
   id,
+  summary,
   title,
 }: ProfileSectionProps): React.JSX.Element {
   return (
-    <section
-      className={cn("overflow-hidden rounded-xl border border-border bg-card", className)}
-      aria-labelledby={id}
+    <details
+      id={id}
+      open={defaultOpen}
+      className={cn("group/section scroll-mt-24 border-b border-border first:border-t", className)}
     >
-      <header className="flex items-start gap-3 border-b border-border px-4 py-4 sm:px-5">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-primary">
-          <Icon className="size-4.5" aria-hidden="true" />
-        </span>
-        <div className="min-w-0 pt-0.5">
-          <h2 id={id} className="font-semibold tracking-tight">{title}</h2>
-          {description !== undefined && (
-            <div className="mt-0.5 text-sm leading-5 text-muted-foreground">{description}</div>
-          )}
-        </div>
-      </header>
-      {children}
-    </section>
+      <summary className="flex cursor-pointer list-none items-center gap-3 py-4 outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open/section:rotate-90" aria-hidden="true" />
+        <h2 className="flex-1 font-display text-lg font-bold tracking-tight">{title}</h2>
+        {summary !== undefined && (
+          <span className="min-w-0 truncate text-sm text-muted-foreground">{summary}</span>
+        )}
+      </summary>
+      <div className="pb-5 pl-7">{children}</div>
+    </details>
   );
 }
 
 interface ProfileSettingProps {
   readonly children: ReactNode;
-  readonly description?: string;
   readonly label: string;
 }
 
-export function ProfileSetting({
-  children,
-  description,
-  label,
-}: ProfileSettingProps): React.JSX.Element {
+export function ProfileSetting({ children, label }: ProfileSettingProps): React.JSX.Element {
   return (
-    <div className="grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:px-5">
-      <div className="min-w-0">
-        <p className="text-sm font-medium">{label}</p>
-        {description !== undefined && (
-          <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{description}</p>
-        )}
-      </div>
-      <div className="w-full sm:w-auto">{children}</div>
+    <div className="flex flex-wrap items-center justify-between gap-3 py-2.5">
+      <p className="text-sm">{label}</p>
+      {children}
     </div>
   );
 }
 
 export function ProfileEmptyState({ children }: { readonly children: ReactNode }): React.JSX.Element {
-  return <p className="px-4 py-8 text-center text-sm text-muted-foreground sm:px-5">{children}</p>;
+  return <p className="py-2 text-sm text-muted-foreground">{children}</p>;
+}
+
+interface ProfileMediaRowProps {
+  readonly children: ReactNode;
+  readonly rel: string;
+  readonly thumbnail: string | null;
+}
+
+/** Episode thumbnail followed by the row's text and trailing action. */
+export function ProfileMediaRow({ children, rel, thumbnail }: ProfileMediaRowProps): React.JSX.Element {
+  return (
+    <li className="flex items-center gap-3.5 py-2">
+      <span className="w-20 shrink-0 overflow-hidden rounded-md sm:w-24">
+        <MediaThumbnail rel={rel} source={thumbnail} className="w-full" />
+      </span>
+      {children}
+    </li>
+  );
 }

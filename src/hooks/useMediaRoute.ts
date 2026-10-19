@@ -138,6 +138,15 @@ export function navigateToEpisode(rel: string): void {
   updateUrl(url);
 }
 
+/** Library URL that opens the player on this episode, from any page. */
+export function libraryEpisodeHref(rel: string): string {
+  return `/?${new URLSearchParams({ episode: rel }).toString()}`;
+}
+
+export function navigateToLibraryEpisode(rel: string): void {
+  updateUrl(new URL(libraryEpisodeHref(rel), globalThis.location.origin));
+}
+
 export function closeEpisode(): void {
   const url = new URL(globalThis.location.href);
   url.searchParams.delete("episode");
