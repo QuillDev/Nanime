@@ -45,41 +45,37 @@ function presentation(event: LibraryActivityEvent): ActivityPresentation {
 
 function ActivityItem({ event }: { readonly event: LibraryActivityEvent }): React.JSX.Element {
   const { icon: Icon, title, subject, detail } = presentation(event);
+  const when = new Date(event.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   return (
-    <li className="flex items-start gap-3 px-4 py-4 sm:px-5">
-      <Icon className="mt-0.5 size-4 shrink-0 text-primary" />
-      <div className="min-w-0">
-        <p className="font-medium">{title}</p>
-        <p className="mt-1 truncate text-sm text-muted-foreground" title={subject}>{subject}</p>
-        <p className="mt-1 truncate text-xs text-muted-foreground" title={detail}>{detail}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {new Date(event.createdAt).toLocaleString()} · {event.actorUsername}
+    <li className="flex items-start gap-3 py-2">
+      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm" title={subject}>
+          <span className="font-medium">{title}</span>
+          <span className="text-muted-foreground"> · {subject}</span>
+        </p>
+        <p className="truncate text-[13px] text-muted-foreground" title={detail}>
+          {detail} · {when} · {event.actorUsername}
         </p>
       </div>
     </li>
   );
 }
 
-export function LibraryActivity({ className }: { readonly className?: string }): React.JSX.Element {
+export function LibraryActivity(): React.JSX.Element {
   const activity = useLibraryActivity();
   const events = activity.data ?? [];
   return (
-    <ProfileSection
-      className={className}
-      description="Uploads, mapping changes, and file operations."
-      icon={FolderSync}
-      id="library-activity-title"
-      title="Library activity"
-    >
-      {activity.isPending && <p className="px-4 py-6 text-sm text-muted-foreground sm:px-5">Loading…</p>}
+    <ProfileSection id="library-activity" title="Library activity">
+      {activity.isPending && <ProfileEmptyState>Loading…</ProfileEmptyState>}
       {activity.error !== null && (
-        <p className="select-text px-4 py-6 text-sm text-destructive sm:px-5">{activity.error.message}</p>
+        <p className="select-text py-2 text-sm text-destructive">{activity.error.message}</p>
       )}
       {activity.status === "success" && events.length === 0 && (
         <ProfileEmptyState>No library changes yet.</ProfileEmptyState>
       )}
       {events.length > 0 && (
-        <ul className="divide-y divide-border">
+        <ul>
           {events.map((event) => <ActivityItem key={event.id} event={event} />)}
         </ul>
       )}

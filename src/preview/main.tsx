@@ -4,9 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MediaHeader } from "../components/MediaHeader.tsx";
 import { ShowPage } from "../components/ShowPage.tsx";
 import { SessionProviders } from "../components/SessionProviders.tsx";
-import { LibraryHome } from "../components/LibraryHome.tsx";
-import { buildContinueWatchingItems } from "../lib/continueWatching.ts";
-import { homeEntries, homeMetadata, homeProgress, homeShows, type HomeState } from "./homeFixtures.ts";
+import { HomePreview, type HomeState } from "./homePreview.tsx";
+import { ProfilePreview } from "./ProfilePreview.tsx";
 import "../styles.css";
 import {
   previewJobs, previewMedia, previewMetadata, previewProgress, previewReadiness, previewShow, previewUser,
@@ -16,7 +15,8 @@ import {
 /**
  * Design preview: the real show page rendered from fixtures, no backend.
  * Open /preview/?state=loading|needs|partial|transcoding|ready (show page)
- * or ?state=home-watching|home-fresh (library home) under `bun run dev`.
+ * ?state=home-watching|home-fresh (library home)
+ * or ?state=profile|profile-open (profile page) under `bun run dev`.
  */
 const STATES = new Set<PreviewState>(["loading", "needs", "partial", "transcoding", "ready"]);
 const HOME_STATES = new Set<HomeState>(["watching", "fresh"]);
@@ -44,34 +44,21 @@ if (state !== "loading") {
 }
 client.setQueryData(["transcodes"], previewJobs(state));
 
+const profileState = requested === "profile" || requested === "profile-open";
+// "profile-open" expands every section so their contents can be reviewed.
+if (requested === "profile-open") {
+  setTimeout(() => {
+    for (const section of document.querySelectorAll("details")) {
+      section.open = true;
+    }
+  }, 300);
+}
+
 const noop = (): void => undefined;
-const NO_DOWNLOADS: readonly [] = [];
 const container = document.querySelector("#root");
 if (container === null) {
   throw new Error("Root container #root is missing");
 }
-function HomePreview({ home }: { readonly home: HomeState }): React.JSX.Element {
-  const progress = homeProgress(home);
-  return (
-    <>
-      <MediaHeader user={previewUser} view="library" query="" shows={homeShows} metadata={homeMetadata} onQueryChange={noop} onShowSelect={noop} overlay />
-      <main className="mx-auto max-w-7xl px-6 py-6">
-        <LibraryHome
-          continueWatching={buildContinueWatchingItems(homeShows, homeMetadata, progress)}
-          downloads={NO_DOWNLOADS}
-          entries={homeEntries}
-          metadata={homeMetadata}
-          progress={progress}
-          showContinueWatching
-          shows={homeShows}
-          onEpisodeSelect={noop}
-          onShowSelect={noop}
-        />
-      </main>
-    </>
-  );
-}
-
 function ShowPreview(): React.JSX.Element {
   return (
     <>
@@ -91,11 +78,18 @@ function ShowPreview(): React.JSX.Element {
   );
 }
 
+function PreviewPage(): React.JSX.Element {
+  if (profileState) {
+    return <ProfilePreview />;
+  }
+  return homeState === null ? <ShowPreview /> : <HomePreview home={homeState} />;
+}
+
 createRoot(container).render(
   <StrictMode>
     <QueryClientProvider client={client}>
       <SessionProviders userId={previewUser.id}>
-        {homeState === null ? <ShowPreview /> : <HomePreview home={homeState} />}
+        <PreviewPage />
       </SessionProviders>
     </QueryClientProvider>
   </StrictMode>,

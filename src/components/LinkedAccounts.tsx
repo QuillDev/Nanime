@@ -1,13 +1,12 @@
 import { useCallback } from "react";
-import { ExternalLink, Link2 } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import aniListLogo from "../assets/anilist-logo.svg";
 import type { AniListAccountStatus } from "../types.ts";
 import {
   useAniListAccount,
   useDisconnectAniList,
 } from "../hooks/useAniListAccount.ts";
-import { ListSkeleton } from "./Skeleton.tsx";
-import { ProfileSection } from "./ProfileSection.tsx";
+import { ProfileEmptyState, ProfileSection } from "./ProfileSection.tsx";
 
 interface LinkedAccountStateProps {
   readonly account: AniListAccountStatus | undefined;
@@ -27,9 +26,9 @@ function ConnectedAccount({
   readonly onDisconnect: () => void;
 }): React.JSX.Element {
   return (
-    <div className="flex items-center gap-3 px-4 py-4 sm:px-5">
+    <div className="flex items-center gap-3 py-1">
       {account.avatarUrl !== null && (
-        <img src={account.avatarUrl} alt="" className="size-12 rounded-full object-cover" />
+        <img src={account.avatarUrl} alt="" className="size-9 rounded-full object-cover" />
       )}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{account.name}</p>
@@ -53,48 +52,43 @@ function LinkedAccountState({
   onDisconnect,
 }: LinkedAccountStateProps): React.JSX.Element {
   if (status === "pending") {
-    return <div className="px-4 sm:px-5"><ListSkeleton rows={1} /></div>;
+    return <ProfileEmptyState>Loading…</ProfileEmptyState>;
   }
   if (status === "error") {
-    return <p className="select-text px-4 py-5 text-sm text-destructive sm:px-5">{error?.message}</p>;
+    return <p className="select-text py-2 text-sm text-destructive">{error?.message}</p>;
   }
   if (account?.configured !== true) {
-    return <p className="px-4 py-6 text-sm text-muted-foreground sm:px-5">AniList is not configured.</p>;
+    return <ProfileEmptyState>AniList is not configured.</ProfileEmptyState>;
   }
   if (!account.connected || account.account === null) {
     return (
-      <div className="px-4 py-5 sm:px-5">
-        <a href="/api/auth/anilist/start" className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground sm:w-auto">
-          <img src={aniListLogo} alt="" className="size-5" />
-          Connect AniList
-        </a>
-      </div>
+      <a href="/api/auth/anilist/start" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground">
+        <img src={aniListLogo} alt="" className="size-5" />
+        Connect AniList
+      </a>
     );
   }
   return <ConnectedAccount account={account.account} disconnecting={disconnecting} onDisconnect={onDisconnect} />;
 }
 
-export function LinkedAccounts({ className }: { readonly className?: string }): React.JSX.Element {
+function accountSummary(account: AniListAccountStatus | undefined): string | undefined {
+  if (account?.configured !== true) {
+    return undefined;
+  }
+  return account.account?.name ?? "Not connected";
+}
+
+export function LinkedAccounts(): React.JSX.Element {
   const account = useAniListAccount();
   const disconnect = useDisconnectAniList();
   const handleDisconnect = useCallback(() => disconnect.mutate(), [disconnect]);
 
   return (
-    <ProfileSection
-      className={className}
-      description="Sync watched progress and scores."
-      icon={Link2}
-      id="linked-accounts-title"
-      title="Connected accounts"
-    >
-      <div className="flex items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
-        <span className="rounded-md bg-black p-1"><img src={aniListLogo} alt="" className="size-6" /></span>
-        <h3 className="text-sm font-medium">AniList</h3>
-      </div>
-        <LinkedAccountState account={account.data} error={account.error} status={account.status} disconnecting={disconnect.isPending} onDisconnect={handleDisconnect} />
-        {disconnect.status === "error" && (
-          <p className="select-text border-t border-border px-4 py-3 text-sm text-destructive sm:px-5">{disconnect.error.message}</p>
-        )}
+    <ProfileSection id="linked-accounts" title="AniList" summary={accountSummary(account.data)}>
+      <LinkedAccountState account={account.data} error={account.error} status={account.status} disconnecting={disconnect.isPending} onDisconnect={handleDisconnect} />
+      {disconnect.status === "error" && (
+        <p className="select-text pt-2 text-sm text-destructive">{disconnect.error.message}</p>
+      )}
     </ProfileSection>
   );
 }
