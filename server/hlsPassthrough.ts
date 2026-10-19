@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { AudioTrack } from "./audioTracks.ts";
 import { PASSTHROUGH_TIMESTAMP_OFFSET, passthroughRunArgs } from "./hlsTranscode.ts";
 import { stopHlsProcess, type HlsProducer } from "./hlsProcess.ts";
+import { readStoredKeyframes, storeKeyframes } from "./keyframeStore.ts";
 import { captureProbe } from "./transcodeProgress.ts";
 
 /**
@@ -55,7 +56,17 @@ async function probeKeyframes(abs: string): Promise<readonly number[]> {
   return times.toSorted((left, right) => left - right);
 }
 
-/** Source keyframe times, probed once per file version (about half a second per episode). */
+async function storedOrProbedKeyframes(abs: string, signature: string): Promise<readonly number[]> {
+  const stored = await readStoredKeyframes(abs, signature);
+  if (stored !== null) {
+    return stored;
+  }
+  const keyframes = await probeKeyframes(abs);
+  await storeKeyframes(abs, { signature, keyframes }).catch(() => undefined);
+  return keyframes;
+}
+
+/** Source keyframe times, probed once per file version (several seconds for a cold episode). */
 export async function sourceKeyframes(abs: string): Promise<readonly number[]> {
   const stat = await lstat(abs);
   const signature = `${String(stat.size)}:${String(stat.mtimeMs)}`;
@@ -65,7 +76,7 @@ export async function sourceKeyframes(abs: string): Promise<readonly number[]> {
   }
   const keyframes = (async () => {
     try {
-      return await probeKeyframes(abs);
+      return await storedOrProbedKeyframes(abs, signature);
     } catch (error: unknown) {
       keyframeCache.delete(abs);
       throw error;
