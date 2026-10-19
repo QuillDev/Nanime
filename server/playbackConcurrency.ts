@@ -17,7 +17,8 @@ export function playbackCandidatePaths(rel: string, restorePath?: string | null)
 export async function admittedPlaybackMutation<T>(paths: readonly string[], mutate: () => Promise<T>): Promise<T | Response> {
   let release: (() => void) | undefined = undefined;
   try {
-    release = claimLibraryPaths(paths);
+    // A seeding torrent owns its files against moves, not against recording where a viewer stopped.
+    release = claimLibraryPaths(paths, true);
     return await mutate();
   } catch (error) {
     if (error instanceof LibraryFileError) {
