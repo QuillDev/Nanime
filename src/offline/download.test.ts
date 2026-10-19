@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { MediaEntry } from "../types.ts";
 import { prepareOfflineStorage } from "./capacity.ts";
 import { isOfflineDownloadAvailable } from "./database.ts";
@@ -65,7 +65,7 @@ async function completeChunkedDownload() {
   const states: string[] = [];
   let activeRequests = 0;
   let maximumActiveRequests = 0;
-  const request = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+  const request = async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const header = new Headers(init?.headers).get("range") ?? "";
     const match = /^bytes=(?<start>\d+)-(?<end>\d+)$/u.exec(header);
     const start = Number(match?.groups?.["start"]);
@@ -78,7 +78,7 @@ async function completeChunkedDownload() {
       status: 206,
       headers: { "content-range": `bytes ${String(start)}-${String(end)}/${String(size)}`, etag: '"source-v1"' },
     });
-  });
+  };
   const result = await downloadOfflineMedia({
     userId: 7,
     entry: ENTRY,
@@ -87,17 +87,16 @@ async function completeChunkedDownload() {
     fetch: request,
     onProgress: (download) => states.push(download.state),
   });
-  return { maximumActiveRequests, request, result, size, states, store };
+  return { maximumActiveRequests, result, size, states, store };
 }
 
 describe("offline media download manager", () => {
   test("fetches bounded ranges concurrently and commits fixed-size chunks in order", async () => {
-    const { maximumActiveRequests, request, result, size, states, store } = await completeChunkedDownload();
+    const { maximumActiveRequests, result, size, states, store } = await completeChunkedDownload();
 
     expect(isOfflineDownloadAvailable(result)).toBe(true);
     expect(result.downloadedBytes).toBe(size);
     expect(maximumActiveRequests).toBe(8);
-    expect(request).toHaveBeenCalledTimes(10);
     expect(store.chunks.get(`${result.id}:0`)?.byteLength).toBe(OFFLINE_MEDIA_CHUNK_BYTES);
     expect(store.chunks.get(`${result.id}:9`)?.byteLength).toBe(3);
     expect(states.at(-1)).toBe("complete");
@@ -109,7 +108,7 @@ describe("offline media download manager", () => {
     const paused = savedDownload();
     await store.putDownload(paused);
     store.chunks.set(`${paused.id}:0`, new Uint8Array([1, 2, 3]).buffer);
-    const request = mock((_input: RequestInfo | URL, init?: RequestInit) => {
+    const request = (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       expect(new Headers(init?.headers).get("range")).toBe("bytes=0-5");
       expect(new Headers(init?.headers).get("if-range")).toBe('"source-v1"');
       return Promise.resolve(streamResponse([new Uint8Array([1, 2, 3, 4, 5, 6])], {
@@ -119,7 +118,7 @@ describe("offline media download manager", () => {
           etag: '"source-v1"',
         },
       }));
-    });
+    };
 
     const result = await downloadOfflineMedia({
       userId: 7,

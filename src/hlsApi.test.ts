@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { hlsUrl, leasedHlsUrl, releaseHlsPlayback } from "./hlsApi.ts";
 
 const LEASE = {
@@ -21,19 +21,16 @@ describe("HLS playback leases", () => {
   });
 
   test("releases one exact attachment with a keepalive request", async () => {
-    const request = mock((_input: RequestInfo | URL, _init?: RequestInit) => (
-      Promise.resolve(new Response(null, { status: 200 }))
-    ));
+    const sent: { readonly url: URL; readonly method: string | undefined; readonly keepalive: boolean | undefined }[] = [];
+    const server = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      sent.push({ url: new URL(String(input), "https://nanime.invalid"), method: init?.method, keepalive: init?.keepalive });
+      return Promise.resolve(new Response(null, { status: 200 }));
+    };
 
-    await releaseHlsPlayback(LEASE, request);
+    await releaseHlsPlayback(LEASE, server);
 
-    expect(request).toHaveBeenCalledTimes(1);
-    const [url, init] = request.mock.calls[0] ?? [];
-    const parsed = new URL(String(url), "https://nanime.invalid");
-    expect(Object.fromEntries(parsed.searchParams)).toEqual({
-      player: LEASE.playerId,
-      lease: LEASE.leaseId,
-    });
-    expect(init).toMatchObject({ method: "POST", keepalive: true });
+    expect(sent.map((request) => ({
+      params: Object.fromEntries(request.url.searchParams), method: request.method, keepalive: request.keepalive,
+    }))).toEqual([{ params: { player: LEASE.playerId, lease: LEASE.leaseId }, method: "POST", keepalive: true }]);
   });
 });

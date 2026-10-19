@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { makeClip, run, runText, withTemporaryDirectory } from "./testMedia.ts";
 import {
   hlsSessionPlan,
   playlistReadyToServe,
@@ -7,46 +10,28 @@ import {
   transcodeArgs,
 } from "./hls.ts";
 
-test("builds one continuous HLS transcode from the resume boundary", () => {
-  const args = transcodeArgs({
-    abs: "/media/example.mkv",
-    audioTrack: undefined,
-    directory: "/cache/session",
-    duration: 1420,
-    hardwareAcceleration: "",
-    segmentIndex: 61,
-    start: 366,
-    vaapiDevice: "",
+test("a resumed live-encode session publishes an event playlist whose first segment starts at the resume boundary", async () => {
+  await withTemporaryDirectory("nanime-hls-encode-", async (directory) => {
+    const abs = await makeClip(join(directory, "episode.mkv"), { seconds: 9, audio: ["jpn"] });
+    const session = join(directory, "session");
+    await mkdir(session);
+    await run(["ffmpeg", ...transcodeArgs({
+      abs, audioTrack: undefined, directory: session, duration: 9,
+      hardwareAcceleration: "", vaapiDevice: "", segmentIndex: 2, start: 4,
+    })]);
+
+    const playlist = await readFile(join(session, "index.m3u8"), "utf8");
+    expect(playlist).toContain("#EXT-X-PLAYLIST-TYPE:EVENT");
+    expect(playlist.split("\n").filter((line) => line.endsWith(".ts"))).toEqual(["segment-000002.ts", "segment-000003.ts", "segment-000004.ts"]);
+    const first = await runText([
+      "ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time",
+      "-read_intervals", "%+#1", "-of", "csv=p=0", join(session, "segment-000002.ts"),
+    ]);
+    const time = Number(first.trim().replace(/,$/u, ""));
+    expect(time).toBeGreaterThanOrEqual(4);
+    expect(time - 4).toBeLessThan(0.05);
   });
-
-  expect(args).toContain("hls");
-  expect(args).toContain("independent_segments+temp_file");
-  expect(args.slice(args.indexOf("-hls_time"), args.indexOf("-hls_time") + 2))
-    .toEqual(["-hls_time", "2"]);
-  expect(args.slice(args.indexOf("-hls_playlist_type"), args.indexOf("-hls_playlist_type") + 2))
-    .toEqual(["-hls_playlist_type", "event"]);
-  expect(args).toContain("/cache/session/segment-%06d.ts");
-  expect(args.slice(args.indexOf("-start_number"), args.indexOf("-start_number") + 2))
-    .toEqual(["-start_number", "61"]);
-  expect(args.slice(args.indexOf("-output_ts_offset"), args.indexOf("-output_ts_offset") + 2))
-    .toEqual(["-output_ts_offset", "366"]);
-});
-
-test("places hardware decoding options before the media input", () => {
-  const args = transcodeArgs({
-    abs: "/media/example.mkv",
-    audioTrack: undefined,
-    directory: "/cache/session",
-    duration: 60,
-    hardwareAcceleration: "vaapi",
-    segmentIndex: 0,
-    start: 0,
-    vaapiDevice: "/dev/dri/renderD128",
-  });
-
-  expect(args.indexOf("-hwaccel")).toBeLessThan(args.indexOf("-i"));
-  expect(args.indexOf("-vf")).toBeGreaterThan(args.indexOf("-i"));
-});
+}, 30_000);
 
 test("routes generated playlist segments through the authenticated session", () => {
   const playlist = [

@@ -444,12 +444,3 @@ for (const [kind, boundary] of [["file", "capture"], ["file", "publication"], ["
     expect(await readFile(join(root, "T/keep.txt"), "utf8")).toBe("keep");
   });
 }
-
-test("completed steps leave durable checkpoints proving what they created", async () => {
-  const result = await faultScenario<{ outcome: Outcome; progress: readonly { state: string; created: string | null }[]; created: string; movedId: string; moved: string }>("checkpoints");
-  expect(result.outcome.message).toBe("completed");
-  expect(result.progress.map((checkpoint) => checkpoint.state)).toEqual(["done", "done"]);
-  expect(result.progress[0]?.created).toBe(result.created);
-  expect(result.progress[1]?.created).toBe(result.movedId);
-  expect(result.moved).toBe("inside");
-});

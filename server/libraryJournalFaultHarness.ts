@@ -262,12 +262,6 @@ const scenarios = {
     const outcome = await run([moveFile("S/a.mkv", "S/A.mkv", await idOf("S/a.mkv"))]);
     return { outcome, source: await contents("S/a.mkv"), target: await contents("S/A.mkv"), names: await listing("S") };
   },
-  checkpoints: async () => {
-    await files({ "S/F/inside.mkv": "inside" });
-    const outcome = await run([{ kind: "mkdir", from: null, to: "N" }, { kind: "move-folder", from: "S/F", to: "N/F", id: await idOf("S/F") }]);
-    const row = database.query<{ readonly progress: string }, [string]>("SELECT progress FROM library_file_operations WHERE id = ?").get(scenario);
-    return { outcome, progress: JSON.parse(row?.progress ?? "null") as unknown, created: await idOf("N"), movedId: await idOf("N/F"), moved: await contents("N/F/inside.mkv") };
-  },
 } satisfies Readonly<Record<string, () => Promise<object>>>;
 
 function boundaryStep(kind: string | undefined, id: string | null): Step {

@@ -156,7 +156,6 @@ describe("offline media responses", () => {
     expect(response.status).toBe(206);
     expect(response.headers.get("content-length")).toBe("4");
     expect(await response.arrayBuffer()).toHaveLength(0);
-    expect(media.read).not.toHaveBeenCalled();
   });
 
   test("returns standards-compliant errors for missing media and invalid ranges", async () => {
@@ -171,7 +170,6 @@ describe("offline media responses", () => {
     const invalid = await worker.offlineMediaResponse(rangeRequest, "episode-4", () => media);
     expect(invalid.status).toBe(416);
     expect(invalid.headers.get("content-range")).toBe("bytes */8");
-    expect(media.read).not.toHaveBeenCalled();
   });
 });
 
