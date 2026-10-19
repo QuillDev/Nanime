@@ -17,6 +17,8 @@ export interface ProfileEpisode {
   readonly showName: string;
   readonly showTitle: string;
   readonly number: number | null;
+  /** Episode title from metadata, else the file name without its extension. */
+  readonly title: string;
   readonly thumbnail: string | null;
   readonly banner: string | null;
 }
@@ -52,6 +54,7 @@ function seasonEpisodes(season: SeasonGroup, context: SeasonContext): readonly P
       showName: show.name,
       showTitle,
       number: movie ? null : episodeNumber(entry),
+      title: details?.title ?? stripExtension(entry.name),
       thumbnail: movie ? media.coverImage.large ?? media.coverImage.extraLarge : details?.thumbnail ?? null,
       banner,
     };
@@ -87,6 +90,7 @@ export function profileEpisode(episodes: ProfileEpisodes, rel: string): ProfileE
     showName,
     showTitle: showName,
     number: episodeNumber({ rel, name, folder: parts.slice(0, -1).join("/"), size: 0, direct: false }),
+    title: stripExtension(name),
     thumbnail: null,
     banner: null,
   };

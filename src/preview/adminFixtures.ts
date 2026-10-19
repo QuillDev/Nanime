@@ -7,6 +7,7 @@ import { homeEntries, homeMetadata, homeShows } from "./homeFixtures.ts";
 
 /** Fictional admin data for `/preview/?state=admin-<tab>`, over the home preview library. */
 const NOW = Date.now();
+const entries = homeEntries.map((entry, index) => ({ ...entry, size: (1.1 + (index % 5) * 0.2) * 1024 ** 3 }));
 const MINUTE = 60_000;
 const GB = 1024 ** 3;
 
@@ -54,7 +55,7 @@ const transcodes: readonly TranscodeJob[] = [
 ];
 
 const scans: readonly MediaScan[] = homeEntries.slice(0, 40).map((entry, index) => ({
-  sourcePath: entry.rel, status: "complete", fileSize: (1.1 + (index % 5) * 0.2) * GB, duration: 1440,
+  sourcePath: entry.rel, status: "complete" as const, fileSize: (1.1 + (index % 5) * 0.2) * GB, duration: 1440,
   formatName: "matroska,webm", videoCodec: index % 3 === 0 ? "hevc" : "h264", width: 1920, height: 1080,
   audioBytes: 90_000_000, subtitleBytes: 400_000, scannedAt: NOW - 5 * MINUTE, error: null, updatedAt: NOW,
 }));
@@ -85,7 +86,7 @@ const metadataRefresh: MetadataRefreshStatus = {
 export function adminQueryClient(): QueryClient {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY, retry: false } } });
   const seeded: readonly (readonly [string, unknown])[] = [
-    ["library", homeEntries], ["show-metadata", homeMetadata], ["torrents", torrents], ["users", users],
+    ["library", entries], ["show-metadata", homeMetadata], ["torrents", torrents], ["users", users],
     ["transcodes", transcodes], ["media-scans", scans], ["library-files", libraryFiles()],
     ["storage-status", storage], ["library-status", libraryStatus], ["metadata-refresh", metadataRefresh],
   ];
