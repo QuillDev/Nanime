@@ -56,6 +56,7 @@ function NavLink({ item, active, activity }: {
   return (
     <li className="shrink-0">
       <a
+        ref={active ? revealActive : undefined}
         href={adminTabHref(tab)}
         onClick={handleClick}
         aria-current={active ? "page" : undefined}
@@ -88,6 +89,11 @@ function StorageMeter(): React.JSX.Element | null {
 }
 
 /** Admin navigation: a left column on wide screens, a scrolling strip on narrow ones. */
+/** On narrow screens the strip scrolls sideways; keep the current page's link visible. */
+function revealActive(link: HTMLAnchorElement | null): void {
+  link?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
 export function AdminSidebar({ tab }: { readonly tab: AdminTab }): React.JSX.Element {
   const activity = useActivity();
   return (
