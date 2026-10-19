@@ -5,7 +5,6 @@ import { mediaTitle } from "../lib/anilist.ts";
 import { groupShows, showMetadataKey, type ShowGroup } from "../lib/library.ts";
 import type { MediaEntry, ShowMetadata, TranscodePreset } from "../types.ts";
 import { AdminPanel } from "./AdminPanel.tsx";
-import { AdminTranscodes } from "./AdminTranscodes.tsx";
 import { AdminVideoTree } from "./AdminVideoTree.tsx";
 import {
   AdminVideoActions,
@@ -88,7 +87,6 @@ export function AdminVideoManagement({ entries, metadata }: { readonly entries: 
           <div className="max-h-[65dvh] overflow-y-auto rounded-md border border-border bg-background"><AdminVideoTree shows={shows} metadata={metadata} selected={selection.selected} forceOpen={filters.query.trim() !== ""} onToggleEntries={selection.handleToggleEntries} />{shows.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">No videos match.</p>}</div>
         </div>
       </AdminPanel>
-      <AdminTranscodes entries={entries} hideForm />
       <AdminVideoDialogs selected={selection.selectedEntries} pruneMode={dialogs.pruneMode} subtitleEntry={dialogs.subtitleEntry} deleteOpen={dialogs.deleteOpen} onClosePrune={dialogs.handleClosePrune} onCloseSubtitles={dialogs.handleCloseSubtitles} onCloseDelete={dialogs.handleCloseDelete} onFinished={dialogs.handleFinished} />
     </div>
   );

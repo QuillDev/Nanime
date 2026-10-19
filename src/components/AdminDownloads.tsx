@@ -1,122 +1,99 @@
 import { useCallback, useState } from "react";
-import { CircleX, Download } from "lucide-react";
-import { formatDuration, formatSize } from "../format.ts";
+import { Film, X } from "lucide-react";
 import { useTorrents } from "../hooks/useTorrents.ts";
-import type { TorrentStatus } from "../types.ts";
-import { AdminPanel } from "./AdminPanel.tsx";
+import { torrentDisplay, type TorrentTone } from "../lib/torrentDisplay.ts";
+import type { ShowMetadata, TorrentStatus } from "../types.ts";
+import { AdminAddMedia } from "./AdminAddMedia.tsx";
+import { AdminPage } from "./AdminPage.tsx";
 import { CancelTorrentDialog } from "./CancelTorrentDialog.tsx";
 import { ListSkeleton } from "./Skeleton.tsx";
 
-const STATE_LABELS = new Map(Object.entries({
-  allocating: "Allocating",
-  checkingDL: "Checking",
-  checkingResumeData: "Checking",
-  checkingUP: "Checking",
-  downloading: "Downloading",
-  error: "Error",
-  forcedDL: "Downloading",
-  forcedUP: "Seeding",
-  metaDL: "Fetching metadata",
-  missingFiles: "Missing files",
-  moving: "Moving",
-  pausedDL: "Paused",
-  pausedUP: "Complete",
-  queuedDL: "Queued",
-  queuedUP: "Complete",
-  stalledDL: "Stalled",
-  stalledUP: "Complete",
-  uploading: "Seeding",
-} as const));
+const TONE_CLASS = {
+  active: "text-primary",
+  done: "text-muted-foreground",
+  problem: "text-warning",
+  waiting: "text-muted-foreground",
+} as const satisfies Record<TorrentTone, string>;
 
-function statusLabel(torrent: TorrentStatus): string {
-  return torrent.progress >= 1 ? "Complete" : STATE_LABELS.get(torrent.state) ?? torrent.state;
+function Cover({ src }: { readonly src: string | null }): React.JSX.Element {
+  return (
+    <span className="flex aspect-[2/3] w-11 shrink-0 items-center justify-center overflow-hidden rounded-md bg-secondary">
+      {src === null ? <Film aria-hidden="true" className="size-4 text-muted-foreground" /> : <img src={src} alt="" className="size-full object-cover" />}
+    </span>
+  );
 }
 
-function etaLabel(eta: number): string {
-  return eta <= 0 || eta >= 8_640_000 ? "ETA unknown" : `${formatDuration(eta)} remaining`;
-}
-
-function TorrentRow({
-  torrent,
-  onCancel,
-}: {
+function TorrentRow({ torrent, metadata, onCancel }: {
   readonly torrent: TorrentStatus;
+  readonly metadata: ShowMetadata;
   readonly onCancel: (torrent: TorrentStatus) => void;
 }): React.JSX.Element {
-  const percentage = Math.max(0, Math.min(100, torrent.progress * 100));
+  const display = torrentDisplay(torrent, metadata);
   const handleCancel = useCallback(() => onCancel(torrent), [onCancel, torrent]);
   return (
-    <li className="space-y-2 border-b border-border py-4 last:border-b-0">
-      <div className="flex items-start justify-between gap-4">
-        <p className="min-w-0 break-words text-sm font-medium">{torrent.name}</p>
-        <span className="flex shrink-0 items-center gap-2">
-          <span className="text-xs text-muted-foreground">{statusLabel(torrent)}</span>
-          <button
-            type="button"
-            onClick={handleCancel}
-            aria-label={`Cancel ${torrent.name}`}
-            title="Cancel torrent"
-            className="rounded p-1 text-muted-foreground hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <CircleX aria-hidden="true" className="size-4" />
-          </button>
-        </span>
-      </div>
-      <progress
-        aria-label={`${torrent.name} download progress`}
-        value={percentage}
-        max={100}
-        className="playback-progress h-2 w-full overflow-hidden rounded-full"
-      />
-      <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span>{percentage.toFixed(1)}% · {formatSize(torrent.completed)} / {formatSize(torrent.size)}</span>
+    <li className="flex items-center gap-4 border-b border-border py-3">
+      <Cover src={display.cover} />
+      <div className="min-w-0 flex-1">
+        <p className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-semibold">{display.title}</span>
+          {display.release !== null && (
+            <span title={display.release} className="hidden min-w-0 max-w-72 truncate rounded bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground sm:inline">{display.release}</span>
+          )}
+        </p>
+        <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
+          <span className={`font-semibold sm:hidden ${TONE_CLASS[display.tone]}`}>{display.status} · </span>
+          {display.size}
+        </p>
         {torrent.progress < 1 && (
-          <span>
-            {torrent.downloadSpeed > 0 ? `${formatSize(torrent.downloadSpeed)}/s · ` : ""}
-            {etaLabel(torrent.eta)}
-          </span>
+          <progress aria-label={`${display.title} download progress`} max={1} value={torrent.progress} className={`${display.tone === "problem" ? "warning-progress" : "playback-progress"} mt-2 block h-0.75 w-full max-w-md`} />
         )}
       </div>
+      <div className="hidden w-36 shrink-0 text-right text-[13px] sm:block">
+        <p className={`text-xs font-semibold ${TONE_CLASS[display.tone]}`}>{display.status}</p>
+        <p className="mt-0.5 truncate text-muted-foreground">{display.detail}</p>
+      </div>
+      <button type="button" onClick={handleCancel} aria-label={`Remove ${torrent.name}`} title="Remove download" className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <X className="size-4" />
+      </button>
     </li>
   );
 }
 
-export function AdminDownloads(): React.JSX.Element {
+function TorrentList({ metadata, onCancel }: {
+  readonly metadata: ShowMetadata;
+  readonly onCancel: (torrent: TorrentStatus) => void;
+}): React.JSX.Element {
   const torrents = useTorrents(true);
+  if (torrents.status === "pending") {
+    return <ListSkeleton />;
+  }
+  if (torrents.status === "error") {
+    return <p className="select-text py-4 text-sm text-destructive">{torrents.error.message}</p>;
+  }
+  if (torrents.data.length === 0) {
+    return <p className="py-10 text-sm text-muted-foreground">Nothing downloading.</p>;
+  }
+  const ordered = torrents.data.toSorted((a, b) => Number(a.progress >= 1) - Number(b.progress >= 1) || b.addedOn - a.addedOn);
+  return (
+    <ul>
+      {ordered.map((torrent) => <TorrentRow key={torrent.hash} torrent={torrent} metadata={metadata} onCancel={onCancel} />)}
+    </ul>
+  );
+}
+
+export function AdminDownloads({ showFolders, metadata }: {
+  readonly showFolders: readonly string[];
+  readonly metadata: ShowMetadata;
+}): React.JSX.Element {
   const [cancelTarget, setCancelTarget] = useState<TorrentStatus | null>(null);
-  const handleCancel = useCallback((torrent: TorrentStatus) => setCancelTarget(torrent), []);
   const handleCancelClose = useCallback(() => setCancelTarget(null), []);
   return (
-    <>
-      <AdminPanel
-        title="Active downloads"
-        description="Live qBittorrent activity, refreshed every two seconds."
-        icon={Download}
-        className="xl:col-span-3"
-      >
-        {torrents.status === "pending" && (
-          <ListSkeleton />
-        )}
-        {torrents.status === "error" && (
-          <p className="py-4 text-sm text-destructive">{torrents.error.message}</p>
-        )}
-        {torrents.status === "success" && torrents.data.length === 0 && (
-          <div className="py-10 text-center">
-            <p className="text-sm font-medium">All caught up</p>
-            <p className="mt-1 text-xs text-muted-foreground">No downloads are currently active.</p>
-          </div>
-        )}
-        {torrents.status === "success" && torrents.data.length > 0 && (
-          <ul>
-            {torrents.data.map((torrent) => (
-              <TorrentRow key={torrent.hash} torrent={torrent} onCancel={handleCancel} />
-            ))}
-          </ul>
-        )}
-      </AdminPanel>
-      {cancelTarget !== null && (
-        <CancelTorrentDialog torrent={cancelTarget} onClose={handleCancelClose} />
-      )}
-    </>
+    <AdminPage title="Downloads">
+      <AdminAddMedia showFolders={showFolders} />
+      <div className="mt-6">
+        <TorrentList metadata={metadata} onCancel={setCancelTarget} />
+      </div>
+      {cancelTarget !== null && <CancelTorrentDialog torrent={cancelTarget} onClose={handleCancelClose} />}
+    </AdminPage>
   );
 }

@@ -33,6 +33,21 @@ function nyaaSortOrder(value: string): NyaaSortOrder {
   return value === "asc" ? "asc" : "desc";
 }
 
+const CATEGORIES = [
+  ["1_0", "All anime"],
+  ["1_2", "English-translated"],
+  ["1_3", "Non-English-translated"],
+  ["1_4", "Raw"],
+] as const;
+
+function useNyaaFilters() {
+  const [category, setCategory] = useState("1_0");
+  const [trusted, setTrusted] = useState(false);
+  const handleCategory = useCallback((event: ChangeEvent<HTMLSelectElement>) => setCategory(event.target.value), []);
+  const handleTrusted = useCallback((event: ChangeEvent<HTMLInputElement>) => setTrusted(event.target.checked), []);
+  return { category, trusted, handleCategory, handleTrusted };
+}
+
 function ResultRow({
   result,
   showFolder,
@@ -108,17 +123,15 @@ export function AdminNyaaSearchDialog({
   open,
   onOpenChange,
   search,
-  category,
-  trusted,
   showFolder,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly search: string;
-  readonly category: string;
-  readonly trusted: boolean;
   readonly showFolder: string;
 }): React.JSX.Element {
+  const filters = useNyaaFilters();
+  const { category, trusted } = filters;
   const [sort, setSort] = useState<NyaaSort>("id");
   const [order, setOrder] = useState<NyaaSortOrder>("desc");
   const handleSort = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
@@ -157,6 +170,22 @@ export function AdminNyaaSearchDialog({
                 <option value="desc">Descending</option>
                 <option value="asc">Ascending</option>
               </select>
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Category
+              <select
+                value={category}
+                onChange={filters.handleCategory}
+                className="mt-1 block h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+              >
+                {CATEGORIES.map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm text-muted-foreground">
+              <input type="checkbox" checked={trusted} onChange={filters.handleTrusted} className="size-4 accent-primary" />
+              Trusted only
             </label>
           </div>
         </DialogHeader>

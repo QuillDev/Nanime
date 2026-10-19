@@ -5,7 +5,7 @@ import { navigateToAdminTab } from "../hooks/useMediaRoute.ts";
 
 const ACTIVITY_POLL_MS = 10_000;
 
-/** Admin-only nav indicator while stored transcodes run; opens the video management tab. */
+/** Admin-only nav indicator while stored transcodes run; opens the transcodes page. */
 export function TranscodeActivity(): React.JSX.Element | null {
   const jobs = useQuery({
     queryKey: ["transcodes"],
@@ -13,7 +13,7 @@ export function TranscodeActivity(): React.JSX.Element | null {
     refetchInterval: ACTIVITY_POLL_MS,
   });
   const handleOpen = useCallback(() => {
-    navigateToAdminTab("videos");
+    navigateToAdminTab("transcodes");
   }, []);
   const running = (jobs.data ?? []).filter((job) => job.status === "processing").length;
   const queued = (jobs.data ?? []).filter((job) => job.status === "queued").length;
