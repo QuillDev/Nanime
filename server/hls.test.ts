@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   hlsSessionPlan,
+  playlistReadyToServe,
   rewritePlaylist,
   safeSegmentName,
   transcodeArgs,
@@ -71,6 +72,27 @@ test("aligns requested HLS starts to safe segment boundaries", () => {
   expect(hlsSessionPlan(1, 1)).toEqual({ segmentIndex: 0, start: 0 });
   expect(hlsSessionPlan(Number.NaN, Number.POSITIVE_INFINITY))
     .toEqual({ segmentIndex: 0, start: 0 });
+});
+
+function eventPlaylist(segments: number, ended = false): string {
+  return [
+    "#EXTM3U",
+    "#EXT-X-TARGETDURATION:2",
+    "#EXT-X-PLAYLIST-TYPE:EVENT",
+    ...Array.from({ length: segments }, (_, index) => [
+      "#EXTINF:2.002000,",
+      `segment-${String(index).padStart(6, "0")}.ts`,
+    ]).flat(),
+    ...(ended ? ["#EXT-X-ENDLIST"] : []),
+    "",
+  ].join("\n");
+}
+
+test("holds the first playlist until playback can continue past its first segment", () => {
+  expect(playlistReadyToServe(eventPlaylist(1))).toBe(false);
+  expect(playlistReadyToServe(eventPlaylist(2))).toBe(false);
+  expect(playlistReadyToServe(eventPlaylist(3))).toBe(true);
+  expect(playlistReadyToServe(eventPlaylist(1, true))).toBe(true);
 });
 
 test("only accepts generated segment basenames", () => {
