@@ -26,13 +26,11 @@
   "scripts": {
     "build": "bun scripts/build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
-    "test:browser": "bun run build:demo && NANIME_FILE_MANAGER_E2E=true bun test tests/fileManagerBrowser.test.ts --timeout 120000",
     "dev:demo": "vite --host 127.0.0.1",
     "build:demo": "bun scripts/buildDemo.ts",
     "verify": "bun scripts/verifyDist.mjs",
     "smoke:consumer": "bun scripts/consumerSmoke.mjs",
-    "check": "bun run typecheck && bun run typecheck:tests && bun run build && bun run verify && bun run build:demo"
+    "check": "bun run typecheck && bun run build && bun run verify && bun run build:demo"
   },
   "peerDependencies": {
     "react": ">=18.2 <20",

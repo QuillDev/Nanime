@@ -87,8 +87,6 @@ requires its public API.
 bun test
 bun run check
 bun run build
-bun run test:player          # real-browser player suite (needs Chrome and ffmpeg)
-bun run test:library-files   # real-browser admin file manager suite (needs Chrome)
 ```
 
 See [`SECURITY.md`](SECURITY.md) to report a vulnerability.
