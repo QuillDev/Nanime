@@ -46,5 +46,9 @@ export function restartHls(options: RestartOptions): void {
     resumeAt: position,
     shouldPlay,
     timelineOffset,
+    onTimelineOffset: (offset) => {
+      source.timelineOffset = offset;
+      setOffset(offset);
+    },
   }, source.playerId);
 }

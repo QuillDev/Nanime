@@ -1,3 +1,5 @@
+import { hevcPlaybackSupported } from "./lib/hevcPlayback.ts";
+
 export interface HlsPlaybackLease {
   readonly leaseId: string;
   readonly playerId: string;
@@ -14,6 +16,9 @@ export function hlsUrl(
   startAt = 0,
 ): string {
   const query = new URLSearchParams({ path: rel });
+  if (hevcPlaybackSupported()) {
+    query.set("hevc", "1");
+  }
   if (audioTrack !== null) {
     query.set("audio", String(audioTrack));
   }

@@ -256,7 +256,7 @@ export const transcodeJobSchema = object({
 const sourceTranscodeSchema = object({ status: transcodeStatusSchema, progress: number(), remainingSeconds: nullableNumber });
 const readinessItemSchema = object({ path: string(), ready: boolean(), transcode: union([sourceTranscodeSchema, nullValue()]) });
 export const playbackReadinessSchema = object({ workers: number(), items: t.Array(readinessItemSchema) });
-export const playbackReadinessBodySchema = object({ paths: t.Array(string(), { maxItems: 500 }) });
+export const playbackReadinessBodySchema = object({ paths: t.Array(string(), { maxItems: 500 }), hevc: optional(boolean()) });
 export const mediaScanSchema = object({
   sourcePath: string(),
   status: union([

@@ -29,6 +29,42 @@ function attachLoadedHls(
   return undefined;
 }
 
+export interface ManagedHlsAttachment extends HlsAttachment {
+  /** Receives the episode time of the session's local zero once the server reports it. */
+  readonly onTimelineOffset?: (offset: number) => void;
+}
+
+/**
+ * HEVC passthrough sessions start on the source keyframe before the requested
+ * position, which only the server knows. Opening the session up front reads
+ * that start; the player then loads the same, already-running session.
+ */
+async function sessionTimelineOffset(url: string): Promise<number | null> {
+  const response = await fetch(url, { credentials: "same-origin" });
+  if (!response.ok) {
+    return null;
+  }
+  await response.text();
+  const start = Number(response.headers.get("x-nanime-hls-start") ?? Number.NaN);
+  return Number.isFinite(start) ? start : null;
+}
+
+function reportsTimelineOffset(url: string): boolean {
+  return new URL(url, "https://nanime.invalid").searchParams.get("hevc") === "1";
+}
+
+async function resolvedAttachment(options: ManagedHlsAttachment): Promise<HlsAttachment> {
+  if (!reportsTimelineOffset(options.url)) {
+    return options;
+  }
+  const offset = await sessionTimelineOffset(options.url);
+  if (offset === null) {
+    return options;
+  }
+  options.onTimelineOffset?.(offset);
+  return { ...options, timelineOffset: offset };
+}
+
 async function releaseSafely(lease: HlsPlaybackLease): Promise<void> {
   try {
     await releaseHlsPlayback(lease);
@@ -37,7 +73,7 @@ async function releaseSafely(lease: HlsPlaybackLease): Promise<void> {
   }
 }
 
-export function attachManagedHls(options: HlsAttachment, playerId: string): () => void {
+export function attachManagedHls(options: ManagedHlsAttachment, playerId: string): () => void {
   const lease: HlsPlaybackLease = { playerId, leaseId: crypto.randomUUID() };
   const lifecycle = attachmentLifecycle(() => {
     void releaseSafely(lease);
@@ -53,9 +89,12 @@ export function attachManagedHls(options: HlsAttachment, playerId: string): () =
   };
   void (async (): Promise<void> => {
     try {
-      const module = await import("./hlsPlayback.ts");
+      const [module, attachment] = await Promise.all([
+        import("./hlsPlayback.ts"),
+        resolvedAttachment(leasedOptions),
+      ]);
       if (lifecycle.active()) {
-        lifecycle.attach(attachLoadedHls(module, leasedOptions));
+        lifecycle.attach(attachLoadedHls(module, attachment));
       }
     } catch (error: unknown) {
       if (lifecycle.active()) {
