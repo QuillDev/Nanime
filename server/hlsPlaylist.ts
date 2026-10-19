@@ -1,5 +1,6 @@
-import { basename, join } from "node:path";
-import { captureProbe } from "./transcodeProgress.ts";
+import { basename } from "node:path";
+
+export { startPassthrough } from "./hlsPassthrough.ts";
 
 const MAP_URI = /^#EXT-X-MAP:URI="(?<uri>[^"]+)"/u;
 
@@ -32,28 +33,4 @@ export function safeSegmentName(value: string | null): value is string {
 
 export function segmentContentType(name: string): string {
   return name.endsWith(".ts") ? "video/mp2t" : "video/mp4";
-}
-
-function firstSegment(playlist: string): string | undefined {
-  return playlist.split("\n").find((line) => line !== "" && !line.startsWith("#"));
-}
-
-/**
- * The media time a passthrough session's playlist begins at: the source
- * keyframe ffmpeg snapped back to. Players place the first segment at local
- * time zero, so the client needs this to map local time to episode time.
- */
-export async function passthroughSessionStart(directory: string, playlist: string): Promise<number | null> {
-  const segment = firstSegment(playlist);
-  if (segment === undefined) {
-    return null;
-  }
-  const input = `concat:${join(directory, "init.mp4")}|${join(directory, basename(segment))}`;
-  const proc = Bun.spawn([
-    "ffprobe", "-v", "error", "-select_streams", "v:0",
-    "-show_entries", "stream=start_time", "-of", "csv=p=0", input,
-  ], { stdin: "ignore", stdout: "pipe", stderr: "ignore" });
-  const { code, text } = await captureProbe(proc, new Response(proc.stdout).text());
-  const start = Number(text.trim());
-  return code === 0 && text.trim() !== "" && Number.isFinite(start) ? start : null;
 }

@@ -35,9 +35,10 @@ export interface ManagedHlsAttachment extends HlsAttachment {
 }
 
 /**
- * HEVC passthrough sessions start on the source keyframe before the requested
- * position, which only the server knows. Opening the session up front reads
- * that start; the player then loads the same, already-running session.
+ * Where a session's playlist begins is the server's call: passthrough
+ * playlists span the whole episode, transcoded ones start at the requested
+ * segment boundary. Opening the session up front reads that start; the player
+ * then loads the same, already-running session.
  */
 async function sessionTimelineOffset(url: string): Promise<number | null> {
   const response = await fetch(url, { credentials: "same-origin" });

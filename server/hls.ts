@@ -9,8 +9,8 @@ import {
   reserveHlsPlaybackCapacity,
 } from "./hlsCapacity.ts";
 import { HLS_SEGMENT_SECONDS, HLS_SESSION_IDLE_MS, hlsSessionKey, playlistReadyToServe, sessionStreams, transcodeArgs, type HlsSourceOptions } from "./hlsTranscode.ts";
-import { stopHlsProcess } from "./hlsProcess.ts";
-import { passthroughSessionStart, rewritePlaylist, safeSegmentName, segmentContentType } from "./hlsPlaylist.ts";
+import { stopHlsProcess, type HlsProducer } from "./hlsProcess.ts";
+import { rewritePlaylist, safeSegmentName, segmentContentType, startPassthrough } from "./hlsPlaylist.ts";
 import { hlsOwnershipKey, supersedeHlsLease } from "./hlsLeaseOwnership.ts";
 
 export { audioTracksResponse } from "./audioTracks.ts";
@@ -38,9 +38,9 @@ interface HlsSession {
   readonly key: string;
   readonly directory: string;
   readonly playlistPath: string;
-  /** Episode time of the playlist's local zero; passthrough sessions learn it from their first segment. */
-  start: number | null;
-  readonly process: Bun.Subprocess<"ignore", "ignore", "pipe">;
+  /** Episode time of the playlist's local zero, reported to the player. */
+  readonly start: number;
+  readonly process: HlsProducer;
   readonly userId: number;
   readonly leases: Set<string>;
   readonly legacyAccess: boolean;
@@ -93,9 +93,9 @@ async function monitorSession(session: HlsSession): Promise<void> {
   }
 }
 
-async function spawnHlsProcess(command: string[], directory: string) {
+async function startProducer(directory: string, start: () => HlsProducer | Promise<HlsProducer>): Promise<HlsProducer> {
   try {
-    return Bun.spawn(command, { stdout: "ignore", stderr: "pipe" });
+    return await start();
   } catch (error: unknown) {
     await rm(directory, { recursive: true, force: true });
     throw error;
@@ -115,23 +115,18 @@ async function createSession(
   const id = randomUUID();
   const directory = join(root, id);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  const process = await spawnHlsProcess([
-      "ffmpeg",
-      ...transcodeArgs({
-        ...options,
-        source,
-        audioTrack,
-        directory,
-        segmentIndex,
-        start: segmentIndex * HLS_SEGMENT_SECONDS,
-      }),
-    ], directory);
+  const start = segmentIndex * HLS_SEGMENT_SECONDS;
+  const process = await startProducer(directory, () => (source.videoMode === "passthrough"
+    ? startPassthrough({ input: source.input, audioTrack, directory, duration: options.duration })
+    : Bun.spawn(["ffmpeg", ...transcodeArgs({ ...options, source, audioTrack, directory, segmentIndex, start })], {
+      stdout: "ignore", stderr: "pipe",
+    })));
   const session: HlsSession = {
     id,
     key,
     directory,
     playlistPath: join(directory, "index.m3u8"),
-    start: source.videoMode === "passthrough" ? null : segmentIndex * HLS_SEGMENT_SECONDS,
+    start: process.start ?? start,
     process,
     userId: options.userId,
     leases: new Set(),
@@ -216,7 +211,10 @@ async function createReservedSession(
 }
 
 function activeSession(options: HlsPlaylistOptions): Promise<HlsSession | null | undefined> {
-  const { segmentIndex } = hlsSessionPlan(options.duration, options.requestedStart);
+  // A passthrough playlist always spans the whole episode, so every start shares one session.
+  const { segmentIndex } = options.source.videoMode === "passthrough"
+    ? { segmentIndex: 0 }
+    : hlsSessionPlan(options.duration, options.requestedStart);
   const key = hlsSessionKey(options, segmentIndex);
   const existing = sessionsByKey.get(key);
   if (existing !== undefined && existing.error === null) {
@@ -299,11 +297,7 @@ function abandonUnboundLease(options: HlsPlaylistOptions): void {
   }
 }
 
-async function playlistReply(session: HlsSession, playlist: string, leaseId: string | null): Promise<Response | null> {
-  session.start ??= await passthroughSessionStart(session.directory, playlist);
-  if (session.start === null) {
-    return null;
-  }
+function playlistReply(session: HlsSession, playlist: string, leaseId: string | null): Response {
   session.lastAccess = Date.now();
   return new Response(rewritePlaylist(playlist, session.id, leaseId), {
     headers: {
@@ -347,9 +341,8 @@ export async function hlsPlaylistResponse(options: HlsPlaylistOptions): Promise<
     if (playlist === null) {
       return new Response("Stream could not start", { status: 503 });
     }
-    const reply = await playlistReply(session, playlist, options.leaseId);
-    ready = reply !== null;
-    return reply ?? new Response("Stream could not start", { status: 503 });
+    ready = true;
+    return playlistReply(session, playlist, options.leaseId);
   } finally {
     if (bound && !ready && options.leaseId !== null && options.playerId !== null) {
       await releaseHlsPlayback(options.userId, options.playerId, options.leaseId);
@@ -377,18 +370,28 @@ export async function hlsSegmentResponse(options: {
     return new Response("Not found", { status: 404 });
   }
   session.lastAccess = Date.now();
-  const file = Bun.file(join(session.directory, name));
-  if (!(await file.exists())) {
+  const path = await segmentPath(session, name);
+  if (path === null) {
+    // On-demand producers answer 503 so players retry; event playlists never list missing segments.
+    const retry = session.error === null && session.process.segmentPath !== undefined;
     return new Response(session.error === null ? "Segment not ready" : "Stream failed", {
-      status: session.error === null ? 425 : 503,
+      status: session.error === null && !retry ? 425 : 503, headers: retry ? { "retry-after": "1" } : {},
     });
   }
-  return new Response(file, {
+  return new Response(Bun.file(path), {
     headers: {
       "content-type": segmentContentType(name),
       "cache-control": "private, max-age=3600, immutable",
     },
   });
+}
+
+async function segmentPath(session: HlsSession, name: string): Promise<string | null> {
+  if (session.process.segmentPath !== undefined) {
+    return session.process.segmentPath(name);
+  }
+  const path = join(session.directory, name);
+  return await Bun.file(path).exists() ? path : null;
 }
 
 function touchSessionLease(session: HlsSession, leaseId: string | null, userId: number): boolean {
