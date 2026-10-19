@@ -25,9 +25,10 @@ interface SourceAttachment {
   readonly onError: (message: string) => void;
   readonly playerId: string;
   readonly direct: boolean;
+  readonly onTimelineOffset: (offset: number) => void;
 }
 function attachSource(options: SourceAttachment): (() => void) | undefined {
-  const { video, entry, resumeAt, onError, playerId, direct } = options;
+  const { video, entry, resumeAt, onError, playerId, direct, onTimelineOffset } = options;
   if (direct) {
     attachDirectVideoSource(video, entry.offlineUrl ?? streamUrl(entry.rel));
     return undefined;
@@ -39,6 +40,7 @@ function attachSource(options: SourceAttachment): (() => void) | undefined {
     onError,
     resumeAt,
     timelineOffset,
+    onTimelineOffset,
   }, playerId);
 }
 
@@ -200,6 +202,10 @@ export function useVideoSource(
           ...initialSourceRef.current,
           playerId: sourceRef.current.playerId,
           onError: setPlaybackError,
+          onTimelineOffset: (offset) => {
+            sourceRef.current.timelineOffset = offset;
+            setTimelineOffset(offset);
+          },
         });
         sourceRef.current.detach = detachSource;
         return () => cleanupSource(sourceRef.current, videoRef);
@@ -210,7 +216,7 @@ export function useVideoSource(
         return undefined;
       }
     },
-    [initialSourceRef, setPlaybackError, sourceRef, videoRef],
+    [initialSourceRef, setPlaybackError, setTimelineOffset, sourceRef, videoRef],
   );
   const { handleVideoError, handlePlaying } = usePlaybackErrorHandlers(
     setPlaybackError,

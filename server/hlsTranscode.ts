@@ -13,11 +13,13 @@ export interface HlsOptions {
 
 /**
  * Where a live HLS session reads video from. `copy` streams a stored transcode
- * whose keyframes sit on every segment boundary; `encode` re-encodes the video.
+ * whose keyframes sit on every segment boundary; `encode` re-encodes the video;
+ * `passthrough` repackages HEVC untouched into fMP4 segments for clients that
+ * decode HEVC, cutting at the source's own (irregular) keyframes.
  */
 export interface HlsStreamSource {
   readonly input: string;
-  readonly videoMode: "copy" | "encode";
+  readonly videoMode: "copy" | "encode" | "passthrough";
   /** Output-relative audio map for a stored transcode; absent maps the source index. */
   readonly audioMap?: string;
 }
@@ -81,6 +83,10 @@ function videoArgs(command: TranscodeCommand): readonly string[] {
   if (command.source?.videoMode === "copy") {
     return ["-c:v", "copy"];
   }
+  if (command.source?.videoMode === "passthrough") {
+    // Browsers only accept HEVC in MP4 under the hvc1 sample entry.
+    return ["-c:v", "copy", "-tag:v", "hvc1"];
+  }
   const keyframes = [
     "-flags", "+cgop",
     "-force_key_frames", `expr:gte(t,n_forced*${String(HLS_SEGMENT_SECONDS)})`,
@@ -117,23 +123,45 @@ function audioMap(command: TranscodeCommand): readonly string[] {
   return ["-map", command.source?.audioMap ?? `0:${String(command.audioTrack.index)}`];
 }
 
+/**
+ * Copy sessions seek without decoding, so they begin on the keyframe at or
+ * before the seek point. With the output offset equal to the seek point, that
+ * keyframe keeps its source timestamp: a passthrough session therefore starts
+ * at the preceding source keyframe, which `passthroughSessionStart` reports.
+ */
 function inputArgs(command: TranscodeCommand): readonly string[] {
   const input = command.source?.input ?? command.abs;
-  return command.source?.videoMode === "copy"
-    ? ["-noaccurate_seek", "-ss", String(command.start + COPY_SEEK_LEAD_SECONDS), "-i", input]
-    : ["-ss", String(command.start), "-i", input];
+  return command.source?.videoMode === "encode" || command.source === undefined
+    ? ["-ss", String(command.start), "-i", input]
+    : ["-noaccurate_seek", "-ss", String(outputOffset(command)), "-i", input];
 }
 
 function outputOffset(command: TranscodeCommand): number {
   return command.source?.videoMode === "copy" ? command.start + COPY_SEEK_LEAD_SECONDS : command.start;
 }
 
+/** Stereo AAC already plays everywhere; re-encoding it caps a remux at ~7x realtime on a busy host. */
+function audioArgs(audioTrack: AudioTrack | undefined): readonly string[] {
+  if (audioTrack === undefined) {
+    return [];
+  }
+  return audioTrack.codec === "aac" && audioTrack.channels <= 2
+    ? ["-c:a", "copy"]
+    : ["-c:a", "aac", "-ac", "2", "-b:a", "160k"];
+}
+
+function segmentArgs(command: TranscodeCommand): readonly string[] {
+  return command.source?.videoMode === "passthrough"
+    ? [
+        "-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init.mp4",
+        "-hls_segment_filename", join(command.directory, "segment-%06d.m4s"),
+      ]
+    : ["-hls_segment_filename", join(command.directory, "segment-%06d.ts")];
+}
+
 export function transcodeArgs(command: TranscodeCommand): readonly string[] {
   const remaining = Math.max(0, command.duration - command.start);
   const streams = ["-map", "0:v:0", ...audioMap(command)];
-  const audio = command.audioTrack === undefined
-    ? []
-    : ["-c:a", "aac", "-ac", "2", "-b:a", "160k"];
   return [
     "-hide_banner", "-loglevel", "error",
     ...inputHardwareArgs(command),
@@ -141,7 +169,7 @@ export function transcodeArgs(command: TranscodeCommand): readonly string[] {
     "-t", String(remaining),
     ...streams,
     ...videoArgs(command),
-    ...audio,
+    ...audioArgs(command.audioTrack),
     "-output_ts_offset", String(outputOffset(command)),
     "-muxdelay", "0",
     "-f", "hls",
@@ -150,7 +178,7 @@ export function transcodeArgs(command: TranscodeCommand): readonly string[] {
     "-hls_playlist_type", "event",
     "-start_number", String(command.segmentIndex),
     "-hls_flags", "independent_segments+temp_file",
-    "-hls_segment_filename", join(command.directory, "segment-%06d.ts"),
+    ...segmentArgs(command),
     join(command.directory, "index.m3u8"),
   ];
 }

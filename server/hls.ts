@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { SingleFlight } from "./singleFlight.ts";
 import {
   HlsStoppingCapacity,
@@ -10,10 +10,12 @@ import {
 } from "./hlsCapacity.ts";
 import { HLS_SEGMENT_SECONDS, HLS_SESSION_IDLE_MS, hlsSessionKey, playlistReadyToServe, sessionStreams, transcodeArgs, type HlsSourceOptions } from "./hlsTranscode.ts";
 import { stopHlsProcess } from "./hlsProcess.ts";
+import { passthroughSessionStart, rewritePlaylist, safeSegmentName, segmentContentType } from "./hlsPlaylist.ts";
 import { hlsOwnershipKey, supersedeHlsLease } from "./hlsLeaseOwnership.ts";
 
 export { audioTracksResponse } from "./audioTracks.ts";
 export { playlistReadyToServe, transcodeArgs } from "./hlsTranscode.ts";
+export { rewritePlaylist, safeSegmentName } from "./hlsPlaylist.ts";
 
 const PROCESS_STOP_GRACE_MS = 2 * 1000;
 const MAX_ACTIVE_SESSIONS = 4;
@@ -36,6 +38,8 @@ interface HlsSession {
   readonly key: string;
   readonly directory: string;
   readonly playlistPath: string;
+  /** Episode time of the playlist's local zero; passthrough sessions learn it from their first segment. */
+  start: number | null;
   readonly process: Bun.Subprocess<"ignore", "ignore", "pipe">;
   readonly userId: number;
   readonly leases: Set<string>;
@@ -127,6 +131,7 @@ async function createSession(
     key,
     directory,
     playlistPath: join(directory, "index.m3u8"),
+    start: source.videoMode === "passthrough" ? null : segmentIndex * HLS_SEGMENT_SECONDS,
     process,
     userId: options.userId,
     leases: new Set(),
@@ -239,21 +244,6 @@ async function waitForPlaylist(session: HlsSession): Promise<string | null> {
   return latest;
 }
 
-export function rewritePlaylist(
-  playlist: string,
-  sessionId: string,
-  leaseId: string | null = null,
-): string {
-  return playlist.split("\n").map((line) => {
-    if (line === "" || line.startsWith("#")) {
-      return line;
-    }
-    const name = basename(line);
-    const lease = leaseId === null ? "" : `&lease=${encodeURIComponent(leaseId)}`;
-    return `/hls/seg?session=${encodeURIComponent(sessionId)}${lease}&name=${encodeURIComponent(name)}`;
-  }).join("\n");
-}
-
 function prepareLease(options: HlsPlaylistOptions): Promise<boolean> {
   const { leaseId, playerId, userId } = options;
   if (leaseId === null || playerId === null) {
@@ -309,6 +299,20 @@ function abandonUnboundLease(options: HlsPlaylistOptions): void {
   }
 }
 
+async function playlistReply(session: HlsSession, playlist: string, leaseId: string | null): Promise<Response | null> {
+  session.start ??= await passthroughSessionStart(session.directory, playlist);
+  if (session.start === null) {
+    return null;
+  }
+  session.lastAccess = Date.now();
+  return new Response(rewritePlaylist(playlist, session.id, leaseId), {
+    headers: {
+      "content-type": "application/vnd.apple.mpegurl", "cache-control": "no-store",
+      "x-nanime-hls-session": session.id, "x-nanime-hls-start": String(session.start),
+    },
+  });
+}
+
 export async function hlsPlaylistResponse(options: HlsPlaylistOptions): Promise<Response> {
   if (!await prepareLease(options)) {
     return new Response("Playback lease has ended", { status: 410 });
@@ -343,15 +347,9 @@ export async function hlsPlaylistResponse(options: HlsPlaylistOptions): Promise<
     if (playlist === null) {
       return new Response("Stream could not start", { status: 503 });
     }
-    ready = true;
-    session.lastAccess = Date.now();
-    return new Response(rewritePlaylist(playlist, session.id, options.leaseId), {
-      headers: {
-        "content-type": "application/vnd.apple.mpegurl",
-        "cache-control": "no-store",
-        "x-nanime-hls-session": session.id,
-      },
-    });
+    const reply = await playlistReply(session, playlist, options.leaseId);
+    ready = reply !== null;
+    return reply ?? new Response("Stream could not start", { status: 503 });
   } finally {
     if (bound && !ready && options.leaseId !== null && options.playerId !== null) {
       await releaseHlsPlayback(options.userId, options.playerId, options.leaseId);
@@ -362,10 +360,6 @@ export async function hlsPlaylistResponse(options: HlsPlaylistOptions): Promise<
       await removeSession(session);
     }
   }
-}
-
-export function safeSegmentName(value: string | null): value is string {
-  return value !== null && /^segment-\d{6}\.ts$/u.test(value);
 }
 
 export async function hlsSegmentResponse(options: {
@@ -391,7 +385,7 @@ export async function hlsSegmentResponse(options: {
   }
   return new Response(file, {
     headers: {
-      "content-type": "video/mp2t",
+      "content-type": segmentContentType(name),
       "cache-control": "private, max-age=3600, immutable",
     },
   });

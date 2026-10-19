@@ -75,6 +75,13 @@ function browserSafe(probe: VideoProbe): boolean {
   return probe.codec === "h264" && BROWSER_SAFE_PIXEL_FORMATS.has(probe.pixelFormat);
 }
 
+/** HEVC a client that reports HEVC decoding can play as-is (4:2:0, 8- or 10-bit). */
+const PASSTHROUGH_PIXEL_FORMATS = new Set(["yuv420p", "yuv420p10le"]);
+
+function passthroughPlayable(probe: VideoProbe): boolean {
+  return probe.codec === "hevc" && PASSTHROUGH_PIXEL_FORMATS.has(probe.pixelFormat);
+}
+
 function segmentAligned(probe: VideoProbe): boolean {
   return browserSafe(probe) && probe.keyframeSeconds === HLS_SEGMENT_SECONDS;
 }
@@ -83,16 +90,25 @@ export type PlaybackPlan =
   | { readonly kind: "stream"; readonly source: HlsStreamSource }
   | { readonly kind: "transcode-required"; readonly transcode: SourceTranscodeState | null };
 
+export interface PlaybackPlanOptions extends MediaLibraryOptions {
+  readonly hardwareAcceleration: string;
+  /** The client decodes HEVC, so HEVC sources stream untouched instead of needing a transcode. */
+  readonly hevcClient?: boolean;
+}
+
 /**
- * Live HLS only remuxes segment-aligned stored transcodes or re-encodes video
- * that is already browser-safe (or uses hardware encoding). Anything else must
- * be transcoded ahead of time: a software re-encode cannot keep up live.
+ * Live HLS repackages HEVC for clients that decode it, remuxes segment-aligned
+ * stored transcodes, or re-encodes video that is already browser-safe (or uses
+ * hardware encoding). Anything else must be transcoded ahead of time: a
+ * software re-encode cannot keep up live.
  */
-export async function playbackPlan(
-  abs: string,
-  rel: string,
-  options: MediaLibraryOptions & { readonly hardwareAcceleration: string },
-): Promise<PlaybackPlan> {
+export async function playbackPlan(abs: string, rel: string, options: PlaybackPlanOptions): Promise<PlaybackPlan> {
+  if (options.hevcClient === true) {
+    const source = await cachedProbe(abs);
+    if (source !== null && passthroughPlayable(source)) {
+      return { kind: "stream", source: { input: abs, videoMode: "passthrough" } };
+    }
+  }
   const stored = await storedCompatibilityCopy(rel, options);
   const storedProbe = stored === null ? null : await cachedProbe(stored);
   if (stored !== null && storedProbe !== null && segmentAligned(storedProbe)) {
@@ -110,29 +126,29 @@ export async function playbackPlan(
 
 const MAX_READINESS_PATHS = 500;
 
-async function requestedPaths(req: Request): Promise<readonly string[] | null> {
-  const body = (await req.json().catch(() => null)) as { readonly paths?: unknown } | null;
+async function readinessRequest(req: Request): Promise<{ readonly paths: readonly string[]; readonly hevc: boolean } | null> {
+  const body = (await req.json().catch(() => null)) as { readonly paths?: unknown; readonly hevc?: unknown } | null;
   const paths = body?.paths;
   const valid = Array.isArray(paths) && paths.length <= MAX_READINESS_PATHS && paths.every((path) => typeof path === "string");
-  return valid ? paths as string[] : null;
+  return valid ? { paths: paths as string[], hevc: body?.hevc === true } : null;
 }
 
 /** Readiness for several library videos at once (a whole season); unknown paths are omitted. */
 export async function playbackReadinessResponse(
   req: Request,
   resolve: (rel: string) => Promise<string | null>,
-  options: MediaLibraryOptions & { readonly hardwareAcceleration: string },
+  options: PlaybackPlanOptions,
 ): Promise<Response> {
-  const paths = await requestedPaths(req);
-  if (paths === null) {
+  const request = await readinessRequest(req);
+  if (request === null) {
     return new Response("Choose up to 500 videos", { status: 400 });
   }
-  const items = await Promise.all(paths.map(async (rel) => {
+  const items = await Promise.all(request.paths.map(async (rel) => {
     const abs = await resolve(rel);
     if (abs === null) {
       return [];
     }
-    const plan = await playbackPlan(abs, rel, options);
+    const plan = await playbackPlan(abs, rel, { ...options, hevcClient: request.hevc });
     return [plan.kind === "stream"
       ? { path: rel, ready: true, transcode: sourceTranscodeState(rel) }
       : { path: rel, ready: false, transcode: plan.transcode }];
