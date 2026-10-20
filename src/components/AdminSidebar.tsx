@@ -1,5 +1,5 @@
 import { useCallback, type MouseEvent } from "react";
-import { Download, Film, FolderTree, Server, Users, Clapperboard, type LucideIcon } from "lucide-react";
+import { Download, Film, FolderTree, Search, Server, Users, Clapperboard, type LucideIcon } from "lucide-react";
 import { formatSize } from "../format.ts";
 import { adminTabHref, navigateToAdminTab, type AdminTab } from "../hooks/useMediaRoute.ts";
 import { useStorageStatus } from "../hooks/useStorageStatus.ts";
@@ -16,6 +16,7 @@ interface NavItem {
 
 const GROUPS: readonly { readonly label: string; readonly items: readonly NavItem[] }[] = [
   { label: "Activity", items: [
+    { tab: "find", label: "Find", icon: Search },
     { tab: "downloads", label: "Downloads", icon: Download },
     { tab: "transcodes", label: "Transcodes", icon: Clapperboard },
   ] },

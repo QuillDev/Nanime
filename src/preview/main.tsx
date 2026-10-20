@@ -76,7 +76,7 @@ const container = document.querySelector("#root");
 if (container === null) {
   throw new Error("Root container #root is missing");
 }
-const adminRequest = { "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-notifications": "admin-downloads", "admin-notifications-match": "admin-downloads", "admin-account": "admin-downloads" }[requested] ?? requested;
+const adminRequest = { "admin-find-results": "admin-find", "admin-find-show": "admin-find", "admin-find-sources": "admin-find", "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-notifications": "admin-downloads", "admin-notifications-match": "admin-downloads", "admin-account": "admin-downloads" }[requested] ?? requested;
 const adminTab = adminRequest.startsWith("admin-") && isAdminTab(adminRequest.slice(6)) ? adminRequest.slice(6) as AdminTab : null;
 // "admin-users-invite" opens the invite dialog.
 if (requested === "admin-users-invite") {
@@ -90,6 +90,24 @@ if (requested.startsWith("admin-notifications")) {
     document.querySelector<HTMLButtonElement>("button[aria-label=Notifications]")?.click();
     if (requested === "admin-notifications-match") {
       document.querySelector<HTMLButtonElement>("[popover] section button")?.click();
+    }
+  }, 400);
+}
+// "admin-find-results" searches "ferry"; "-show" opens the first result; "-sources" opens the sources list and a source's settings.
+if (requested.startsWith("admin-find-")) {
+  setTimeout(() => {
+    const input = document.querySelector<HTMLInputElement>("input[aria-label='Search for a show']");
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "ferry");
+    input?.dispatchEvent(new Event("input", { bubbles: true }));
+    setTimeout(() => {
+      input?.form?.requestSubmit();
+      if (requested === "admin-find-sources") {
+        document.querySelector<HTMLElement>("main details > summary")?.click();
+        document.querySelector<HTMLElement>("main details li details > summary")?.click();
+      }
+    }, 100);
+    if (requested === "admin-find-show") {
+      setTimeout(() => document.querySelector<HTMLButtonElement>("main ul li button")?.click(), 300);
     }
   }, 400);
 }

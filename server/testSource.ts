@@ -16,14 +16,16 @@ interface Served {
   readonly ranges?: "ignored" | "from-start";
   /** Most bytes one response carries, the way some CDNs cap each answer; the rest needs another request. */
   readonly pieceSize?: number;
+  /** Served without SOURCE_HEADER, like a public repository file. */
+  readonly open?: boolean;
 }
 
 export interface FakeSource {
   readonly origin: string;
   readonly url: (path: string) => string;
   serve: (path: string, served: Served) => void;
-  /** Serves every file in `directory` under `prefix/`. */
-  serveDirectory: (prefix: string, directory: string) => void;
+  /** Serves every file in `directory` under `prefix/`; `open` drops the SOURCE_HEADER requirement. */
+  serveDirectory: (prefix: string, directory: string, open?: boolean) => void;
   /** Answers `path` with `status` until cleared with null. */
   fail: (path: string, status: number | null) => void;
   /** The Range header of each request for `path`, oldest first (null when absent). */
@@ -63,24 +65,24 @@ async function respond(served: Served, request: IncomingMessage, response: Serve
 
 export async function startFakeSource(): Promise<FakeSource> {
   const files = new Map<string, Served>();
-  const directories = new Map<string, string>();
+  const directories = new Map<string, { readonly directory: string; readonly open: boolean }>();
   const failures = new Map<string, number>();
   const seen = new Map<string, (string | null)[]>();
   const fromDirectory = async (path: string): Promise<Served | undefined> => {
     const [, prefix = "", ...rest] = path.split("/");
-    const directory = directories.get(prefix);
-    const bytes = directory === undefined ? null : await readFile(join(directory, ...rest)).catch(() => null);
-    return bytes === null ? undefined : { bytes };
+    const served = directories.get(prefix);
+    const bytes = served === undefined ? null : await readFile(join(served.directory, ...rest)).catch(() => null);
+    return bytes === null ? undefined : { bytes, open: served?.open === true };
   };
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const { pathname } = new URL(request.url ?? "/", "http://source.invalid");
-    if (request.headers["x-source-key"] !== SOURCE_HEADER["x-source-key"]) {
+    const served = files.get(pathname) ?? await fromDirectory(pathname);
+    if (served?.open !== true && request.headers["x-source-key"] !== SOURCE_HEADER["x-source-key"]) {
       response.writeHead(403).end("Forbidden");
       return;
     }
     seen.set(pathname, [...seen.get(pathname) ?? [], request.headers.range ?? null]);
     const failure = failures.get(pathname);
-    const served = files.get(pathname) ?? await fromDirectory(pathname);
     if (failure !== undefined || served === undefined) {
       response.writeHead(failure ?? 404).end("Unavailable");
       return;
@@ -99,7 +101,7 @@ export async function startFakeSource(): Promise<FakeSource> {
     origin,
     url: (path) => `${origin}${path}`,
     serve: (path, served) => { files.set(path, served); },
-    serveDirectory: (prefix, directory) => { directories.set(prefix, directory); },
+    serveDirectory: (prefix, directory, open = false) => { directories.set(prefix, { directory, open }); },
     fail: (path, status) => {
       if (status === null) {
         failures.delete(path);

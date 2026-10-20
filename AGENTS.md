@@ -176,3 +176,17 @@ Every download (torrent or direct link) goes through `/api/downloads`
 (`fileDownloads.ts`) into `.nanime-downloads/` and hard-linked into the show
 folder when complete. New sources produce download items; they don't add new
 download paths.
+
+Source plugins are Mangayomi JavaScript extensions (`/api/sources`,
+`server/sources.ts`). Admins add a repository index link, install anime JS
+sources from it, search them and queue episodes from the Find page. Each call
+runs in a fresh QuickJS sandbox (`sourceRuntime.ts`) with Mangayomi's bridge
+API (`sourcePrelude.ts`: Client, Document/Element, SharedPreferences, crypto and
+unpack helpers) and no file, process or private-network access
+(`sourceHttp.ts` refuses loopback/private hosts; tests set
+`NANIME_SOURCE_ALLOW_PRIVATE_NETWORK=1`). A queued episode is resolved by its
+plugin when it starts, since video links expire: a magnet goes to qBittorrent,
+anything else downloads like a direct link, with subtitle tracks saved as
+`<episode>.<lang>.srt`. Plugins that need Mangayomi's in-app WebView or its
+native video extractors aren't supported. Route tests use the fictional
+repository in `server/testSourcePlugins.ts`.

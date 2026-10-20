@@ -15,6 +15,10 @@ const AdminLibraryFiles = lazy(async () => {
   return { default: module.AdminLibraryFiles };
 });
 const FILES_LOADING = <ListSkeleton rows={6} />;
+const AdminFind = lazy(async () => {
+  const module = await import("./AdminFind.tsx");
+  return { default: module.AdminFind };
+});
 
 interface AdminContentProps {
   readonly showFolders: readonly string[];
@@ -25,6 +29,13 @@ interface AdminContentProps {
 
 function AdminContent({ showFolders, entries, metadata, tab }: AdminContentProps): React.JSX.Element {
   switch (tab) {
+    case "find": {
+      return (
+        <Suspense fallback={FILES_LOADING}>
+          <AdminFind showFolders={showFolders} />
+        </Suspense>
+      );
+    }
     case "downloads": {
       return <AdminDownloads showFolders={showFolders} metadata={metadata} />;
     }

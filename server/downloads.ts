@@ -7,6 +7,8 @@ import {
 } from "./fileDownloads.ts";
 import { noteLibraryMutation, refreshInBackground } from "./mediaLibrary.ts";
 import { activeUploadPaths, safeDestinationDirectory } from "./mediaUpload.ts";
+import { resolveEpisode } from "./sourceEpisodes.ts";
+import { sourcesResponse } from "./sources.ts";
 import { pauseTorrent, removeTorrent, resumeTorrent, torrentDownloads, torrentHash } from "./torrentDownloads.ts";
 import { addMagnet, qBittorrentConfigured, torrentsResponse } from "./torrents.ts";
 
@@ -236,12 +238,20 @@ export function downloadRoutes(configuration: DownloadsConfiguration): DownloadR
       noteLibraryMutation();
       void refreshInBackground({ mediaDir, videoExtensions, directPlayExtensions });
     },
+    resolveEpisode,
+    addTorrent: async (magnet, showFolder) => {
+      const refused = await addTorrents([magnet], configuration, showFolder);
+      return refused === null ? null : await refused.text();
+    },
   });
   return {
     start,
-    handles: (pathname) => under(pathname, "/api/downloads") || under(pathname, "/api/torrents"),
-    respond: (req, url) => (under(url.pathname, "/api/downloads")
-      ? downloadsResponse(req, url.pathname, configuration)
-      : torrentsResponse(req, mediaDir, url)),
+    handles: (pathname) => ["/api/downloads", "/api/torrents", "/api/sources"].some((root) => under(pathname, root)),
+    respond: (req, url) => {
+      if (under(url.pathname, "/api/sources")) {
+        return sourcesResponse(req, url);
+      }
+      return under(url.pathname, "/api/downloads") ? downloadsResponse(req, url.pathname, configuration) : torrentsResponse(req, mediaDir, url);
+    },
   };
 }
