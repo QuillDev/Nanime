@@ -26,6 +26,30 @@ function ResultTile({ result, onPick }: { readonly result: SourceResult; readonl
   );
 }
 
+/** A result without cover art (a torrent, say) as one row: its name and the source's summary. */
+function ResultRow({ result, onPick }: { readonly result: SourceResult; readonly onPick: (result: SourceResult) => void }): React.JSX.Element {
+  const handleClick = useCallback(() => onPick(result), [onPick, result]);
+  return (
+    <li>
+      <button type="button" onClick={handleClick} className="group w-full py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <span className="block break-words text-sm font-medium group-hover:text-primary">{result.name}</span>
+        {result.description !== null && <span className="mt-0.5 block text-xs text-muted-foreground">{result.description}</span>}
+      </button>
+    </li>
+  );
+}
+
+function ResultList({ results, onPick }: { readonly results: readonly SourceResult[]; readonly onPick: (result: SourceResult) => void }): React.JSX.Element {
+  if (results.every((result) => result.imageUrl === null)) {
+    return <ul className="divide-y divide-border">{results.map((result) => <ResultRow key={result.link} result={result} onPick={onPick} />)}</ul>;
+  }
+  return (
+    <ul className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-4 gap-y-5">
+      {results.map((result) => <ResultTile key={result.link} result={result} onPick={onPick} />)}
+    </ul>
+  );
+}
+
 function Results({ sourceId, query, onPick }: {
   readonly sourceId: string;
   readonly query: string;
@@ -44,11 +68,7 @@ function Results({ sourceId, query, onPick }: {
   if (results.data.length === 0) {
     return <p className="py-10 text-sm text-muted-foreground">No matches.</p>;
   }
-  return (
-    <ul className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-4 gap-y-5">
-      {results.data.map((result) => <ResultTile key={result.link} result={result} onPick={onPick} />)}
-    </ul>
-  );
+  return <ResultList results={results.data} onPick={onPick} />;
 }
 
 function useSourceChoice(sources: readonly InstalledSourceView[]) {

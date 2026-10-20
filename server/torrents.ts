@@ -3,7 +3,6 @@ import { LibraryFileError, pathSegments, resolveFolder } from "./libraryPaths.ts
 import { canonicalizeTorrentAdditionRoot, forgetTorrentAddition, hasPendingTorrentAdditions, pendingTorrentPayloads, refreshTorrentAdditions, reserveTorrentAddition, torrentAdditionObserved, torrentOwnershipRead } from "./libraryTorrentClaims.ts";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { jsonObject } from "./json.ts";
-import { searchNyaaResponse } from "./nyaa.ts";
 
 const QBITTORRENT_USERNAME = process.env["QBITTORRENT_USERNAME"] ?? "";
 const QBITTORRENT_PASSWORD = process.env["QBITTORRENT_PASSWORD"] ?? "";
@@ -390,10 +389,8 @@ async function observeTorrentAddition(tag: string): Promise<boolean> {
 }
 
 export function torrentsResponse(req: Request, mediaDir: string, url: URL): Promise<Response> {
-  if (url.pathname === "/api/torrents/search") {
-    return req.method === "GET"
-      ? searchNyaaResponse(url)
-      : Promise.resolve(new Response("Method not allowed", { status: 405 }));
+  if (url.pathname !== "/api/torrents") {
+    return Promise.resolve(new Response("Not found", { status: 404 }));
   }
   return addTorrentResponse(req, mediaDir);
 }

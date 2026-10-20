@@ -33,6 +33,7 @@ class DefaultExtension extends MProvider {
       name: item.selectFirst("a").text.trim(),
       link: item.selectFirst("a").getHref,
       imageUrl: item.selectFirst("img").attr("src"),
+      description: item.selectFirst("span.summary").text,
     }));
     return { list, hasNextPage: filters.length === 1 && page === 1 };
   }
@@ -111,7 +112,9 @@ class DefaultExtension extends MProvider {
 const BROKEN_PLUGIN = "class DefaultExtension extends MProvider { search( {";
 
 const searchPage = (title: string): string => `<html><body><ul>
-  <li class="show"><a href="/show/lantern">  ${title}  </a><img src="/covers/lantern.jpg"></li>
+  <li class="show"><a href="/show/lantern">  ${title}  </a><img src="/covers/lantern.jpg"><span class="summary">
+    12 episodes ·  subtitled
+  </span></li>
   <li class="show"><a href="/show/other">Moth Harbor</a><img src="/covers/moth.jpg"></li>
 </ul></body></html>`;
 

@@ -80,8 +80,8 @@ test("a repository's anime JS sources install, search, list episodes and downloa
   const found = await search(target, lantern, "lantern");
   expect(await found.json()).toEqual({
     results: [
-      { name: SHOW_TITLE, link: "/show/lantern", imageUrl: "/covers/lantern.jpg" },
-      { name: "Moth Harbor", link: "/show/other", imageUrl: "/covers/moth.jpg" },
+      { name: SHOW_TITLE, link: "/show/lantern", imageUrl: "/covers/lantern.jpg", description: "12 episodes · subtitled" },
+      { name: "Moth Harbor", link: "/show/other", imageUrl: "/covers/moth.jpg", description: null },
     ],
     hasNextPage: true,
   });

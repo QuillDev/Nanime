@@ -29,6 +29,7 @@ export interface SourcesOverview {
 export interface SourceResult {
   readonly name: string;
   readonly imageUrl: string | null;
+  readonly description: string | null;
   readonly link: string;
 }
 

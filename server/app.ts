@@ -25,7 +25,6 @@ import {
   libraryActivityEventSchema,
   metadataRefreshStatusSchema,
   mediaScanSchema,
-  nyaaSearchResultSchema,
   playbackProgressSchema,
   playbackAuditEventSchema,
   playbackReadinessBodySchema,
@@ -136,24 +135,6 @@ const aniListUpdateSchema = schema.object({
   score: schema.optional(schema.number({ minimum: 0, maximum: 10 })),
 });
 const searchQuerySchema = schema.object({ q: schema.string({ minLength: 2 }) });
-const nyaaSortSchema = schema.union([
-  schema.literal("id"),
-  schema.literal("size"),
-  schema.literal("seeders"),
-  schema.literal("leechers"),
-  schema.literal("downloads"),
-]);
-const nyaaSortOrderSchema = schema.union([
-  schema.literal("asc"),
-  schema.literal("desc"),
-]);
-const nyaaSearchQuerySchema = schema.object({
-  q: schema.string({ minLength: 2, maxLength: 200 }),
-  category: schema.optional(schema.string()),
-  trusted: schema.optional(schema.boolean()),
-  sort: schema.optional(nyaaSortSchema),
-  order: schema.optional(nyaaSortOrderSchema),
-});
 const pathQuerySchema = schema.object({ path: schema.string({ minLength: 1 }) });
 const offlineMediaPrepareSchema = schema.object({
   path: schema.string({ minLength: 1 }),
@@ -347,10 +328,6 @@ export const app = new Elysia({ name: "nanime" })
   })
   .delete("/api/transcodes/:id/original", ({ request, server }) => handle(request, server), {
     response: transcodeJobSchema,
-  })
-  .get("/api/torrents/search", ({ request, server }) => handle(request, server), {
-    query: nyaaSearchQuerySchema,
-    response: schema.array(nyaaSearchResultSchema),
   })
   .post("/api/torrents", ({ request, server, body }) => (
     handle(formRequest(request, body), server)

@@ -51,11 +51,22 @@ function sourceById(id: unknown): InstalledSource {
 
 const string = (value: unknown): string => (typeof value === "string" ? value : "");
 
+interface ResultView {
+  readonly name: string;
+  readonly imageUrl: string | null;
+  /** The source's one-line summary (a torrent's size and seeders), cut to a line. */
+  readonly description: string | null;
+  readonly link: string;
+}
+
+const MAX_DESCRIPTION = 200;
+
 /** One search result as the find page shows it. */
-function result(value: unknown): readonly { readonly name: string; readonly imageUrl: string | null; readonly link: string }[] {
+function result(value: unknown): readonly ResultView[] {
   const item = jsonObject(value);
   const link = string(item?.["link"]);
-  return item === null || link === "" ? [] : [{ name: string(item["name"]) || link, imageUrl: string(item["imageUrl"]) || null, link }];
+  const description = string(item?.["description"]).replaceAll(/\s+/gu, " ").trim().slice(0, MAX_DESCRIPTION);
+  return item === null || link === "" ? [] : [{ name: string(item["name"]) || link, imageUrl: string(item["imageUrl"]) || null, description: description || null, link }];
 }
 
 async function searchResponse(url: URL): Promise<Response> {

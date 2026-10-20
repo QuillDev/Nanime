@@ -76,7 +76,7 @@ const container = document.querySelector("#root");
 if (container === null) {
   throw new Error("Root container #root is missing");
 }
-const adminRequest = { "admin-find-results": "admin-find", "admin-find-show": "admin-find", "admin-find-sources": "admin-find", "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-notifications": "admin-downloads", "admin-notifications-match": "admin-downloads", "admin-account": "admin-downloads" }[requested] ?? requested;
+const adminRequest = { "admin-find-results": "admin-find", "admin-find-torrents": "admin-find", "admin-find-show": "admin-find", "admin-find-sources": "admin-find", "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-notifications": "admin-downloads", "admin-notifications-match": "admin-downloads", "admin-account": "admin-downloads" }[requested] ?? requested;
 const adminTab = adminRequest.startsWith("admin-") && isAdminTab(adminRequest.slice(6)) ? adminRequest.slice(6) as AdminTab : null;
 // "admin-users-invite" opens the invite dialog.
 if (requested === "admin-users-invite") {
@@ -93,11 +93,12 @@ if (requested.startsWith("admin-notifications")) {
     }
   }, 400);
 }
-// "admin-find-results" searches "ferry"; "-show" opens the first result; "-sources" opens the sources list and a source's settings.
+// "admin-find-results" searches "ferry"; "-torrents" searches "lantern" (torrent results without art);
+// "-show" opens the first result; "-sources" opens the sources list and a source's settings.
 if (requested.startsWith("admin-find-")) {
   setTimeout(() => {
     const input = document.querySelector<HTMLInputElement>("input[aria-label='Search for a show']");
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "ferry");
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, requested === "admin-find-torrents" ? "lantern" : "ferry");
     input?.dispatchEvent(new Event("input", { bubbles: true }));
     setTimeout(() => {
       input?.form?.requestSubmit();

@@ -30,7 +30,18 @@ const TITLES = [
   "The Last Ferry Leaves at Dusk: A Very Long Subtitle That Keeps Going (Uncut Director's Edition)",
   "Ferry Tales", "Night Ferry Radio", "Moth Harbor Crossing", "Ferry Lights OVA",
 ];
-const results: readonly SourceResult[] = TITLES.map((name, index) => ({ name, imageUrl: cover((index % 9) + 1), link: `/show/${String(index)}` }));
+const results: readonly SourceResult[] = TITLES.map((name, index) => ({ name, imageUrl: cover((index % 9) + 1), description: null, link: `/show/${String(index)}` }));
+
+/** A torrent index's answer for "lantern": release names without art, with size and seeders. */
+export const TORRENT_QUERY = "lantern";
+const RELEASES = [
+  ["[Paper Moth Subs] Lantern Ferry Club - 12 (1080p) [5E2A91C4].mkv", "1.4 GiB · 812 seeders"],
+  ["[Paper Moth Subs] Lantern Ferry Club - 11 (1080p) [0B7D33F1].mkv", "1.4 GiB · 776 seeders"],
+  ["[Harbor-Raws] Lantern Ferry Club S01 (BD 1080p HEVC 10bit FLAC) [Dual-Audio] | The Last Ferry Leaves at Dusk", "18.2 GiB · 341 seeders"],
+  ["[Paper Moth Subs] Lantern Ferry Club - 10 (720p) [91F0C2AA].mkv", "702.4 MiB · 298 seeders"],
+  ["Lantern Ferry Club - Batch 01-12 [WEB 1080p x264 AAC]", "16.7 GiB · 120 seeders"],
+] as const;
+const torrents: readonly SourceResult[] = RELEASES.map(([name, description], index) => ({ name, imageUrl: null, description, link: `/view/${String(1000 + index)}` }));
 
 const show: SourceShow = {
   name: "Lantern Ferry Club",
@@ -50,6 +61,7 @@ const settings: readonly SourceSetting[] = [
 export function seedFind(client: QueryClient): void {
   client.setQueryData(["sources"], overview);
   client.setQueryData(["source-search", PREVIEW_SOURCE, PREVIEW_QUERY], results);
+  client.setQueryData(["source-search", PREVIEW_SOURCE, TORRENT_QUERY], torrents);
   client.setQueryData(["source-show", PREVIEW_SOURCE, results[0]?.link], show);
   client.setQueryData(["source-settings", PREVIEW_SOURCE], settings);
   client.setQueryData(["source-settings", kite.id], settings.slice(0, 1));
