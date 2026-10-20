@@ -2,6 +2,7 @@ import { jsonRequest, requestWithBody } from "./requestBody.ts";
 import { watchTogetherApp } from "./watchTogetherApp.ts";
 import { libraryFilesApp } from "./libraryFilesApp.ts";
 import { downloadsApp } from "./downloadsApp.ts";
+import { sourcesApp } from "./sourcesApp.ts";
 import { Elysia } from "elysia";
 import { handle, serverOptions } from "./server.ts";
 import { securityHeaders } from "./security.ts";
@@ -195,6 +196,7 @@ export const app = new Elysia({ name: "nanime" })
   .use(watchTogetherApp)
   .use(libraryFilesApp)
   .use(downloadsApp)
+  .use(sourcesApp)
   .get("/api/auth/me", ({ request, server }) => handle(request, server), {
     response: schema.union([authUserSchema, schema.nullValue()]),
   })

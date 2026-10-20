@@ -1,15 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { link, lstat, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import type { DownloadStatus } from "../shared/types.ts";
 import { fileSystemErrorCode } from "./fileSystemError.ts";
 import { claimLibraryPaths } from "./libraryWriters.ts";
 import { safeDestinationDirectory } from "./mediaUpload.ts";
 import {
   deleteFileDownload, fileDownloadJob, fileDownloadJobs, insertFileDownloads, setFileDownloadProgress, setFileDownloadState,
-  type FileDownloadJob, type NewFileDownload,
+  type FileDownloadJob, type NewFileDownload, type ResolvedEpisode, type SourceEpisode, type SubtitleLink,
 } from "./downloadStore.ts";
 import { DownloadFailureError, downloadFile, downloadHls } from "./fileDownloadTransfer.ts";
+import { saveSubtitles } from "./sourceSubtitles.ts";
 
 const PART_FOLDER = ".nanime-downloads";
 const configuredConcurrency = Number(process.env["NANIME_DOWNLOAD_CONCURRENCY"] ?? "");
@@ -31,7 +32,16 @@ interface FileDownloadsConfiguration {
   readonly mediaRoot: string;
   /** Called after a finished file lands in the library. */
   readonly onComplete: () => void;
+  /** Asks a source plugin what an episode is right now (its links expire). */
+  readonly resolveEpisode: (episode: SourceEpisode) => Promise<ResolvedEpisode>;
+  /** Hands a magnet to the torrent client; returns why it was refused, or null. */
+  readonly addTorrent: (magnet: string, showFolder: string) => Promise<string | null>;
 }
+
+/** What a job downloads once resolved: a file (with its final name and subtitles) or a torrent. */
+type Prepared =
+  | { readonly kind: "file"; readonly job: FileDownloadJob; readonly fileName: string; readonly subtitles: readonly SubtitleLink[] }
+  | { readonly kind: "torrent"; readonly magnet: string };
 
 let configuration: FileDownloadsConfiguration | null = null;
 const running = new Map<string, Running>();
@@ -85,22 +95,65 @@ function reporter(id: string, state: Running): (received: number, size: number) 
   };
 }
 
-/** Puts a finished part file in place without ever replacing an existing file. */
-async function finish(job: FileDownloadJob, part: string): Promise<void> {
+function stem(fileName: string): string {
+  return fileName.slice(0, fileName.length - extname(fileName).length);
+}
+
+function done(job: FileDownloadJob): void {
+  deleteFileDownload(job.id);
+  releaseClaim(job.id);
+  configuration?.onComplete();
+}
+
+/** Puts a finished part file in place without ever replacing an existing file, then its subtitles beside it. */
+async function finish(prepared: Extract<Prepared, { readonly kind: "file" }>, part: string): Promise<void> {
+  const { job, fileName, subtitles } = prepared;
   const root = configuration?.mediaRoot ?? "";
   const directory = await safeDestinationDirectory(root, [job.showFolder]);
   if (directory === null) {
     throw new DownloadFailureError("The show folder can't be used");
   }
   try {
-    await link(part, join(directory, job.fileName));
+    await link(part, join(directory, fileName));
   } catch (error) {
     throw new DownloadFailureError(fileSystemErrorCode(error) === "EEXIST" ? "A file with that name already exists" : "Could not move the download into the library");
   }
   await unlink(part).catch(() => undefined);
-  deleteFileDownload(job.id);
+  await saveSubtitles(subtitles, { headers: job.headers, scratch: join(root, PART_FOLDER), stem: join(directory, stem(fileName)) });
+  done(job);
+}
+
+/** Resolves a source episode into what to fetch; other jobs already know. */
+async function prepare(job: FileDownloadJob): Promise<Prepared> {
+  if (job.episode === null || configuration === null) {
+    return { kind: "file", job, fileName: job.fileName, subtitles: [] };
+  }
+  let resolved: ResolvedEpisode | null = null;
+  try {
+    resolved = await configuration.resolveEpisode(job.episode);
+  } catch (error) {
+    throw new DownloadFailureError(error instanceof Error ? error.message : "The source couldn't find this episode");
+  }
+  if (resolved.kind === "torrent") {
+    return resolved;
+  }
+  const { url, headers, format, extension, subtitles } = resolved;
+  return { kind: "file", job: { ...job, url, headers, format }, fileName: `${stem(job.fileName)}${extension}`, subtitles };
+}
+
+/** Gives the episode to qBittorrent; its file claim is let go first, since the torrent claims the show folder. */
+async function handOver(job: FileDownloadJob, magnet: string): Promise<void> {
   releaseClaim(job.id);
-  configuration?.onComplete();
+  const refused = configuration === null ? "Torrents aren't available" : await configuration.addTorrent(magnet, job.showFolder);
+  if (refused !== null) {
+    try {
+      claims.set(job.id, claimLibraryPaths([destination(job)], true));
+    } catch {
+      // Something else holds the folder now; the job fails either way.
+    }
+    throw new DownloadFailureError(refused);
+  }
+  done(job);
 }
 
 function stopped(job: FileDownloadJob, controller: AbortController, error: unknown): void {
@@ -122,10 +175,15 @@ async function run(job: FileDownloadJob): Promise<void> {
   running.set(job.id, state);
   setFileDownloadState(job.id, "downloading");
   try {
+    const prepared = await prepare(job);
+    if (prepared.kind === "torrent") {
+      await handOver(job, prepared.magnet);
+      return;
+    }
     const part = join(await partDirectory(), `${job.id}.part`);
-    const transfer = { job, part, signal: controller.signal, report: reporter(job.id, state) };
-    await (job.format === "hls" ? downloadHls(transfer) : downloadFile(transfer));
-    await finish(job, part);
+    const transfer = { job: prepared.job, part, signal: controller.signal, report: reporter(job.id, state) };
+    await (prepared.job.format === "hls" ? downloadHls(transfer) : downloadFile(transfer));
+    await finish(prepared, part);
   } catch (error) {
     stopped(job, controller, error);
   } finally {
@@ -171,8 +229,20 @@ function newJob(request: FileDownloadRequest): NewFileDownload {
     ...request,
     id: randomUUID(),
     format: hls ? "hls" : "file",
-    fileName: hls ? `${request.fileName.replace(/\.[^.]+$/u, "")}.mp4` : request.fileName,
+    fileName: hls ? `${stem(request.fileName)}.mp4` : request.fileName,
+    episode: null,
   };
+}
+
+export interface SourceEpisodeRequest {
+  readonly showFolder: string;
+  /** Saved as `.mp4` unless the source turns out to serve another video file type. */
+  readonly fileName: string;
+  readonly episode: SourceEpisode;
+}
+
+function episodeJob(request: SourceEpisodeRequest): NewFileDownload {
+  return { ...request, id: randomUUID(), url: "", headers: {}, format: "file", fileName: `${stem(request.fileName)}.mp4` };
 }
 
 /** One claim per destination, so each finished job frees only its own file; all or none. */
@@ -195,9 +265,17 @@ async function existing(root: string, job: NewFileDownload): Promise<boolean> {
  * Queues one job per request, all or none: each destination must be free and
  * not already a file. Throws LibraryFileError (423) when a destination is busy.
  */
-export async function enqueueFileDownloads(requests: readonly FileDownloadRequest[]): Promise<readonly string[] | "exists"> {
+export function enqueueFileDownloads(requests: readonly FileDownloadRequest[]): Promise<readonly string[] | "exists"> {
+  return enqueue(requests.map((request) => newJob(request)));
+}
+
+/** Queues source episodes the same way; each is resolved by its plugin when it starts. */
+export function enqueueSourceEpisodes(requests: readonly SourceEpisodeRequest[]): Promise<readonly string[] | "exists"> {
+  return enqueue(requests.map((request) => episodeJob(request)));
+}
+
+async function enqueue(jobs: readonly NewFileDownload[]): Promise<readonly string[] | "exists"> {
   const root = configuration?.mediaRoot ?? "";
-  const jobs = requests.map((request) => newJob(request));
   const taken = await Promise.all(jobs.map((job) => existing(root, job)));
   if (taken.some(Boolean) || new Set(jobs.map((job) => destination(job))).size !== jobs.length) {
     return "exists";

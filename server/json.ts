@@ -1,5 +1,5 @@
 type JsonPrimitive = boolean | number | string | null;
-type JsonValue = JsonPrimitive | JsonObject | readonly JsonValue[];
+export type JsonValue = JsonPrimitive | JsonObject | readonly JsonValue[];
 
 export interface JsonObject {
   readonly [key: string]: JsonValue | undefined;

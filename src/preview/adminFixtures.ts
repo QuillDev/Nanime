@@ -3,6 +3,7 @@ import type { LibraryFileItem, LibraryFilesSnapshot } from "../../shared/library
 import type {
   DownloadState, DownloadStatus, LibraryStatus, MediaScan, MetadataRefreshStatus, ProvisionedUser, StorageStatus, TranscodeJob,
 } from "../types.ts";
+import { seedFind } from "./findFixtures.ts";
 import { homeEntries, homeMetadata, homeShows } from "./homeFixtures.ts";
 
 /** Fictional admin data for `/preview/?state=admin-<tab>`, over the home preview library. */
@@ -117,5 +118,6 @@ export function adminQueryClient(): QueryClient {
   for (const [key, data] of seeded) {
     client.setQueryData([key], data);
   }
+  seedFind(client);
   return client;
 }

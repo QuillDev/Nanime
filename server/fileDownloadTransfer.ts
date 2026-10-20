@@ -104,6 +104,8 @@ function hlsArgs(transfer: Transfer): readonly string[] {
     "-nostdin", "-hide_banner", "-loglevel", "info", "-nostats", "-y",
     "-protocol_whitelist", "http,https,tcp,tls,crypto",
     ...ffmpegHeaders(transfer.job.headers),
+    // Some hosts serve playlists without a .m3u8 extension, which ffmpeg won't guess.
+    "-f", "hls",
     "-i", transfer.job.url,
     // Default stream selection keeps the best video and audio of a multi-variant playlist.
     "-sn", "-dn", "-c", "copy", "-bsf:a", "aac_adtstoasc",
