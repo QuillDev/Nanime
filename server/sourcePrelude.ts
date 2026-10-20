@@ -1,3 +1,5 @@
+import { SOURCE_EXTRACTORS } from "./sourceExtractors.ts";
+
 /**
  * The JavaScript every source plugin runs on top of: the classes and helpers a
  * Mangayomi JS extension expects (`MProvider`, `Client`, `Document`,
@@ -8,7 +10,7 @@
  * `sendMessage(name, jsonArgs)` host function. HTTP calls return promises; the
  * rest answer synchronously, as in Mangayomi.
  */
-export const SOURCE_PRELUDE = String.raw`
+const BRIDGE = String.raw`
 const __call = (name, args) => sendMessage(name, JSON.stringify(args));
 
 const __log = function (...messages) {
@@ -124,14 +126,6 @@ function unpackJsAndCombine(script) { return __call("unpack", [script]); }
 function parseDates(values, dateFormat, dateFormatLocale) { return JSON.parse(__call("parse_dates", [values, dateFormat ?? "", dateFormatLocale ?? ""])); }
 async function createHlsProxyUrl(url) { return url; }
 async function evaluateJavascriptViaWebview() { throw new Error("This source needs a web browser, which Nanime doesn't run"); }
-for (const name of [
-  "sibnetExtractor", "myTvExtractor", "okruExtractor", "voeExtractor", "vidBomExtractor", "quarkVideosExtractor",
-  "ucVideosExtractor", "quarkFilesExtractor", "ucFilesExtractor", "streamlareExtractor", "sendVidExtractor",
-  "yourUploadExtractor", "gogoCdnExtractor", "doodExtractor", "streamTapeExtractor", "mp4UploadExtractor",
-  "streamWishExtractor", "filemoonExtractor",
-]) {
-  globalThis[name] = async () => { throw new Error(name + " isn't available in Nanime yet"); };
-}
 
 /** The plugin's default filters, as Mangayomi passes them to search; none when it declares none. */
 function __filters() {
@@ -155,3 +149,6 @@ class MProvider {
   getSourcePreferences() { return []; }
 }
 `;
+
+/** The bridge, then Mangayomi's video host extractors on top of it. */
+export const SOURCE_PRELUDE = BRIDGE + SOURCE_EXTRACTORS;

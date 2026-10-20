@@ -137,6 +137,25 @@ test("an episode the source serves as a magnet goes to qBittorrent in the show f
   expect(ids).toEqual([`torrent:${MAGNET_HASH}`]);
 }, 60_000);
 
+test("episodes on StreamWish and VOE embeds download through Mangayomi's extractors", async () => {
+  const { target, repo } = await withRepository();
+  const lantern = repo.ids["Lantern Stream"] ?? "";
+  await install(target, lantern);
+
+  const episodes = [{ url: "host-streamwish", number: 1 }, { url: "host-voe", number: 2 }];
+  const queued = await post(target, "/api/sources/download", { id: lantern, showFolder: SHOW_TITLE, episodes });
+  expect(await queued.json()).toEqual({ added: 2 });
+  await waitForNoDownloads(target);
+
+  const folder = join(target.media, SHOW_TITLE);
+  const files = await readdir(folder);
+  expect(files.toSorted()).toEqual([`${SHOW_TITLE} - 01.mp4`, `${SHOW_TITLE} - 02.mp4`]);
+  for (const file of files) {
+    const streams = await probeStreams(join(folder, file));
+    expect(streams.map((stream) => stream.codec_type)).toEqual(["video", "audio"]);
+  }
+}, 90_000);
+
 test("plugins run sandboxed: no host APIs, no local files, and a call that never ends is stopped", async () => {
   const { target, repo } = await withRepository();
   const probe = repo.ids["Probe"] ?? "";

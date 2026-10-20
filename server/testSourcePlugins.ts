@@ -48,6 +48,14 @@ class DefaultExtension extends MProvider {
   }
 
   async getVideoList(url) {
+    // Embeds on video hosts go through Mangayomi's extractors; a dead embed answers no videos.
+    const hosts = this.source.baseUrl.replace("/site", "/hosts");
+    if (url === "host-streamwish") {
+      return [...await streamWishExtractor(hosts + "/gone.html", "Gone"), ...await streamWishExtractor(hosts + "/wish/e/1", "StreamWish")];
+    }
+    if (url === "host-voe") {
+      return voeExtractor(hosts + "/voe/e/1");
+    }
     if (url.startsWith("magnet-")) {
       return [{ url: "magnet:?xt=urn:btih:${MAGNET_HASH}&dn=Lantern%20Ferry%20Club%20Batch", originalUrl: url, quality: "1080p" }];
     }
@@ -153,6 +161,51 @@ async function writeIndex(site: FakeSource, directory: string, entries: readonly
   return { indexUrl, ids: Object.fromEntries(entries.map((entry) => [entry.name, `${indexUrl}#${String(entry.id)}`])) };
 }
 
+const rot13 = (text: string): string => text.replaceAll(/[a-z]/giu, (letter) => {
+  const base = letter <= "Z" ? 65 : 97;
+  return String.fromCodePoint(((letter.codePointAt(0) ?? 0) - base + 13) % 26 + base);
+});
+
+/**
+ * VOE's current page format: JSON {source} as base64, its characters shifted up by 3
+ * and reversed, base64 again, junk markers (listed in the loader script) mixed in, then ROT13.
+ */
+function voePayload(source: string, markers: readonly string[]): string {
+  const once = Buffer.from(JSON.stringify({ source })).toString("base64");
+  const shifted = [...once].map((character) => String.fromCodePoint((character.codePointAt(0) ?? 0) + 3)).toReversed().join("");
+  const twice = Buffer.from(shifted).toString("base64");
+  const mixed = [...twice].map((character, index) => index % 7 === 3 ? character + (markers[index % markers.length] ?? "") : character).join("");
+  return rot13(mixed);
+}
+
+/**
+ * Embed pages the way two video hosts serve them, all pointing at one HLS master
+ * playlist with 720p and 360p variants: StreamWish packs its player script, VOE
+ * redirects once and then hides the playlist in its encoded JSON.
+ */
+async function writeHosts(site: FakeSource, directory: string): Promise<void> {
+  const master = site.url("/hosts/streams/master.m3u8");
+  const packed = `eval(function(p,a,c,k,e,d){while(c--)if(k[c])p=p.replace(new RegExp('\\b'+c.toString(a)+'\\b','g'),k[c]);return p}('1("2").3({4:[{5:"0"}]})',10,6,'${master}|jwplayer|vplayer|setup|sources|file'.split('|'),0,{}))`;
+  const markers = ["@$", "^^", "~@"];
+  const pages = {
+    "gone.html": "<html><body>This video was removed.</body></html>",
+    "wish/e/1": `<html><body><div id="vplayer"></div><script>${packed}</script></body></html>`,
+    "voe/e/1": `<html><head><script>if (typeof localStorage !== 'undefined') { window.location.href = '${site.url("/hosts/voe/watch/1")}'; }</script></head></html>`,
+    "voe/watch/1": `<html><head><script type="application/json">["${voePayload(master, markers)}"]</script><script src="../loader.js"></script></head></html>`,
+    "voe/loader.js": `var junk = [${markers.map((marker) => `'${marker}'`).join(", ")}]; function load() {}`,
+    "streams/master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720\nhd/index.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=600000,RESOLUTION=640x360\nhd/index.m3u8\n",
+  };
+  for (const [path, body] of Object.entries(pages)) {
+    await mkdir(join(directory, path, ".."), { recursive: true });
+    await writeFile(join(directory, path), body);
+  }
+  const stream = join(directory, "streams", "hd");
+  await mkdir(stream, { recursive: true });
+  const clip = await makeClip(join(stream, "clip.mp4"), { seconds: 2, audio: ["jpn"] });
+  await run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", clip, "-c", "copy", "-f", "hls", "-hls_time", "1", "-hls_playlist_type", "vod", join(stream, "index.m3u8")]);
+  site.serveDirectory("hosts", directory, true);
+}
+
 /** The fictional site: pages, two short HLS episodes and an English WebVTT track. */
 async function writeSite(site: FakeSource, directory: string): Promise<void> {
   const pages = {
@@ -186,6 +239,7 @@ async function writeSite(site: FakeSource, directory: string): Promise<void> {
 export async function publishFakeRepository(site: FakeSource): Promise<FakeRepository> {
   const directory = await temporaryDirectory("nanime-source-repo-");
   await writeSite(site, join(directory, "site"));
+  await writeHosts(site, join(directory, "hosts"));
   return await writeIndex(site, join(directory, "repo"), [
     { id: 101, name: "Lantern Stream", code: LANTERN_PLUGIN },
     { id: 102, name: "Probe", code: PROBE_PLUGIN },
