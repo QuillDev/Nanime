@@ -292,13 +292,13 @@ export async function searchNyaaResponse(url: URL): Promise<Response> {
 
 function nyaaSearchOptions(url: URL) {
   const requestedCategory = url.searchParams.get("category") ?? "1_0";
-  const requestedSort = url.searchParams.get("sort") ?? "id";
+  const requestedSort = url.searchParams.get("sort") ?? "seeders";
   const requestedOrder = url.searchParams.get("order") ?? "desc";
   return {
     query: url.searchParams.get("q")?.trim() ?? "",
     category: CATEGORIES.has(requestedCategory) ? requestedCategory : "1_0",
     trusted: url.searchParams.get("trusted") === "true",
-    sort: SORTS.has(requestedSort) ? requestedSort : "id",
+    sort: SORTS.has(requestedSort) ? requestedSort : "seeders",
     order: SORT_ORDERS.has(requestedOrder) ? requestedOrder : "desc",
   };
 }
