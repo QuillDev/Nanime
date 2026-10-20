@@ -11,8 +11,9 @@ import type { CookieJar } from "./sourceCookies.ts";
 const ALLOW_PRIVATE = process.env["NANIME_SOURCE_ALLOW_PRIVATE_NETWORK"] === "1";
 const TIMEOUT_MS = 30_000;
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
-// Mangayomi sends a browser identity on Linux; many sites refuse requests without one.
-const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
+// Sites refuse requests without a browser identity. Firefox's: Cloudflare blocks
+// some requests that claim to be Chrome but don't have Chrome's TLS fingerprint.
+const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0";
 
 export class SourceRequestError extends Error {
   override name = "SourceRequestError";
