@@ -8,6 +8,12 @@ import { homeEntries, homeMetadata, homeShows } from "./homeFixtures.ts";
 /** Fictional admin data for `/preview/?state=admin-<tab>`, over the home preview library. */
 const NOW = Date.now();
 const entries = homeEntries.map((entry, index) => ({ ...entry, size: (1.1 + (index % 5) * 0.2) * 1024 ** 3 }));
+// One folder with no metadata, so the bell lists a show to match.
+const unmatched = [1, 2].map((episode) => ({
+  rel: `Lantern Ferry Club/Lantern Ferry Club - 0${String(episode)}.mkv`, name: `Lantern Ferry Club - 0${String(episode)}.mkv`,
+  folder: "Lantern Ferry Club", size: 1.2 * 1024 ** 3, direct: false,
+}));
+const libraryEntries = [...entries, ...unmatched];
 const MINUTE = 60_000;
 const GB = 1024 ** 3;
 
@@ -86,7 +92,7 @@ const metadataRefresh: MetadataRefreshStatus = {
 export function adminQueryClient(): QueryClient {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY, retry: false } } });
   const seeded: readonly (readonly [string, unknown])[] = [
-    ["library", entries], ["show-metadata", homeMetadata], ["torrents", torrents], ["users", users],
+    ["library", libraryEntries], ["show-metadata", homeMetadata], ["torrents", torrents], ["users", users],
     ["transcodes", transcodes], ["media-scans", scans], ["library-files", libraryFiles()],
     ["storage-status", storage], ["library-status", libraryStatus], ["metadata-refresh", metadataRefresh],
   ];

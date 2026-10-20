@@ -22,7 +22,6 @@ import { episodeMetadata, episodeNumber, mediaTitle } from "../lib/anilist.ts";
 
 export interface LibraryIndex {
   readonly shows: readonly ShowGroup[];
-  readonly unmappedShows: readonly ShowGroup[];
   readonly metadata: ShowMetadata;
   readonly metadataPending: boolean;
   readonly metadataError: Error | null;
@@ -182,7 +181,6 @@ function buildLibraryIndex(options: LibraryIndexOptions): LibraryIndex {
   }
   return {
     shows: mappedShows,
-    unmappedShows: shows.unmapped,
     metadata,
     metadataPending,
     metadataError,

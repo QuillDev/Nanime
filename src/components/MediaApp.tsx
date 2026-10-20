@@ -94,7 +94,7 @@ function LibraryContent({ library, index, progress, route, user, onSelect, onSho
     return <p className="py-16 text-center text-destructive">Failed to load metadata: {index.metadataError.message}</p>;
   }
   return (
-    <Library entries={library.data} shows={index.shows} unmappedShows={index.unmappedShows} metadata={index.metadata} query={route.query} progress={progress.data ?? EMPTY_PROGRESS} selectedShowName={route.showName} onSelect={onSelect} onShowSelect={onShowSelect} onShowsBack={navigateToShows} canManageMappings={user.isAdmin} />
+    <Library entries={library.data} shows={index.shows} metadata={index.metadata} query={route.query} progress={progress.data ?? EMPTY_PROGRESS} selectedShowName={route.showName} onSelect={onSelect} onShowSelect={onShowSelect} onShowsBack={navigateToShows} canManageMappings={user.isAdmin} />
   );
 }
 
