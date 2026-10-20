@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { fetchJikanMedia, searchJikan } from "./jikan.ts";
+import { withFakeUpstream } from "./testFetch.ts";
 
 const ANIME = {
   mal_id: 12_345,
@@ -26,32 +27,19 @@ const ANIME = {
   score: 8.2,
 };
 
-test("normalizes Jikan search, details, and episode metadata", async () => {
-  const originalFetch = globalThis.fetch;
+test("normalizes Jikan search, details, and episode metadata, retrying a gateway timeout", async () => {
   let searchAttempts = 0;
-  globalThis.fetch = Object.assign(
-    (input: string | URL | Request): Promise<Response> => {
-      const url = String(input);
-      if (url.includes("/episodes")) {
-        return Promise.resolve(Response.json({
-          data: [{ mal_id: 1, title: "The Beginning", url: null }],
-          pagination: { has_next_page: false },
-        }));
-      }
-      if (url.includes("/full")) {
-        return Promise.resolve(Response.json({ data: ANIME }));
-      }
-      searchAttempts += 1;
-      return Promise.resolve(searchAttempts === 1
-        ? new Response(null, { status: 504 })
-        : Response.json({ data: [ANIME] }));
-    },
-    { preconnect: originalFetch.preconnect },
-  );
-
-  try {
+  await withFakeUpstream((url) => {
+    if (url.pathname.endsWith("/episodes")) {
+      return Response.json({ data: [{ mal_id: 1, title: "The Beginning", url: null }], pagination: { has_next_page: false } });
+    }
+    if (url.pathname.endsWith("/full")) {
+      return Response.json({ data: ANIME });
+    }
+    searchAttempts += 1;
+    return searchAttempts === 1 ? new Response(null, { status: 504 }) : Response.json({ data: [ANIME] });
+  }, async () => {
     const [result] = await searchJikan("Example Anime");
-    expect(searchAttempts).toBe(2);
     expect(result?.provider).toBe("jikan");
     expect(result?.anilistId).toBeNull();
     expect(result?.duration).toBe(24);
@@ -65,7 +53,5 @@ test("normalizes Jikan search, details, and episode metadata", async () => {
       thumbnail: null,
       site: "MyAnimeList",
     }]);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  });
 });

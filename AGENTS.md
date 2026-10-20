@@ -164,5 +164,8 @@ library, database, network services, or credentials.
 Common commands: `bun install`, `bun run dev`, `bun run start`, `bun run check`,
 `bun test`, and `bun run build`.
 
-No browser or UI-driven test suites: cover behavior with `bun test` against
-the backend and pure modules.
+No frontend tests: nothing under `src/`, `public/` or `preview/` gets a test,
+and no browser or UI-driven suites. Cover behavior with `bun test` in
+`server/` and `shared/`, through real routes and real state where possible.
+Test-only helpers live in `server/test*.ts` (`testProcess.ts`, `testFetch.ts`,
+`testMedia.ts`, `libraryFilesTestServer.ts`); reuse them before adding more.

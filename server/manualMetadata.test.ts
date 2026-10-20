@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { manualAniListMetadata } from "./manualMetadata.ts";
+import { isolatedEnvironment, runScript, withTemporaryDirectory } from "./testProcess.ts";
 
 test("manual linking preserves fetched details only for the same AniList entry", () => {
   const current = { ...manualAniListMetadata(123, "Example", undefined), episodes: 12, description: "Existing description" };
@@ -11,12 +11,11 @@ test("manual linking preserves fetched details only for the same AniList entry",
 });
 
 test("manual mapping works with all upstream requests disabled and records immutable history", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "nanime-manual-metadata-"));
-  const media = join(directory, "media");
-  await mkdir(join(media, "Example Show"), { recursive: true });
-  try {
-    const child = Bun.spawn({
-      cmd: [process.execPath, "--eval", `
+  await withTemporaryDirectory("nanime-manual-metadata-", async (directory) => {
+    const media = join(directory, "media");
+    const environment = isolatedEnvironment(directory);
+    await mkdir(join(media, "Example Show"), { recursive: true });
+    const child = await runScript(`
         import { expect } from "bun:test";
         import { database } from "./server/database.ts";
         import { configureMetadataLibrary, linkAniListResponse, metadataResponse } from "./server/anilist.ts";
@@ -41,17 +40,12 @@ test("manual mapping works with all upstream requests disabled and records immut
         expect((await linkAniListResponse(request({ ...body, manualTitle: "Updated title" }), actor)).status).toBe(200);
         expect(database.query("SELECT COUNT(*) AS n FROM library_activity_log").get().n).toBe(2);
         expect(() => database.run("DELETE FROM library_activity_log")).toThrow();
-      `],
-      env: { ...process.env, NANIME_DATABASE: join(directory, "test.sqlite"), MEDIA_METADATA_FILE: join(directory, "metadata.json"), NANIME_ADMIN_SETUP_TOKEN: "nanime-manual-mapping-isolated-test-token" },
-      stdout: "pipe", stderr: "pipe",
-    });
-    const [code, error] = await Promise.all([child.exited, new Response(child.stderr).text()]);
-    expect(error).toBe("");
-    expect(code).toBe(0);
+      `, environment);
+    expect({ code: child.code, error: child.error }).toEqual({ code: 0, error: "" });
     const written = await readFile(join(media, "Example Show", "nanime.json"), "utf8");
     expect(JSON.parse(written)).toEqual({
       version: 1,
       show: { provider: "anilist", id: 123, title: "Updated title" },
     });
-  } finally { await rm(directory, { recursive: true, force: true }); }
+  });
 });

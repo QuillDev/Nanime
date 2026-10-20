@@ -1,13 +1,5 @@
-import { afterAll, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
-const temporaryDirectory = await mkdtemp(join(tmpdir(), "nanime-playback-audit-"));
-
-afterAll(async () => {
-  await rm(temporaryDirectory, { recursive: true });
-});
+import { expect, test } from "bun:test";
+import { isolatedEnvironment, runScript, withTemporaryDirectory } from "./testProcess.ts";
 
 const auditScript = String.raw`
     import { database } from "./server/database.ts";
@@ -109,26 +101,9 @@ const auditScript = String.raw`
 `;
 
 test("keeps semantic playback history immutable and restorable", async () => {
-  const databasePath = join(temporaryDirectory, "audit.sqlite");
-  const child = Bun.spawn({
-    cmd: [process.execPath, "--eval", auditScript],
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      NANIME_ADMIN_SETUP_TOKEN: "test-token-with-at-least-thirty-two-characters",
-      NANIME_DATABASE: databasePath,
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  expect(stderr).toBe("");
-  expect(exitCode).toBe(0);
-  const result = JSON.parse(stdout) as {
+  const { code, output, error } = await withTemporaryDirectory("nanime-playback-audit-", (directory) => runScript(auditScript, isolatedEnvironment(directory)));
+  expect({ code, error }).toEqual({ code: 0, error: "" });
+  const result = JSON.parse(output) as {
     readonly restored: { readonly completed: boolean };
     readonly current: readonly { readonly completed: boolean }[];
     readonly events: readonly {

@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { chmod, copyFile } from "node:fs/promises";
 import { join } from "node:path";
-import { makeClip, run, runText, withTemporaryDirectory } from "./testMedia.ts";
+import { makeClip, run, runText } from "./testMedia.ts";
+import { withTemporaryDirectory } from "./testProcess.ts";
 import { parseCpuList, presetArgs, reapStrayEncoders, transcodeWorkerBudget } from "./transcodeEncoder.ts";
 
 test("stored transcodes share a quarter of the host across parallel workers", () => {
@@ -38,24 +38,23 @@ test("reads kernel CPU lists", () => {
 });
 
 test("reaps only encoders writing into the private output directory", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "nanime-reap-"));
-  const output = join(directory, ".nanime-transcodes");
-  const tail = Bun.which("tail");
-  if (tail === null) {
-    throw new Error("tail is required");
-  }
-  await symlink(tail, join(directory, "ffmpeg"));
-  await writeFile(join(directory, "watched"), "");
-  const stray = Bun.spawn([join(directory, "ffmpeg"), "-f", join(directory, "watched"), `${output}/partial.mkv`], { stdout: "ignore", stderr: "ignore" });
-  const bystander = Bun.spawn([tail, "-f", join(directory, "watched"), `${output}/partial.mkv`], { stdout: "ignore", stderr: "ignore" });
-  try {
-    await Bun.sleep(100);
-    expect(await reapStrayEncoders(output)).toBe(1);
-    expect(await stray.exited).not.toBe(0);
-    expect(bystander.exitCode).toBeNull();
-  } finally {
-    stray.kill("SIGKILL");
-    bystander.kill("SIGKILL");
-    await rm(directory, { recursive: true, force: true });
-  }
+  await withTemporaryDirectory("nanime-reap-", async (directory) => {
+    const output = join(directory, ".nanime-transcodes");
+    // Any long-lived program will do; Bun copied to the name "ffmpeg" stays portable
+    // where coreutils is a multi-call binary that dispatches on its own name.
+    const idle = ["--eval", "setInterval(() => {}, 1000)"];
+    await copyFile(process.execPath, join(directory, "ffmpeg"));
+    await chmod(join(directory, "ffmpeg"), 0o755);
+    const stray = Bun.spawn([join(directory, "ffmpeg"), ...idle, `${output}/partial.mkv`], { stdout: "ignore", stderr: "ignore" });
+    const bystander = Bun.spawn([process.execPath, ...idle, `${output}/partial.mkv`], { stdout: "ignore", stderr: "ignore" });
+    try {
+      await Bun.sleep(200);
+      expect(await reapStrayEncoders(output)).toBe(1);
+      expect(await stray.exited).not.toBe(0);
+      expect(bystander.exitCode).toBeNull();
+    } finally {
+      stray.kill("SIGKILL");
+      bystander.kill("SIGKILL");
+    }
+  });
 });

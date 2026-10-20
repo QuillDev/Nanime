@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 
 const SETUP_TOKEN = "library-files-test-setup-token-000001";
 const ADMIN_PASSWORD = "library-files-test-admin-password";
+export const VIEWER_PASSWORD = "library-files-viewer-password";
 
 export interface FakeTorrent {
   readonly hash: string;
@@ -22,19 +23,22 @@ export interface FakeQbittorrent {
   stop: () => void;
 }
 
+/** `cookie`: omitted or undefined sends the admin session, null sends none. */
+export type TestRequestInit = RequestInit & { readonly cookie?: string | null | undefined };
+
 export interface LibraryTestServer {
   readonly origin: string;
   readonly media: string;
   readonly databasePath: string;
   readonly qbittorrent: FakeQbittorrent;
   readonly adminCookie: string;
-  readonly request: (path: string, init?: RequestInit & { readonly cookie?: string | null }) => Promise<Response>;
+  readonly request: (path: string, init?: TestRequestInit) => Promise<Response>;
   readonly database: () => Database;
   readonly log: () => string;
   readonly close: () => Promise<void>;
 }
 
-/** The fictitious library shared by the route tests and the browser suite. */
+/** The fictitious library the route tests start from. */
 export const LIBRARY_FIXTURE = {
   "Example Show/Season 1/Example Show - 01.mkv": "episode one",
   "Example Show/Season 1/Example Show - 01.en.ass": "[Script Info]",
@@ -178,7 +182,7 @@ export async function startLibraryTestServer(prepare: (media: string) => Promise
     body: JSON.stringify({ username: "admin", password: ADMIN_PASSWORD, setupToken: SETUP_TOKEN }),
   });
   const adminCookie = sessionCookie(setup);
-  const request = (path: string, init: RequestInit & { readonly cookie?: string | null } = {}): Promise<Response> => {
+  const request = (path: string, init: TestRequestInit = {}): Promise<Response> => {
     const headers = new Headers(init.headers);
     const cookie = init.cookie === undefined ? adminCookie : init.cookie;
     if (cookie !== null) {
@@ -219,7 +223,7 @@ export async function viewerCookie(server: LibraryTestServer): Promise<string> {
   const setup = await fetch(`${server.origin}/api/auth/setup`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: server.origin },
-    body: JSON.stringify({ username: "viewer", password: "library-files-viewer-password", setupToken }),
+    body: JSON.stringify({ username: "viewer", password: VIEWER_PASSWORD, setupToken }),
   });
   return sessionCookie(setup);
 }
@@ -281,7 +285,12 @@ export async function idAt(server: LibraryTestServer, path: string): Promise<str
   return found.id;
 }
 
-export async function getJson<T>(server: LibraryTestServer, path: string): Promise<T> {
-  const response = await server.request(path);
+export async function statusOf(pending: Promise<Response>): Promise<number> {
+  const response = await pending;
+  return response.status;
+}
+
+export async function getJson<T>(server: LibraryTestServer, path: string, cookie?: string): Promise<T> {
+  const response = await server.request(path, { cookie });
   return await response.json() as T;
 }

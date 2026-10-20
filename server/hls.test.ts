@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { makeClip, run, runText, withTemporaryDirectory } from "./testMedia.ts";
+import { firstVideoPacket, makeClip, run } from "./testMedia.ts";
+import { withTemporaryDirectory } from "./testProcess.ts";
 import {
   hlsSessionPlan,
   playlistReadyToServe,
@@ -23,13 +24,9 @@ test("a resumed live-encode session publishes an event playlist whose first segm
     const playlist = await readFile(join(session, "index.m3u8"), "utf8");
     expect(playlist).toContain("#EXT-X-PLAYLIST-TYPE:EVENT");
     expect(playlist.split("\n").filter((line) => line.endsWith(".ts"))).toEqual(["segment-000002.ts", "segment-000003.ts", "segment-000004.ts"]);
-    const first = await runText([
-      "ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time",
-      "-read_intervals", "%+#1", "-of", "csv=p=0", join(session, "segment-000002.ts"),
-    ]);
-    const time = Number(first.trim().replace(/,$/u, ""));
-    expect(time).toBeGreaterThanOrEqual(4);
-    expect(time - 4).toBeLessThan(0.05);
+    const first = await firstVideoPacket(join(session, "segment-000002.ts"));
+    expect(first.time).toBeGreaterThanOrEqual(4);
+    expect(first.time - 4).toBeLessThan(0.05);
   });
 }, 30_000);
 

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { makeClip, probeStreams, run, withTemporaryDirectory } from "./testMedia.ts";
+import { makeClip, probeStreams, run } from "./testMedia.ts";
+import { withTemporaryDirectory } from "./testProcess.ts";
 import { trickplayFrameArgs, trickplayPlan, trickplaySheetArgs } from "./trickplay.ts";
 
 test("uses a dense interval for episodes and bounds long-video frame counts", () => {

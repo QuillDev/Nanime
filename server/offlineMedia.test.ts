@@ -6,7 +6,8 @@ import {
   offlineTranscodeArgs,
 } from "./offlineMedia.ts";
 import { parseByteRange, rangedFileResponse, responseByteRange } from "./httpRange.ts";
-import { makeClip, probeStreams, run, withTemporaryDirectory } from "./testMedia.ts";
+import { makeClip, probeStreams, run } from "./testMedia.ts";
+import { withTemporaryDirectory } from "./testProcess.ts";
 
 async function moovPrecedesMdat(path: string): Promise<boolean> {
   const bytes = Buffer.from(await Bun.file(path).bytes());

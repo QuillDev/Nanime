@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { searchNyaaResponse } from "./nyaa.ts";
+import { withFakeUpstream } from "./testFetch.ts";
 
 const SEARCH_PAGE = `
   <table class="torrent-list"><tbody>
@@ -16,60 +17,44 @@ const SEARCH_PAGE = `
   </tbody></table>
 `;
 
-test("uses Nyaa's sortable HTML search results", async () => {
-  const originalFetch = globalThis.fetch;
-  let requestedUrl = "";
-  globalThis.fetch = Object.assign(
-    (input: string | URL | Request): Promise<Response> => {
-      requestedUrl = String(input);
-      return Promise.resolve(new Response(SEARCH_PAGE));
-    },
-    { preconnect: originalFetch.preconnect },
-  );
+/** Searches through a fake Nyaa and returns the URL Nanime requested plus the results it returned. */
+async function search(query: string): Promise<{ readonly requested: URL; readonly results: unknown }> {
+  let requested = new URL("about:blank");
+  const results = await withFakeUpstream((url) => {
+    requested = url;
+    return new Response(SEARCH_PAGE);
+  }, async () => {
+    const response = await searchNyaaResponse(new URL(`http://localhost/api/torrents/search?${query}`));
+    return await response.json() as unknown;
+  });
+  return { requested, results };
+}
 
-  try {
-    const response = await searchNyaaResponse(new URL(
-      "http://localhost/api/torrents/search?q=example&sort=seeders&order=desc",
-    ));
-    const payload: unknown = await response.json();
-    expect(requestedUrl).toContain("s=seeders");
-    expect(requestedUrl).toContain("o=desc");
-    expect(requestedUrl).not.toContain("page=rss");
-    expect(payload).toEqual([{
-      id: "12345",
-      name: "Example release",
-      category: "Anime - English-translated",
-      size: "1.2 GiB",
-      seeders: 321,
-      leechers: 4,
-      downloads: 567,
-      publishedAt: "1970-01-01T00:00:01.000Z",
-      trusted: true,
-      remake: false,
-      detailsUrl: "https://nyaa.si/view/12345",
-      magnet: "magnet:?xt=urn%3Abtih%3A0123456789abcdef0123456789abcdef01234567&dn=Example+release",
-    }]);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+test("uses Nyaa's sortable HTML search results", async () => {
+  const { requested, results } = await search("q=example&sort=seeders&order=desc");
+
+  expect(requested.searchParams.get("s")).toBe("seeders");
+  expect(requested.searchParams.get("o")).toBe("desc");
+  expect(requested.searchParams.get("page")).toBeNull();
+  expect(results).toEqual([{
+    id: "12345",
+    name: "Example release",
+    category: "Anime - English-translated",
+    size: "1.2 GiB",
+    seeders: 321,
+    leechers: 4,
+    downloads: 567,
+    publishedAt: "1970-01-01T00:00:01.000Z",
+    trusted: true,
+    remake: false,
+    detailsUrl: "https://nyaa.si/view/12345",
+    magnet: "magnet:?xt=urn%3Abtih%3A0123456789abcdef0123456789abcdef01234567&dn=Example+release",
+  }]);
 });
 
 test("searches by seeders, most first, when no sort is given", async () => {
-  const originalFetch = globalThis.fetch;
-  let requestedUrl = "";
-  globalThis.fetch = Object.assign(
-    (input: string | URL | Request): Promise<Response> => {
-      requestedUrl = String(input);
-      return Promise.resolve(new Response(SEARCH_PAGE));
-    },
-    { preconnect: originalFetch.preconnect },
-  );
+  const { requested } = await search("q=example");
 
-  try {
-    await searchNyaaResponse(new URL("http://localhost/api/torrents/search?q=example"));
-    expect(requestedUrl).toContain("s=seeders");
-    expect(requestedUrl).toContain("o=desc");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  expect(requested.searchParams.get("s")).toBe("seeders");
+  expect(requested.searchParams.get("o")).toBe("desc");
 });
