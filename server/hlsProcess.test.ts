@@ -1,51 +1,34 @@
-import { describe, expect, test } from "bun:test";
-import { stopHlsProcess, type HlsProcess } from "./hlsProcess.ts";
+import { expect, test } from "bun:test";
+import { stopHlsProcess } from "./hlsProcess.ts";
 
-function fakeProcess() {
-  const result = Promise.withResolvers<number>();
-  let exitCode: number | null = null;
-  const signals: (NodeJS.Signals | number | undefined)[] = [];
-  const process: HlsProcess = {
-    get exitCode() { return exitCode; },
-    exited: result.promise,
-    kill(signal) { signals.push(signal); },
-  };
-  return {
-    process,
-    signals,
-    exit(code = 0) {
-      exitCode = code;
-      result.resolve(code);
-    },
-  };
+/** A real long-running process; `ignoreTerm` makes it shrug off SIGTERM like a wedged encoder. */
+function encoder(ignoreTerm: boolean): ReturnType<typeof Bun.spawn> {
+  const script = `${ignoreTerm ? "process.on('SIGTERM', () => {});" : ""} setInterval(() => {}, 1000); console.log("ready");`;
+  return Bun.spawn([process.execPath, "--eval", script], { stdout: "pipe", stderr: "ignore" });
 }
 
-describe("HLS encoder shutdown", () => {
-  test("allows a graceful exit without force killing", async () => {
-    const fake = fakeProcess();
-    const wait = (): Promise<void> => {
-      fake.exit();
-      return Promise.resolve();
-    };
+async function started(child: ReturnType<typeof Bun.spawn>): Promise<void> {
+  const reader = (child.stdout as ReadableStream<Uint8Array>).getReader();
+  await reader.read();
+  reader.releaseLock();
+}
 
-    await stopHlsProcess(fake.process, 2000, wait);
+test("an encoder that honours SIGTERM stops gracefully, without being force killed", async () => {
+  const child = encoder(false);
+  await started(child);
 
-    expect(fake.signals).toEqual(["SIGTERM"]);
-  });
+  await stopHlsProcess(child, 5000);
 
-  test("force kills an encoder that ignores the grace period", async () => {
-    const fake = fakeProcess();
-    const graceElapsed = Promise.withResolvers<void>();
-    const wait = (): Promise<void> => {
-      graceElapsed.resolve();
-      return Promise.resolve();
-    };
-    const stopping = stopHlsProcess(fake.process, 2000, wait);
-    await graceElapsed.promise;
-    await Promise.resolve();
+  expect(child.signalCode).toBe("SIGTERM");
+});
 
-    expect(fake.signals).toEqual(["SIGTERM", "SIGKILL"]);
-    fake.exit(137);
-    await stopping;
-  });
+test("an encoder that ignores SIGTERM is force killed once the grace period ends", async () => {
+  const child = encoder(true);
+  await started(child);
+  const begun = Date.now();
+
+  await stopHlsProcess(child, 200);
+
+  expect(child.signalCode).toBe("SIGKILL");
+  expect(Date.now() - begun).toBeLessThan(3000);
 });
