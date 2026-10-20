@@ -106,3 +106,17 @@ test("groups movie folders with their series through shared parent metadata", ()
   expect(groups[0]?.sourceNames).toEqual(["Series", "Movie"]);
   expect(groups[0]?.seasons).toHaveLength(2);
 });
+
+test("a single-season show takes its cover and title from the season match over the franchise match", () => {
+  const [show] = groupShows([entry("[Group] Example Show (Season 03) [1080p]")]);
+  const [season] = show?.seasons ?? [];
+  if (show === undefined || season === undefined) {
+    throw new Error("expected one show with one season");
+  }
+  const franchise = { ...media("TV", [2021, 1, 1]), title: { english: "Example", romaji: "Example", native: null } };
+  const seasonThree = { ...media("TV", [2026, 1, 1]), title: { english: "Example Season 3", romaji: "Example Season 3", native: null } };
+  const showKey = showMetadataKey(show.name);
+  expect(primaryShowMetadata(show, { [showKey]: franchise })).toBe(franchise);
+  expect(primaryShowMetadata(show, { [showKey]: franchise, [seasonMetadataKey(season.sourceShow, season.name)]: seasonThree }))
+    .toBe(seasonThree);
+});

@@ -26,18 +26,25 @@ export function isMovieMedia(media: AniListMedia | undefined): media is AniListM
   return media?.format?.toLocaleUpperCase() === "MOVIE";
 }
 
+/**
+ * The match that represents a show on cards and heroes. The show key is the franchise anchor (it merges folders),
+ * but with one season in the library that season's own match is the more specific one, so its cover and title win.
+ * A season matched to a movie keeps the franchise in front, since a movie folder grouped under a series stays the series.
+ */
 export function primaryShowMetadata(
   show: ShowGroup,
   metadata: ShowMetadata,
 ): AniListMedia | undefined {
   const direct = metadata[showMetadataKey(show.name)];
-  if (direct !== undefined || show.seasons.length !== 1) {
+  const [season] = show.seasons;
+  if (season === undefined || show.seasons.length !== 1) {
     return direct;
   }
-  const [season] = show.seasons;
-  return season === undefined
-    ? undefined
-    : seasonMetadata(metadata, season.sourceShow, season.name);
+  const own = seasonMetadata(metadata, season.sourceShow, season.name);
+  if (direct === undefined || (own !== undefined && !isMovieMedia(own))) {
+    return own ?? direct;
+  }
+  return direct;
 }
 
 export function partitionShowsByMetadata(
