@@ -1,5 +1,6 @@
 import type { Server } from "bun";
-import type { AuthUser } from "./auth.ts";
+import { agentKeysResponse, usesAgentKey } from "./agentKeys.ts";
+import { usersResponse, type AuthUser } from "./auth.ts";
 import {
   aniListAccountResponse,
   aniListAuthConfigResponse,
@@ -11,9 +12,26 @@ import {
 export {
   authenticatedUser,
   authResponse,
-  usersResponse,
   type AuthUser,
 } from "./auth.ts";
+
+function under(pathname: string, root: string): boolean {
+  return pathname === root || pathname.startsWith(`${root}/`);
+}
+
+/** `/api/users` and `/api/agent-keys`: accounts and keys, which an agent key can't manage. */
+export function accountsResponse(req: Request, user: AuthUser, pathname: string): Response | Promise<Response> | null {
+  if (under(pathname, "/api/agent-keys")) {
+    return agentKeysResponse(req, user, pathname);
+  }
+  if (!under(pathname, "/api/users")) {
+    return null;
+  }
+  if (usesAgentKey(req)) {
+    return new Response("Forbidden", { status: 403 });
+  }
+  return usersResponse(req, user, pathname === "/api/users" ? null : Number(pathname.slice(11)));
+}
 export { syncAniListPlayback } from "./anilistAccount.ts";
 
 const TRUST_PROXY = process.env["NANIME_TRUST_PROXY"] === "true";
@@ -71,7 +89,8 @@ export function requestOriginAllowed(req: Request): boolean {
   }
   const origin = req.headers.get("origin");
   if (origin === null) {
-    return false;
+    // Browsers never attach an Authorization header on their own, so a keyed request can't be forged cross-site.
+    return usesAgentKey(req);
   }
   const expected = PUBLIC_ORIGIN ?? new URL(req.url).origin;
   return origin === expected;

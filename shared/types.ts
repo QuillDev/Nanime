@@ -193,6 +193,17 @@ export interface DownloadStatus {
   readonly error: string | null;
 }
 
+/** An admin-created key an agent (the MCP server) signs requests with. */
+export interface AgentKey {
+  readonly id: number;
+  readonly name: string;
+  /** The admin it acts as. */
+  readonly createdBy: string;
+  /** Epoch ms. */
+  readonly createdAt: number;
+  readonly lastUsedAt: number | null;
+}
+
 /** What to download. A season is one torrent, or one file item per episode. */
 export type DownloadItem =
   | { readonly kind: "torrent"; readonly magnet: string }

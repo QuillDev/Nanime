@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { readdir, writeFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { ADMIN_PASSWORD, startLibraryTestServer, type LibraryTestServer } from "./libraryFilesTestServer.ts";
+import { getJson, startLibraryTestServer, type LibraryTestServer } from "./libraryFilesTestServer.ts";
 import { waitUntil } from "./testProcess.ts";
 import { SHOW_TITLE, publishFakeRepository } from "./testSourcePlugins.ts";
 import { startFakeSource, type FakeSource } from "./testSource.ts";
@@ -38,14 +38,19 @@ async function withLanternSource(): Promise<Setup> {
   return { target: server, lantern };
 }
 
-/** The MCP server as an agent runs it: its own process over stdio, signed in with a password file. */
-async function connect(target: LibraryTestServer, password = ADMIN_PASSWORD): Promise<Client> {
-  const passwordFile = join(target.media, "..", "mcp-password");
-  await writeFile(passwordFile, `${password}\n`, { mode: 0o600 });
+/** An agent key created the way an admin does in Admin → Agents. */
+async function agentKey(target: LibraryTestServer): Promise<string> {
+  const created = await target.request("/api/agent-keys", { method: "POST", json: { name: "Hermes" } });
+  const { key } = await created.json() as { readonly key: string };
+  return key;
+}
+
+/** The MCP server as an agent runs it: its own process over stdio, signed with an agent key. */
+async function connect(target: LibraryTestServer, key: string): Promise<Client> {
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [join(import.meta.dir, "mcp.ts")],
-    env: { NANIME_URL: target.origin, NANIME_USERNAME: "admin", NANIME_PASSWORD_FILE: passwordFile },
+    env: { NANIME_URL: target.origin, NANIME_KEY: key },
     stderr: "pipe",
   });
   client = new Client({ name: "nanime-mcp-test", version: "1.0.0" });
@@ -69,7 +74,8 @@ async function call(agent: Client, name: string, args: ToolArguments = {}): Prom
 
 test("an agent searches every installed source and queues a show's episode into the library", async () => {
   const { target, lantern } = await withLanternSource();
-  const agent = await connect(target);
+  const key = await agentKey(target);
+  const agent = await connect(target, key);
 
   expect(await call(agent, "list_sources")).toEqual({ isError: false, value: [{ id: lantern, name: "Lantern Stream", lang: "en" }] });
   const found = await call(agent, "search", { query: "lantern" });
@@ -96,26 +102,22 @@ test("an agent searches every installed source and queues a show's episode into 
 
 test("an episode the show doesn't list is refused with the numbers it does list, and nothing is queued", async () => {
   const { target, lantern } = await withLanternSource();
-  const agent = await connect(target);
+  const key = await agentKey(target);
+  const agent = await connect(target, key);
 
   const refused = await call(agent, "download", { sourceId: lantern, link: "/show/lantern", showFolder: SHOW_TITLE, episodes: [2, 7] });
   expect(refused).toEqual({ isError: true, value: `Episodes 7 aren't listed for ${SHOW_TITLE}; listed: 1, 2` });
   expect(await call(agent, "list_downloads")).toEqual({ isError: false, value: { downloads: [], torrentError: null } });
 }, 60_000);
 
-test("the agent signs in again when its session ends, and a wrong password is reported, not retried forever", async () => {
+test("a revoked key stops the agent with Nanime's answer", async () => {
   const { target } = await withLanternSource();
-  const agent = await connect(target);
-  const signedIn = await call(agent, "list_sources");
-  expect(signedIn.isError).toBe(false);
+  const key = await agentKey(target);
+  const agent = await connect(target, key);
+  const listed = await call(agent, "list_sources");
+  expect(listed.isError).toBe(false);
 
-  const database = target.database();
-  database.run("DELETE FROM sessions");
-  database.close();
-  const signedInAgain = await call(agent, "list_sources");
-  expect(signedInAgain).toEqual(signedIn);
-
-  await client?.close();
-  const stranger = await connect(target, "not-the-admin-password");
-  expect(await call(stranger, "list_sources")).toEqual({ isError: true, value: "Nanime answered HTTP 401: Invalid username or password" });
+  const { keys } = await getJson<{ readonly keys: readonly { readonly id: number }[] }>(target, "/api/agent-keys");
+  await target.request(`/api/agent-keys/${String(keys[0]?.id)}`, { method: "DELETE" });
+  expect(await call(agent, "list_sources")).toEqual({ isError: true, value: "Nanime answered HTTP 401: Unauthorized" });
 }, 60_000);

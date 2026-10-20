@@ -1,9 +1,11 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AdminApp } from "../components/AdminApp.tsx";
+import { AgentKeyCreated } from "../components/AgentKeyDialogs.tsx";
 import { PageSkeleton } from "../components/PageSkeleton.tsx";
+import { Dialog, DialogContent } from "../components/ui/dialog.tsx";
 import { ProfileApp } from "../components/ProfileApp.tsx";
 import type { AdminTab } from "../hooks/useMediaRoute.ts";
-import { adminQueryClient } from "./adminFixtures.ts";
+import { adminQueryClient, agentMcp, createdAgentKey } from "./adminFixtures.ts";
 import { previewUser } from "./fixtures.ts";
 import { profileQueryClient } from "./profileFixtures.ts";
 
@@ -20,10 +22,20 @@ export function ProfilePreview(): React.JSX.Element {
   );
 }
 
-export function AdminPreview({ tab }: { readonly tab: AdminTab }): React.JSX.Element {
+function closePreview(): void {}
+
+/** `createdKey` opens the dialog that shows a just-created agent key. */
+export function AdminPreview({ tab, createdKey }: { readonly tab: AdminTab; readonly createdKey: boolean }): React.JSX.Element {
   return (
     <QueryClientProvider client={adminClient}>
       <AdminApp user={previewUser} tab={tab} />
+      {createdKey && (
+        <Dialog open>
+          <DialogContent className="max-w-xl">
+            <AgentKeyCreated created={createdAgentKey} mcp={agentMcp} origin="https://nanime.example" onDone={closePreview} />
+          </DialogContent>
+        </Dialog>
+      )}
     </QueryClientProvider>
   );
 }

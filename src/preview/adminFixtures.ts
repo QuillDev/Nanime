@@ -100,6 +100,17 @@ function libraryFiles(): LibraryFilesSnapshot {
   return { items, torrentOwnership: "available", generatedAt: NOW };
 }
 
+/** Agent keys: one in use, one never used. Paths are this fictional host's. */
+export const agentMcp = { command: "/opt/nanime/runtime/bun", args: ["run", "/opt/nanime/server/mcp.ts"] };
+const agentKeys = {
+  keys: [
+    { id: 2, name: "Hermes on the media box", createdBy: "preview", createdAt: NOW - 3 * 86_400_000, lastUsedAt: NOW - 4 * MINUTE },
+    { id: 1, name: "Laptop", createdBy: "preview", createdAt: NOW - 20 * 86_400_000, lastUsedAt: null },
+  ],
+  mcp: agentMcp,
+};
+export const createdAgentKey = { key: "nanime_q8W3vXr2Lm0Zt7Ya5Kp1Hc9Ue4Nd6Bf0Gs2Jo8Ri3Tw", agentKey: { id: 3, name: "Hermes", createdBy: "preview", createdAt: NOW, lastUsedAt: null } };
+
 const storage: StorageStatus = { totalBytes: 1800 * GB, availableBytes: 612 * GB };
 const libraryStatus: LibraryStatus = { entryCount: homeEntries.length, lastScannedAt: NOW - 12 * MINUTE, scanning: false };
 const metadataRefresh: MetadataRefreshStatus = {
@@ -113,7 +124,7 @@ export function adminQueryClient(): QueryClient {
   const seeded: readonly (readonly [string, unknown])[] = [
     ["library", libraryEntries], ["show-metadata", homeMetadata], ["downloads", downloads], ["users", users],
     ["transcodes", transcodes], ["media-scans", scans], ["library-files", libraryFiles()],
-    ["storage-status", storage], ["library-status", libraryStatus], ["metadata-refresh", metadataRefresh],
+    ["storage-status", storage], ["library-status", libraryStatus], ["metadata-refresh", metadataRefresh], ["agent-keys", agentKeys],
   ];
   for (const [key, data] of seeded) {
     client.setQueryData([key], data);

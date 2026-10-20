@@ -15,6 +15,10 @@ const AdminLibraryFiles = lazy(async () => {
   return { default: module.AdminLibraryFiles };
 });
 const FILES_LOADING = <ListSkeleton rows={6} />;
+const AdminAgents = lazy(async () => {
+  const module = await import("./AdminAgents.tsx");
+  return { default: module.AdminAgents };
+});
 const AdminFind = lazy(async () => {
   const module = await import("./AdminFind.tsx");
   return { default: module.AdminFind };
@@ -56,6 +60,13 @@ function AdminContent({ showFolders, entries, metadata, tab }: AdminContentProps
     }
     case "users": {
       return <AdminUsers />;
+    }
+    case "agents": {
+      return (
+        <Suspense fallback={FILES_LOADING}>
+          <AdminAgents />
+        </Suspense>
+      );
     }
     case "system": {
       return <AdminSystem />;
