@@ -9,9 +9,10 @@ import { homeEntries, homeMetadata, homeShows } from "./homeFixtures.ts";
 const NOW = Date.now();
 const entries = homeEntries.map((entry, index) => ({ ...entry, size: (1.1 + (index % 5) * 0.2) * 1024 ** 3 }));
 // One folder with no metadata, so the bell lists a show to match.
+const UNMATCHED = "[Fansub] Lantern Ferry Club (Season 02 pt.2) [WEBRip 1080p AV1] (Dual Audio)";
 const unmatched = [1, 2].map((episode) => ({
-  rel: `Lantern Ferry Club/Lantern Ferry Club - 0${String(episode)}.mkv`, name: `Lantern Ferry Club - 0${String(episode)}.mkv`,
-  folder: "Lantern Ferry Club", size: 1.2 * 1024 ** 3, direct: false,
+  rel: `${UNMATCHED}/Lantern Ferry Club - 0${String(episode)}.mkv`, name: `Lantern Ferry Club - 0${String(episode)}.mkv`,
+  folder: UNMATCHED, size: 1.2 * 1024 ** 3, direct: false,
 }));
 const libraryEntries = [...entries, ...unmatched];
 const MINUTE = 60_000;
