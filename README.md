@@ -84,6 +84,25 @@ without validating the ID or fetching artwork. Refresh metadata after the API
 recovers to fill in missing details. AniList progress synchronization still
 requires its public API.
 
+## Agents (MCP)
+
+`bun run mcp` is a stdio MCP server that lets an agent search the installed
+source plugins, list a result's episodes and queue them through Nanime's
+downloads, then watch, pause, resume or cancel them. It signs in to a running
+Nanime as an admin account and uses the same routes as the web app, so adding
+repositories and installing sources stays in the web app.
+
+```yaml
+# e.g. a Hermes Agent mcp_servers entry
+nanime:
+  command: bun
+  args: [run, /path/to/nanime/server/mcp.ts]
+  env:
+    NANIME_URL: https://nanime.example
+    NANIME_USERNAME: agent
+    NANIME_PASSWORD_FILE: /path/to/password  # chmod 600
+```
+
 ## Verify
 
 ```sh
