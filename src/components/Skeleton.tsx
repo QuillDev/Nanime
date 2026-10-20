@@ -2,7 +2,6 @@ import { cn } from "../lib/utils.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
 
 const ROW_KEYS = ["one", "two", "three", "four", "five", "six"] as const;
-const NAV_KEYS = ["library", "admin", "party", "profile"] as const;
 
 /** One shimmering placeholder shape. */
 export function Bone({ className }: { readonly className: string }): React.JSX.Element {
@@ -42,15 +41,9 @@ export function HeaderSkeleton({ overlay = false, search = true }: {
     >
       <BrandLogo className="h-7 w-auto shrink-0" />
       {search && <Bone className="library-search h-10 rounded-full" />}
-      <div className="mobile-account-controls ml-auto">
-        {NAV_KEYS.map((key) => (
-          <span key={key} className="mobile-nav-item">
-            <Bone className="size-4 shrink-0" />
-            <span className="mobile-nav-label">
-              <Bone className="inline-block h-3.5 w-12 align-middle" />
-            </span>
-          </span>
-        ))}
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        <Bone className="m-2.5 size-4" />
+        <Bone className="size-8 rounded-full" />
       </div>
     </header>
   );

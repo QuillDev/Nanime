@@ -27,7 +27,7 @@ export function NotificationBell(): React.JSX.Element {
   const { tone } = notifications;
   return (
     <>
-      <button ref={triggerRef} type="button" aria-label="Notifications" aria-expanded={open} aria-controls={id} popoverTarget={id} data-active={open} className="mobile-nav-item relative">
+      <button ref={triggerRef} type="button" aria-label="Notifications" aria-expanded={open} aria-controls={id} popoverTarget={id} data-active={open} className="header-icon-button relative">
         <Bell className="size-4" />
         {tone !== "idle" && <span aria-hidden="true" className={`absolute right-1.5 top-1.5 size-2 rounded-full ring-2 ring-background ${DOT_CLASS[tone]}`} />}
       </button>

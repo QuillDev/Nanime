@@ -80,7 +80,7 @@ function ShowPreview(): React.JSX.Element {
   );
 }
 
-const adminRequest = { "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-notifications": "admin-downloads", "admin-notifications-match": "admin-downloads" }[requested] ?? requested;
+const adminRequest = { "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-notifications": "admin-downloads", "admin-notifications-match": "admin-downloads", "admin-account": "admin-downloads" }[requested] ?? requested;
 const adminTab = adminRequest.startsWith("admin-") && isAdminTab(adminRequest.slice(6)) ? adminRequest.slice(6) as AdminTab : null;
 // "admin-users-invite" opens the invite dialog.
 if (requested === "admin-users-invite") {
@@ -95,6 +95,12 @@ if (requested.startsWith("admin-notifications")) {
     if (requested === "admin-notifications-match") {
       document.querySelector<HTMLButtonElement>("[popover] section button")?.click();
     }
+  }, 400);
+}
+// "admin-account" opens the avatar menu.
+if (requested === "admin-account") {
+  setTimeout(() => {
+    document.querySelector<HTMLButtonElement>("button[aria-label=Account]")?.click();
   }, 400);
 }
 // "admin-videos-selected" expands the first show and selects it, so the bulk bar shows.

@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { Link } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useProfileEpisodes } from "../hooks/useProfileEpisodes.ts";
 import { useShowMetadata } from "../hooks/useShowMetadata.ts";
 import type { ShowGroup } from "../lib/library.ts";
@@ -9,21 +9,28 @@ import { DownloadRow, TranscodeRow } from "./NotificationRows.tsx";
 
 const NO_METADATA: ShowMetadata = {};
 
+function seasonLabel(show: ShowGroup): string {
+  const [season] = show.seasons;
+  if (show.seasons.length !== 1 || season === undefined) {
+    return `${String(show.seasons.length)} seasons`;
+  }
+  return season.name === "Episodes" ? "" : season.name;
+}
+
 function UnmappedRow({ show, onMatch }: { readonly show: ShowGroup; readonly onMatch: (show: ShowGroup) => void }): React.JSX.Element {
   const handleMatch = useCallback(() => {
     onMatch(show);
   }, [onMatch, show]);
+  const season = seasonLabel(show);
   return (
     <li>
-      <button type="button" onClick={handleMatch} title={show.name} className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <button type="button" onClick={handleMatch} title={`Match ${show.name}`} className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <span aria-hidden="true" className="mx-0.5 size-2 shrink-0 rounded-full bg-warning" />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium">{show.name}</span>
-          <span className="mt-0.5 block text-xs text-warning">Hidden until matched</span>
+          <span className="mt-0.5 block truncate text-xs text-muted-foreground">{season === "" ? "Not matched yet" : `${season} · not matched yet`}</span>
         </span>
-        <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground">
-          <Link className="size-3.5" />
-          Match
-        </span>
+        <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       </button>
     </li>
   );
@@ -54,7 +61,7 @@ export function NotificationList({ notifications, onMatch, onNavigate }: Notific
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-2">
       {unmapped.length > 0 && (
-        <Section title="Needs metadata">
+        <Section title="Needs a match">
           {unmapped.map((show) => <UnmappedRow key={show.name} show={show} onMatch={onMatch} />)}
         </Section>
       )}
