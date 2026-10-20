@@ -22,7 +22,6 @@ import {
 import { ShowPage } from "./ShowPage.tsx";
 import { MoviePage } from "./MoviePage.tsx";
 import { useTorrents } from "../hooks/useTorrents.ts";
-import { UnmappedShowsNotice } from "./UnmappedShowsNotice.tsx";
 import { LibraryHome } from "./LibraryHome.tsx";
 
 export { RouteLibrarySkeleton } from "./LibrarySkeletons.tsx";
@@ -32,7 +31,6 @@ const EMPTY_TORRENTS: readonly TorrentStatus[] = [];
 interface LibraryProps {
   readonly entries: readonly MediaEntry[];
   readonly shows: readonly ShowGroup[];
-  readonly unmappedShows: readonly ShowGroup[];
   readonly metadata: ShowMetadata;
   readonly query: string;
   readonly progress: PlaybackProgressMap;
@@ -174,7 +172,7 @@ function suggestedMetadataSearch(target: LinkTarget | null, displayName: string)
 interface LibraryViewProps extends Pick<
   LibraryProps,
   "canManageMappings" | "entries" | "metadata" | "onSelect" | "onShowSelect" |
-  "onShowsBack" | "progress" | "query" | "unmappedShows"
+  "onShowsBack" | "progress" | "query"
 > {
   readonly continueWatching: readonly ContinueWatchingItem[];
   readonly downloads: readonly TorrentStatus[];
@@ -191,10 +189,7 @@ function LibraryView(props: LibraryViewProps): React.JSX.Element {
     );
   }
   return (
-    <>
-      {props.canManageMappings && <UnmappedShowsNotice shows={props.unmappedShows} />}
-      <LibraryHome entries={props.entries} shows={props.shows} metadata={props.metadata} continueWatching={props.continueWatching} progress={props.progress} showContinueWatching={props.query.trim() === ""} onShowSelect={props.onShowSelect} onEpisodeSelect={props.onSelect} downloads={props.downloads} />
-    </>
+    <LibraryHome entries={props.entries} shows={props.shows} metadata={props.metadata} continueWatching={props.continueWatching} progress={props.progress} showContinueWatching={props.query.trim() === ""} onShowSelect={props.onShowSelect} onEpisodeSelect={props.onSelect} downloads={props.downloads} />
   );
 }
 
@@ -222,7 +217,6 @@ function MetadataLinkDialog({
 export function Library({
   entries,
   shows: allShows,
-  unmappedShows,
   metadata,
   query,
   progress,
@@ -248,7 +242,7 @@ export function Library({
   const suggestedSearch = suggestedMetadataSearch(navigation.linkTarget, displayShowName);
   return (
     <>
-      <LibraryView canManageMappings={canManageMappings} entries={entries} metadata={metadata} onSelect={onSelect} onShowSelect={onShowSelect} onShowsBack={onShowsBack} progress={progress} query={query} unmappedShows={unmappedShows} continueWatching={continueWatching} downloads={torrents.data ?? EMPTY_TORRENTS} selectedShow={selectedShow} showMedia={showMedia} shows={shows} navigation={navigation} />
+      <LibraryView canManageMappings={canManageMappings} entries={entries} metadata={metadata} onSelect={onSelect} onShowSelect={onShowSelect} onShowsBack={onShowsBack} progress={progress} query={query} continueWatching={continueWatching} downloads={torrents.data ?? EMPTY_TORRENTS} selectedShow={selectedShow} showMedia={showMedia} shows={shows} navigation={navigation} />
       <MetadataLinkDialog canManageMappings={canManageMappings} dialogKey={dialogKey} metadata={metadata} navigation={navigation} suggestedSearch={suggestedSearch} />
     </>
   );

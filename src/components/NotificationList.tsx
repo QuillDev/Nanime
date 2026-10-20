@@ -1,0 +1,71 @@
+import { useCallback } from "react";
+import { Link } from "lucide-react";
+import { useProfileEpisodes } from "../hooks/useProfileEpisodes.ts";
+import { useShowMetadata } from "../hooks/useShowMetadata.ts";
+import type { ShowGroup } from "../lib/library.ts";
+import type { Notifications } from "../lib/notifications.ts";
+import type { ShowMetadata } from "../types.ts";
+import { DownloadRow, TranscodeRow } from "./NotificationRows.tsx";
+
+const NO_METADATA: ShowMetadata = {};
+
+function UnmappedRow({ show, onMatch }: { readonly show: ShowGroup; readonly onMatch: (show: ShowGroup) => void }): React.JSX.Element {
+  const handleMatch = useCallback(() => {
+    onMatch(show);
+  }, [onMatch, show]);
+  return (
+    <li className="flex items-center gap-3 px-2 py-2">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium" title={show.name}>{show.name}</span>
+        <span className="mt-0.5 block text-xs text-warning">Hidden until matched</span>
+      </span>
+      <button type="button" onClick={handleMatch} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <Link className="size-3.5" />
+        Match
+      </button>
+    </li>
+  );
+}
+
+function Section({ title, children }: { readonly title: string; readonly children: React.ReactNode }): React.JSX.Element {
+  return (
+    <section className="border-t border-border pt-2 first:border-t-0 first:pt-0">
+      <h3 className="px-2 pb-1 pt-1 text-xs font-semibold text-muted-foreground">{title}</h3>
+      <ul>{children}</ul>
+    </section>
+  );
+}
+
+interface NotificationListProps {
+  readonly notifications: Notifications;
+  readonly onMatch: (show: ShowGroup) => void;
+  readonly onNavigate: () => void;
+}
+
+export function NotificationList({ notifications, onMatch, onNavigate }: NotificationListProps): React.JSX.Element {
+  const metadata = useShowMetadata().data ?? NO_METADATA;
+  const episodes = useProfileEpisodes();
+  const { unmapped, downloads, transcodes } = notifications;
+  if (notifications.tone === "idle") {
+    return <p className="px-2 py-6 text-center text-muted-foreground">All caught up.</p>;
+  }
+  return (
+    <div className="grid gap-2">
+      {unmapped.length > 0 && (
+        <Section title="Needs metadata">
+          {unmapped.map((show) => <UnmappedRow key={show.name} show={show} onMatch={onMatch} />)}
+        </Section>
+      )}
+      {downloads.length > 0 && (
+        <Section title="Downloads">
+          {downloads.map((torrent) => <DownloadRow key={torrent.hash} torrent={torrent} metadata={metadata} onNavigate={onNavigate} />)}
+        </Section>
+      )}
+      {transcodes.length > 0 && (
+        <Section title="Transcodes">
+          {transcodes.map((job) => <TranscodeRow key={job.id} job={job} episodes={episodes} onNavigate={onNavigate} />)}
+        </Section>
+      )}
+    </div>
+  );
+}
