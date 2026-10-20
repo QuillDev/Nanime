@@ -1,13 +1,10 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isolatedEnvironment, runScript, withTemporaryDirectory } from "./testProcess.ts";
 
 test("watch together validates invitations, ownership, expiration and durable storage", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "nanime-watch-together-"));
-  try {
-    const child = Bun.spawn({
-      cmd: [process.execPath, "--eval", `
+  await withTemporaryDirectory("nanime-watch-together-", async (directory) => {
+    const environment = isolatedEnvironment(directory);
+    const child = await runScript(`
         import { expect } from "bun:test";
         import { database } from "./server/database.ts";
         import { createWatchTogether, getWatchTogether, updateWatchTogether, endWatchTogether } from "./server/watchTogether.ts";
@@ -47,26 +44,14 @@ test("watch together validates invitations, ownership, expiration and durable st
         expect(getWatchTogether(replacement.id)).toBeNull();
         const finalRoom = createWatchTogether(userId, "Example/persisted.mp4", playback);
         console.log(finalRoom.id);
-      `],
-      env: { ...process.env, NANIME_DATABASE: join(directory, "test.sqlite"), NANIME_ADMIN_SETUP_TOKEN: "watch-together-test-setup-token-0001" },
-      stdout: "pipe", stderr: "pipe",
-    });
-    const [code, output, error] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
-    expect(error).toBe("");
-    expect(code).toBe(0);
-    const restart = Bun.spawn({
-      cmd: [process.execPath, "--eval", `
+      `, environment);
+    expect({ code: child.code, error: child.error }).toEqual({ code: 0, error: "" });
+    const { output } = child;
+    const restart = await runScript(`
         import { expect } from "bun:test";
         import { getWatchTogether } from "./server/watchTogether.ts";
         expect(getWatchTogether(${JSON.stringify(output.trim())}).rel).toBe("Example/persisted.mp4");
-      `],
-      env: { ...process.env, NANIME_DATABASE: join(directory, "test.sqlite"), NANIME_ADMIN_SETUP_TOKEN: "watch-together-test-setup-token-0001" },
-      stdout: "pipe", stderr: "pipe",
-    });
-    const [restartCode, restartError] = await Promise.all([restart.exited, new Response(restart.stderr).text()]);
-    expect(restartError).toBe("");
-    expect(restartCode).toBe(0);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
+      `, environment);
+    expect({ code: restart.code, error: restart.error }).toEqual({ code: 0, error: "" });
+  });
 });

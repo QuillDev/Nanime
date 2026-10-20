@@ -2,35 +2,20 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isolatedEnvironment, runScript } from "./testProcess.ts";
 
 const temporaryDirectory = await mkdtemp(join(tmpdir(), "nanime-database-restart-"));
-const databasePath = join(temporaryDirectory, "restart.sqlite");
-const environment = {
-  ...process.env,
-  NANIME_ADMIN_SETUP_TOKEN: "test-token-with-at-least-thirty-two-characters",
-  NANIME_DATABASE: databasePath,
-};
+const environment = isolatedEnvironment(temporaryDirectory);
 
 afterAll(async () => {
   await rm(temporaryDirectory, { recursive: true });
 });
 
+/** Each call is a fresh server process over the same database file. */
 async function runDatabaseScript(script: string): Promise<string> {
-  const child = Bun.spawn({
-    cmd: [process.execPath, "--eval", script],
-    cwd: process.cwd(),
-    env: environment,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  expect(stderr).toBe("");
-  expect(exitCode).toBe(0);
-  return stdout;
+  const result = await runScript(script, environment);
+  expect({ code: result.code, error: result.error }).toEqual({ code: 0, error: "" });
+  return result.output;
 }
 
 test("preserves manually watched state when the database restarts", async () => {

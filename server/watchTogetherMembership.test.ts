@@ -1,13 +1,10 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isolatedEnvironment, runScript, withTemporaryDirectory } from "./testProcess.ts";
 
 test("party refresh, handoff and stale connections keep a single authoritative host", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "nanime-party-members-"));
-  try {
-    const child = Bun.spawn({
-      cmd: [process.execPath, "--eval", `
+  await withTemporaryDirectory("nanime-party-members-", async (directory) => {
+    const environment = isolatedEnvironment(directory);
+    const child = await runScript(`
         import { expect } from "bun:test";
         import { database } from "./server/database.ts";
         import { createWatchTogether, getWatchTogether } from "./server/watchTogether.ts";
@@ -92,26 +89,16 @@ test("party refresh, handoff and stale connections keep a single authoritative h
         expect(ended.status).toBe(200);
         const persisted = createWatchTogether(creator, playback.rel, { ...playback, member: credentials(5) });
         console.log(JSON.stringify({ id: persisted.id, userId: creator, ...credentials(5) }));
-      `],
-      env: { ...process.env, NANIME_DATABASE: join(directory, "test.sqlite"), NANIME_ADMIN_SETUP_TOKEN: "party-membership-test-setup-token-0001" },
-      stdout: "pipe", stderr: "pipe",
-    });
-    const [code, output, error] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
-    expect(error).toBe("");
-    expect(code).toBe(0);
-    const restarted = Bun.spawn({
-      cmd: [process.execPath, "--eval", `
+      `, environment);
+    expect({ code: child.code, error: child.error }).toEqual({ code: 0, error: "" });
+    const { output } = child;
+    const restarted = await runScript(`
         import { expect } from "bun:test";
         import { partyPresence } from "./server/watchTogetherMembers.ts";
         const actor = ${output.trim()};
         expect(partyPresence({ ...actor, connectionId: "n".repeat(36), incarnation: 2 }).isHost).toBe(true);
         expect(partyPresence(actor)).toBeNull();
-      `],
-      env: { ...process.env, NANIME_DATABASE: join(directory, "test.sqlite"), NANIME_ADMIN_SETUP_TOKEN: "party-membership-test-setup-token-0001" },
-      stdout: "pipe", stderr: "pipe",
-    });
-    const [restartCode, restartError] = await Promise.all([restarted.exited, new Response(restarted.stderr).text()]);
-    expect(restartError).toBe("");
-    expect(restartCode).toBe(0);
-  } finally { await rm(directory, { recursive: true, force: true }); }
+      `, environment);
+    expect({ code: restarted.code, error: restarted.error }).toEqual({ code: 0, error: "" });
+  });
 });
