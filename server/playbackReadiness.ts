@@ -76,11 +76,18 @@ function browserSafe(probe: VideoProbe): boolean {
   return probe.codec === "h264" && BROWSER_SAFE_PIXEL_FORMATS.has(probe.pixelFormat);
 }
 
-/** HEVC a client that reports HEVC decoding can play as-is (4:2:0, 8- or 10-bit). */
+/** HEVC or AV1 a client that reports decoding it can play as-is (4:2:0, 8- or 10-bit). */
 const PASSTHROUGH_PIXEL_FORMATS = new Set(["yuv420p", "yuv420p10le"]);
 
-function passthroughPlayable(probe: VideoProbe): boolean {
-  return probe.codec === "hevc" && PASSTHROUGH_PIXEL_FORMATS.has(probe.pixelFormat);
+function passthroughCodecs(options: PlaybackPlanOptions): ReadonlySet<string> {
+  return new Set([
+    ...(options.hevcClient === true ? ["hevc"] : []),
+    ...(options.av1Client === true ? ["av1"] : []),
+  ]);
+}
+
+function passthroughPlayable(probe: VideoProbe, codecs: ReadonlySet<string>): boolean {
+  return codecs.has(probe.codec) && PASSTHROUGH_PIXEL_FORMATS.has(probe.pixelFormat);
 }
 
 function segmentAligned(probe: VideoProbe): boolean {
@@ -95,18 +102,21 @@ export interface PlaybackPlanOptions extends MediaLibraryOptions {
   readonly hardwareAcceleration: string;
   /** The client decodes HEVC, so HEVC sources stream untouched instead of needing a transcode. */
   readonly hevcClient?: boolean;
+  /** The client decodes AV1, so AV1 sources stream untouched the same way. */
+  readonly av1Client?: boolean;
 }
 
 /**
- * Live HLS repackages HEVC for clients that decode it, remuxes segment-aligned
+ * Live HLS repackages HEVC or AV1 for clients that decode it, remuxes segment-aligned
  * stored transcodes, or re-encodes video that is already browser-safe (or uses
  * hardware encoding). Anything else must be transcoded ahead of time: a
  * software re-encode cannot keep up live.
  */
 export async function playbackPlan(abs: string, rel: string, options: PlaybackPlanOptions): Promise<PlaybackPlan> {
-  if (options.hevcClient === true) {
+  const codecs = passthroughCodecs(options);
+  if (codecs.size > 0) {
     const source = await cachedProbe(abs);
-    if (source !== null && passthroughPlayable(source)) {
+    if (source !== null && passthroughPlayable(source, codecs)) {
       return { kind: "stream", source: { input: abs, videoMode: "passthrough" } };
     }
   }
@@ -127,11 +137,17 @@ export async function playbackPlan(abs: string, rel: string, options: PlaybackPl
 
 const MAX_READINESS_PATHS = 500;
 
-async function readinessRequest(req: Request): Promise<{ readonly paths: readonly string[]; readonly hevc: boolean } | null> {
-  const body = (await req.json().catch(() => null)) as { readonly paths?: unknown; readonly hevc?: unknown } | null;
+interface ReadinessRequest {
+  readonly paths: readonly string[];
+  readonly hevc: boolean;
+  readonly av1: boolean;
+}
+
+async function readinessRequest(req: Request): Promise<ReadinessRequest | null> {
+  const body = (await req.json().catch(() => null)) as { readonly paths?: unknown; readonly hevc?: unknown; readonly av1?: unknown } | null;
   const paths = body?.paths;
   const valid = Array.isArray(paths) && paths.length <= MAX_READINESS_PATHS && paths.every((path) => typeof path === "string");
-  return valid ? { paths: paths as string[], hevc: body?.hevc === true } : null;
+  return valid ? { paths: paths as string[], hevc: body?.hevc === true, av1: body?.av1 === true } : null;
 }
 
 /**
@@ -163,7 +179,7 @@ export async function playbackReadinessResponse(
     if (abs === null) {
       return [];
     }
-    const plan = await playbackPlan(abs, rel, { ...options, hevcClient: request.hevc });
+    const plan = await playbackPlan(abs, rel, { ...options, hevcClient: request.hevc, av1Client: request.av1 });
     if (request.paths.length === 1 && plan.kind === "stream" && plan.source.videoMode === "passthrough") {
       void warmKeyframes(abs);
     }

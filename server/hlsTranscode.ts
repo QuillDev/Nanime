@@ -14,8 +14,8 @@ export interface HlsOptions {
 /**
  * Where a live HLS session reads video from. `copy` streams a stored transcode
  * whose keyframes sit on every segment boundary; `encode` re-encodes the video;
- * `passthrough` repackages HEVC untouched into fMP4 segments, on demand, for
- * clients that decode HEVC (see hlsPassthrough.ts).
+ * `passthrough` repackages HEVC or AV1 untouched into fMP4 segments, on
+ * demand, for clients that decode it (see hlsPassthrough.ts).
  */
 export interface HlsStreamSource {
   readonly input: string;
@@ -159,7 +159,8 @@ interface PassthroughRunCommand {
  * the end. `-copyts` with `frag_discont` writes absolute fragment times, so
  * segments from separate runs share one init segment; a tiny target duration
  * cuts a segment at every source keyframe, matching the precomputed playlist.
- * Browsers only accept HEVC in MP4 under the hvc1 sample entry.
+ * Browsers only accept HEVC in MP4 under the hvc1 sample entry; the MP4 muxer
+ * ignores that tag for AV1 and always writes av01.
  */
 export function passthroughRunArgs(run: PassthroughRunCommand): readonly string[] {
   const audio = run.audioTrack === undefined ? [] : ["-map", `0:${String(run.audioTrack.index)}`];

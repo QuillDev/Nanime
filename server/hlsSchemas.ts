@@ -11,6 +11,7 @@ export const hlsQuerySchema = schema.object({
   audio: schema.optional(schema.integer({ minimum: 0 })),
   start: schema.optional(schema.number({ minimum: 0 })),
   hevc: schema.optional(schema.literal("1")),
+  av1: schema.optional(schema.literal("1")),
   player: schema.optional(schema.string({ format: "uuid" })),
   lease: schema.optional(schema.string({ format: "uuid" })),
 });

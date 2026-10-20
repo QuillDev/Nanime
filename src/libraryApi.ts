@@ -1,6 +1,6 @@
 import { api, unwrap } from "./api.ts";
 import type { MediaEntry, TranscodeJob } from "./types.ts";
-import { hevcPlaybackSupported } from "./lib/hevcPlayback.ts";
+import { av1PlaybackSupported, hevcPlaybackSupported } from "./lib/hevcPlayback.ts";
 import { offlineMediaUrl } from "./offline/database.ts";
 import {
   canUseOfflineFallback,
@@ -74,7 +74,7 @@ export interface PlaybackReadinessBatch {
 }
 
 export async function fetchPlaybackReadiness(paths: readonly string[], signal: AbortSignal): Promise<PlaybackReadinessBatch> {
-  const body = { paths: [...paths], hevc: hevcPlaybackSupported() };
+  const body = { paths: [...paths], hevc: hevcPlaybackSupported(), av1: av1PlaybackSupported() };
   const response = await api.api["playback-readiness"].post(body, { fetch: { signal } });
   return unwrap(response, "Playback readiness request");
 }

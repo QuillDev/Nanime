@@ -7,7 +7,7 @@ import { readStoredKeyframes, storeKeyframes } from "./keyframeStore.ts";
 import { captureProbe } from "./transcodeProgress.ts";
 
 /**
- * HEVC passthrough as on-demand VOD. The playlist lists one segment per source
+ * HEVC/AV1 passthrough as on-demand VOD. The playlist lists one segment per source
  * keyframe up front, so players see the whole episode and seek locally. ffmpeg
  * "runs" repackage segments on request: a run started at a keyframe cuts a new
  * segment at every keyframe and keeps absolute fragment times, so segments from

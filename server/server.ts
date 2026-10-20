@@ -259,7 +259,7 @@ async function timedMediaResponse(context: RouteContext, abs: string): Promise<R
     if (!Number.isFinite(requestedStart) || requestedStart < 0) {
       return new Response("Bad request", { status: 400 });
     }
-    const plan = await playbackPlan(abs, url.searchParams.get("path") ?? "", { ...TRANSCODE_OPTIONS, hardwareAcceleration: HWACCEL, hevcClient: url.searchParams.get("hevc") === "1" });
+    const plan = await playbackPlan(abs, url.searchParams.get("path") ?? "", { ...TRANSCODE_OPTIONS, hardwareAcceleration: HWACCEL, hevcClient: url.searchParams.get("hevc") === "1", av1Client: url.searchParams.get("av1") === "1" });
     if (plan.kind === "transcode-required") {
       return new Response("This video must be transcoded before it can play", { status: 409 });
     }

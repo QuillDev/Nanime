@@ -51,7 +51,8 @@ async function sessionTimelineOffset(url: string): Promise<number | null> {
 }
 
 function reportsTimelineOffset(url: string): boolean {
-  return new URL(url, "https://nanime.invalid").searchParams.get("hevc") === "1";
+  const query = new URL(url, "https://nanime.invalid").searchParams;
+  return query.get("hevc") === "1" || query.get("av1") === "1";
 }
 
 async function resolvedAttachment(options: ManagedHlsAttachment): Promise<HlsAttachment> {
