@@ -4,7 +4,7 @@ Nanime is a self-hosted, local-first anime library and streaming PWA for desktop
 and mobile browsers. Bun/Elysia serves a React/Vite client, local media, and
 SQLite state. The browser client and installed PWA support resumable offline
 episode downloads through IndexedDB and a service worker. Optional integrations
-include AniList and qBittorrent; metadata also uses Jikan and TVmaze.
+include AniList and qBittorrent. AniList is the only metadata source.
 
 ## Project invariants
 
@@ -33,7 +33,7 @@ include AniList and qBittorrent; metadata also uses Jikan and TVmaze.
   migrations in `server/database.ts`; existing installations must survive a
   normal process restart and upgrade without losing user state.
 - The exception is metadata matches: each library folder's `nanime.json`
-  (`server/folderMetadata.ts`) says which AniList/Jikan entry it is, so matches
+  (`server/folderMetadata.ts`) says which AniList entry it is, so matches
   travel with the folder. SQLite only caches the fetched payloads
   (`metadata_cache`). Never key matches by folder name in the database again.
 - Route playback mutations through the centralized playback mutation/audit path.

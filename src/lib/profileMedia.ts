@@ -6,7 +6,6 @@ import {
   isMovieMedia,
   primaryShowMetadata,
   seasonMetadata,
-  seasonNumber,
   type SeasonGroup,
   type ShowGroup,
 } from "./library.ts";
@@ -45,10 +44,9 @@ function seasonEpisodes(season: SeasonGroup, context: SeasonContext): readonly P
   const { show, showTitle, showMedia, metadata } = context;
   const media = seasonMetadata(metadata, season.sourceShow, season.name) ?? showMedia;
   const movie = isMovieMedia(media);
-  const number = seasonNumber(season, media);
   const banner = media?.bannerImage ?? showMedia?.bannerImage ?? null;
   return season.entries.map((entry: MediaEntry) => {
-    const details = movie ? null : episodeMetadata(entry, media, { showMedia, season: number });
+    const details = movie ? null : episodeMetadata(entry, media);
     return {
       rel: entry.rel,
       showName: show.name,

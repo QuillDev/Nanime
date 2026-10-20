@@ -30,9 +30,7 @@ export function storeCachedMetadata(ref: string, media: AnimeMetadata): void {
 
 /** The match a payload stored under the old key-addressed scheme stands for. */
 export function matchFromMedia(media: AnimeMetadata): FolderMatch {
-  return media.provider === "jikan"
-    ? { provider: "jikan", id: media.id, anilistId: media.anilistId }
-    : { provider: "anilist", id: media.id };
+  return { provider: "anilist", id: media.id };
 }
 
 const LEGACY_METADATA_FILE = resolve(

@@ -31,6 +31,7 @@ test("stored mappings move into the folders' nanime.json once, and the files dec
     [`${RELEASE}/Fixture Title - 01.mkv`]: "episode",
     "Kept Show/Kept Show - 01.mkv": "episode",
     "Kept Show/nanime.json": keptFile,
+    "Jikan Show/Jikan Show - 01.mkv": "episode",
   }));
   const target = server;
   const database = target.database();
@@ -40,6 +41,8 @@ test("stored mappings move into the folders' nanime.json once, and the files dec
     insert.run("season:Fixture Title / Season 2", fixtureMapping("Fixture Title Season 2", 22));
     insert.run("show:Kept Show", fixtureMapping("Kept Show from the database", 23));
     insert.run("show:Gone Show", fixtureMapping("Gone Show", 24));
+    // Jikan is no longer a provider: its old mappings are dropped, not turned into AniList matches.
+    insert.run("show:Jikan Show", fixtureMapping("Jikan Show", 25, "jikan"));
   } finally {
     database.close();
   }
@@ -52,18 +55,17 @@ test("stored mappings move into the folders' nanime.json once, and the files dec
   expect(await fileText(target, `${RELEASE}/nanime.json`)).toBe(`{
   "version": 1,
   "show": {
-    "provider": "jikan",
-    "id": 21,
-    "anilistId": null
+    "provider": "anilist",
+    "id": 21
   },
   "season": {
-    "provider": "jikan",
-    "id": 22,
-    "anilistId": null
+    "provider": "anilist",
+    "id": 22
   }
 }
 `);
   expect(await fileText(target, "Kept Show/nanime.json")).toBe(keptFile);
+  expect(await Bun.file(join(target.media, "Jikan Show", "nanime.json")).exists()).toBe(false);
 
   // A hand edit wins over everything the database still holds.
   await writeFile(join(target.media, RELEASE, "nanime.json"), JSON.stringify({ version: 1, show: { provider: "anilist", id: 31, title: "Edited by hand" } }));
@@ -77,13 +79,30 @@ test("an unreadable nanime.json leaves only its own folder unmatched", async () 
     "Broken Show/Broken Show - 01.mkv": "episode",
     "Broken Show/nanime.json": "{ not json",
     "Jikan Show/Jikan Show - 01.mkv": "episode",
-    "Jikan Show/nanime.json": JSON.stringify({ version: 1, show: { provider: "jikan", id: 5, title: "Manual titles are AniList-only" } }),
+    "Jikan Show/nanime.json": JSON.stringify({ version: 1, show: { provider: "jikan", id: 5 } }),
     "Fine Show/Fine Show - 01.mkv": "episode",
     "Fine Show/nanime.json": JSON.stringify({ version: 1, show: { provider: "anilist", id: 7, title: "Fine Show" } }),
   }));
   const metadata = await getJson<Metadata>(server, "/api/metadata");
   expect(Object.keys(metadata)).toEqual(["show:Fine Show"]);
   expect(server.log()).toContain("Ignoring nanime.json in “Broken Show”");
+});
+
+test("a show cached with TVmaze episodes by an older version still loads, without them", async () => {
+  server = await startLibraryTestServer((media) => writeTree(media, {
+    "Cached Show/Cached Show - 01.mkv": "episode",
+    "Cached Show/nanime.json": JSON.stringify({ version: 1, show: { provider: "anilist", id: 41 } }),
+  }));
+  const database = server.database();
+  try {
+    const payload = { ...JSON.parse(fixtureMapping("Cached Show", 41)), tvmaze: { id: 9, episodes: [] }, tvmazeCheckedAt: 1 };
+    database.query("INSERT INTO metadata_cache (ref, payload, updated_at) VALUES (?, ?, 1)").run("show|anilist:41", JSON.stringify(payload));
+  } finally {
+    database.close();
+  }
+  const metadata = await getJson<Metadata>(server, "/api/metadata");
+  expect(metadata["show:Cached Show"]).toMatchObject({ id: 41, title: { english: "Cached Show" } });
+  expect(Object.keys(metadata["show:Cached Show"] ?? {})).not.toContain("tvmaze");
 });
 
 test("linking a show writes every release folder that shares its card, and records the change", async () => {

@@ -183,25 +183,6 @@ export interface TorrentStatus {
 
 export type TranscodePreset = "space-saver" | "compatibility";
 
-export interface TvmazeEpisode {
-  readonly id: number;
-  readonly season: number;
-  readonly number: number | null;
-  readonly type: string;
-  readonly title: string;
-  readonly summary: string | null;
-  readonly airDate: string | null;
-  readonly thumbnail: string | null;
-}
-
-export interface TvmazeMatch {
-  readonly id: number;
-  readonly name: string;
-  readonly siteUrl: string;
-  readonly premiered: string | null;
-  readonly episodes: readonly TvmazeEpisode[];
-}
-
 export interface NyaaSearchResult {
   readonly id: string;
   readonly name: string;

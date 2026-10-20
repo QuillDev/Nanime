@@ -145,7 +145,7 @@ export function ShowHero({ show, media, progress, onBack, onLink, onPlay }: Show
           )}
           {media !== undefined && (
             <a href={media.siteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-              {media.provider === "jikan" ? "MyAnimeList" : "AniList"}
+              AniList
               <ExternalLink className="size-3.5" />
             </a>
           )}

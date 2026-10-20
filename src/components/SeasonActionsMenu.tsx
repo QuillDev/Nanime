@@ -72,7 +72,6 @@ export function SeasonActionsMenu({
     closeMenu();
   }, [closeMenu, onLink, season]);
   const rename = useSeasonRename({ enabled: canRename, season, media: playbackMedia, showMedia, seasonNumber }, closeMenu);
-  const providerName = media?.provider === "jikan" ? "MyAnimeList" : "AniList";
 
   return (
     <details ref={menuRef} className="relative shrink-0 open:z-30">
@@ -120,7 +119,7 @@ export function SeasonActionsMenu({
             className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
           >
             <ExternalLink className="size-4" />
-            View on {providerName}
+            View on AniList
           </a>
         )}
         {watchedState.error !== null && (

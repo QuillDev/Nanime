@@ -72,7 +72,6 @@ function AnimeMetadata({ media, expanded }: {
   readonly expanded: boolean;
 }): React.JSX.Element {
   const canExpand = media.genres.length > 3 || (media.description?.length ?? 0) > 240;
-  const providerName = media.provider === "jikan" ? "MyAnimeList" : "AniList";
   return (
     <>
       {media.title.english !== media.title.romaji && <p className="mt-1 text-sm text-muted-foreground">{media.title.romaji}</p>}
@@ -87,7 +86,7 @@ function AnimeMetadata({ media, expanded }: {
         </CollapsibleTrigger>
       )}
       <a href={media.siteUrl} target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-1.5 text-sm text-primary hover:underline">
-        View on {providerName}<ExternalLink className="size-3.5" />
+        View on AniList<ExternalLink className="size-3.5" />
       </a>
     </>
   );

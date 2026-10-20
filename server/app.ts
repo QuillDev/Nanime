@@ -86,19 +86,6 @@ const optionalEpisodeCountSchema = schema.optional(schema.union([
   schema.integer({ minimum: 1 }),
   schema.nullValue(),
 ]));
-const nullablePositiveIntegerSchema = schema.union([
-  schema.integer({ minimum: 1 }),
-  schema.nullValue(),
-]);
-const metadataAniListIdSchema = schema.object({
-  key: schema.string({ minLength: 1 }),
-  anilistId: nullablePositiveIntegerSchema,
-});
-const jikanLinkSchema = schema.object({
-  key: schema.string({ minLength: 1 }),
-  id: schema.integer(),
-  anilistId: schema.optional(nullablePositiveIntegerSchema),
-});
 const playbackEventSchema = schema.union([
   schema.literal("completed"), schema.literal("heartbeat"), schema.literal("seeked"),
   schema.literal("started"), schema.literal("stopped"),
@@ -270,12 +257,6 @@ export const app = new Elysia({ name: "nanime" })
   .get("/api/metadata/refresh", ({ request, server }) => handle(request, server), {
     response: metadataRefreshStatusSchema,
   })
-  .put("/api/metadata/anilist-id", ({ request, server, body }) => (
-    handle(jsonRequest(request, body), server)
-  ), {
-    body: metadataAniListIdSchema,
-    response: aniListMediaSchema,
-  })
   .post("/api/metadata/refresh", ({ request, server }) => handle(request, server), {
     response: metadataRefreshStatusSchema,
   })
@@ -308,16 +289,6 @@ export const app = new Elysia({ name: "nanime" })
     handle(jsonRequest(request, body), server)
   ), {
     body: aniListLinkSchema,
-    response: aniListMediaSchema,
-  })
-  .get("/api/jikan/search", ({ request, server }) => handle(request, server), {
-    query: searchQuerySchema,
-    response: schema.array(aniListMediaSchema),
-  })
-  .post("/api/jikan/link", ({ request, server, body }) => (
-    handle(jsonRequest(request, body), server)
-  ), {
-    body: jikanLinkSchema,
     response: aniListMediaSchema,
   })
   .get("/api/anilist/account", ({ request, server }) => handle(request, server), {

@@ -48,10 +48,9 @@ export function episodeFileName(entry: MediaEntry, number: number, title: string
 }
 
 function episodeRenames(input: SeasonRenameInput): readonly EpisodeRename[] {
-  const context = { showMedia: input.showMedia, season: input.seasonNumber };
   return input.season.entries.flatMap((entry, index) => {
     const number = episodeNumber(entry) ?? index + 1;
-    const title = episodeMetadata(entry, input.media, context)?.title ?? `Episode ${String(number)}`;
+    const title = episodeMetadata(entry, input.media)?.title ?? `Episode ${String(number)}`;
     const to = episodeFileName(entry, number, title);
     return to === null || to === entry.name ? [] : [{ rel: entry.rel, from: entry.name, to }];
   });

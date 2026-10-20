@@ -107,8 +107,6 @@ const ADMIN_ACTIONS: readonly AdminAction[] = [
   { method: "POST", path: "/api/transcodes/bulk", body: { paths: [EPISODE], preset: "compatibility" } },
   { method: "POST", path: `/api/torrents/${"a".repeat(40)}/cancel`, body: { deleteFiles: true } },
   { method: "POST", path: "/api/anilist/link", body: { key: "show:Example Show", id: 5, manualTitle: "Hijacked" } },
-  { method: "POST", path: "/api/jikan/link", body: { key: "show:Example Show", id: 5 } },
-  { method: "PUT", path: "/api/metadata/anilist-id", body: { key: "show:Example Show", anilistId: 5 } },
   { method: "POST", path: "/api/library/refresh" },
   { method: "POST", path: "/api/library/files/folders", body: { parent: null, name: "Intruder" } },
 ];
