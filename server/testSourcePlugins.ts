@@ -88,6 +88,13 @@ class DefaultExtension extends MProvider {
     if (query === "forever") {
       for (;;) {}
     }
+    if (query === "dates") {
+      const dates = [
+        ["1696172400", "", ""], ["2023-10-01T12:00:00Z", "", ""], ["October 1st, 2023", "MMMM d, yyyy", "en"], ["10/01/2023", "MM/dd/yyyy", "en"],
+        ["12 octobre 2023", "", ""], ["3 days ago", "", ""], ["not a date at all", "", ""],
+      ];
+      return { list: dates.map(([date, format, locale]) => ({ name: parseDates([date], format, locale)[0], link: "/" + date })), hasNextPage: false };
+    }
     return { list: globals.map((name) => ({ name, link: "/" + name })), hasNextPage: false };
   }
 }

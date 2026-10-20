@@ -1,5 +1,4 @@
-import { getQuickJS, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSDeferredPromise, type QuickJSHandle, type QuickJSRuntime } from "quickjs-emscripten";
-import { cryptoHandler, decryptAesCryptoJs, decryptAesGcm, encryptAesCryptoJs, unpackJs } from "./sourceCrypto.ts";
+import { newQuickJSWASMModule, RELEASE_SYNC, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSDeferredPromise, type QuickJSHandle, type QuickJSRuntime } from "quickjs-emscripten";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { JsonValue } from "./json.ts";
 import { SourceDom } from "./sourceDom.ts";
@@ -8,6 +7,7 @@ import { sourceFetch } from "./sourceHttp.ts";
 import { SOURCE_PRELUDE } from "./sourcePrelude.ts";
 import { settingValue, type SourcePreference } from "./sourceSettings.ts";
 import { saveSourceSetting, sourceSettings, type InstalledSource } from "./sourceStore.ts";
+import { utilityAnswer, type BridgeValue } from "./sourceUtilities.ts";
 
 /**
  * Runs one call into a source plugin inside a fresh QuickJS sandbox, the
@@ -25,7 +25,6 @@ export class SourceError extends Error {
   override name = "SourceError";
 }
 
-const quickJs = getQuickJS();
 
 interface Call {
   readonly source: InstalledSource;
@@ -40,14 +39,12 @@ interface Call {
 }
 
 type Arguments = readonly unknown[];
-/** What a synchronous bridge call hands back into the sandbox. */
-type BridgeValue = string | number | boolean | null;
 
 const text = (value: unknown): string => (typeof value === "string" ? value : String(value ?? ""));
 
 /** The synchronous half of the bridge: HTML, crypto, settings and logging. */
 function answer(call: Call, name: string, args: Arguments): BridgeValue {
-  return name.startsWith("doc_") || name.startsWith("ele_") ? domAnswer(call, name, args) : utilityAnswer(call, name, args);
+  return name.startsWith("doc_") || name.startsWith("ele_") ? domAnswer(call, name, args) : utilityAnswer(name, args) ?? settingsAnswer(call, name, args);
 }
 
 function domAnswer(call: Call, name: string, [a, b, c]: Arguments): BridgeValue {
@@ -63,18 +60,6 @@ function domAnswer(call: Call, name: string, [a, b, c]: Arguments): BridgeValue 
     case "ele_attr": { return call.dom.attr(text(a), b); }
     case "ele_has_attr": { return call.dom.hasAttr(text(a), b); }
     default: { throw new SourceError(`Unknown bridge call ${name}`); }
-  }
-}
-
-function utilityAnswer(call: Call, name: string, args: Arguments): BridgeValue {
-  const [a, b, c, d] = args;
-  switch (name) {
-    case "crypto_cbc": { return cryptoHandler({ text: text(a), iv: text(b), key: text(c), encrypt: d === true }); }
-    case "crypto_aes_encrypt": { return encryptAesCryptoJs(text(a), text(b)); }
-    case "crypto_aes_decrypt": { return decryptAesCryptoJs(text(a), text(b)); }
-    case "crypto_gcm": { return decryptAesGcm({ encrypted: text(a), keyHex: text(b), ivHex: text(c), tagHex: text(d) }); }
-    case "unpack": { return unpackJs(text(a)); }
-    default: { return settingsAnswer(call, name, args); }
   }
 }
 
@@ -241,7 +226,9 @@ async function settle(call: Call, expression: string, what: string): Promise<Jso
  * and returns its JSON result. `what` names the step in error messages.
  */
 export async function runSource(source: InstalledSource, expression: string, what: string): Promise<JsonValue> {
-  const module = await quickJs;
+  // A module per call (about 5 ms): QuickJS aborts its whole WebAssembly instance when a
+  // plugin leaves the engine inconsistent (a regex can), so one bad call can't break the rest.
+  const module = await newQuickJSWASMModule(RELEASE_SYNC);
   const runtime = module.newRuntime();
   runtime.setMemoryLimit(MEMORY_LIMIT);
   runtime.setInterruptHandler(shouldInterruptAfterDeadline(Date.now() + CALL_TIMEOUT_MS));
@@ -261,8 +248,12 @@ export async function runSource(source: InstalledSource, expression: string, wha
       deferred.dispose();
     }
     call.pending.clear();
-    vm.dispose();
-    runtime.dispose();
+    try {
+      vm.dispose();
+      runtime.dispose();
+    } catch {
+      // The engine aborted; this call's module is dropped with it.
+    }
   }
 }
 

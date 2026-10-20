@@ -121,6 +121,7 @@ function decryptAESCryptoJS(encrypted, passphrase) { return __call("crypto_aes_d
 function decryptAESGCM(encrypted, keyHex, ivHex, tagHex = "") { return __call("crypto_gcm", [encrypted, keyHex, ivHex, tagHex]); }
 function unpackJs(packed) { return __call("unpack", [packed]); }
 function unpackJsAndCombine(script) { return __call("unpack", [script]); }
+function parseDates(values, dateFormat, dateFormatLocale) { return JSON.parse(__call("parse_dates", [values, dateFormat ?? "", dateFormatLocale ?? ""])); }
 async function createHlsProxyUrl(url) { return url; }
 async function evaluateJavascriptViaWebview() { throw new Error("This source needs a web browser, which Nanime doesn't run"); }
 for (const name of [

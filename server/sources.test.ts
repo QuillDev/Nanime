@@ -153,6 +153,24 @@ test("plugins run sandboxed: no host APIs, no local files, and a call that never
   expect(await searchNames(target, probe, "globals")).toHaveLength(6);
 }, 60_000);
 
+const october = (day: number): number => new Date(2023, 9, day).getTime();
+
+test("plugins read dates the way Mangayomi does: timestamps, ISO, a given format, a guessed locale and relative dates", async () => {
+  const { target, repo } = await withRepository();
+  const probe = repo.ids["Probe"] ?? "";
+  await install(target, probe);
+  const before = Date.now();
+  const names = await searchNames(target, probe, "dates");
+  const [seconds, iso, ordinal, formatted, french, relative, unreadable] = names.map(Number);
+
+  expect([seconds, iso, ordinal, formatted, french]).toEqual([1_696_172_400_000, Date.UTC(2023, 9, 1, 12), october(1), october(1), october(12)]);
+  const threeDays = 3 * 86_400_000;
+  expect(relative).toBeGreaterThanOrEqual(before - threeDays - 60_000);
+  expect(relative).toBeLessThanOrEqual(Date.now() - threeDays + 60_000);
+  // Like Mangayomi, a date it can't read becomes "now" instead of failing the call.
+  expect(unreadable).toBeGreaterThanOrEqual(before - 60_000);
+}, 60_000);
+
 test("a source that doesn't load isn't installed, and removing one fails its queued episodes", async () => {
   const { target, repo } = await withRepository();
   const broken = await post(target, "/api/sources/install", { id: repo.ids["Broken"] });
