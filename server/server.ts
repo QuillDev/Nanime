@@ -48,7 +48,7 @@ import {
   requestOriginAllowed,
   securityHeaders,
   syncAniListPlayback,
-  usersResponse,
+  accountsResponse,
   type AuthUser,
 } from "./security.ts";
 
@@ -373,9 +373,9 @@ async function administrationRoute(context: RouteContext): Promise<Response | nu
   if (DIRECT_ADMIN_ROUTES.has(`${req.method} ${pathname}`)) {
     return user.isAdmin ? directAdminResponse(context) : new Response("Forbidden", { status: 403 });
   }
-  if (pathname === "/api/users" || pathname.startsWith("/api/users/")) {
-    const requestedUserId = pathname === "/api/users" ? null : Number(pathname.slice(11));
-    return usersResponse(req, user, requestedUserId);
+  const accounts = accountsResponse(req, user, pathname);
+  if (accounts !== null) {
+    return await accounts;
   }
   const library = ADMIN_LIBRARY.respond({ req, pathname, url, user });
   if (library !== null) {

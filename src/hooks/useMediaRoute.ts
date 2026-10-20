@@ -31,9 +31,9 @@ export interface MediaRoute {
   readonly watchTogether: string | null;
 }
 
-export type AdminTab = "find" | "downloads" | "transcodes" | "files" | "videos" | "users" | "system";
+export type AdminTab = "find" | "downloads" | "transcodes" | "files" | "videos" | "users" | "agents" | "system";
 
-const ADMIN_TABS: ReadonlySet<string> = new Set<AdminTab>(["find", "downloads", "transcodes", "files", "videos", "users", "system"]);
+const ADMIN_TABS: ReadonlySet<string> = new Set<AdminTab>(["find", "downloads", "transcodes", "files", "videos", "users", "agents", "system"]);
 
 export function isAdminTab(value: string | null): value is AdminTab {
   return value !== null && ADMIN_TABS.has(value);

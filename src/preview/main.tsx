@@ -76,10 +76,10 @@ const container = document.querySelector("#root");
 if (container === null) {
   throw new Error("Root container #root is missing");
 }
-const adminRequest = { "admin-find-results": "admin-find", "admin-find-torrents": "admin-find", "admin-find-show": "admin-find", "admin-find-sources": "admin-find", "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-notifications": "admin-downloads", "admin-notifications-match": "admin-downloads", "admin-account": "admin-downloads" }[requested] ?? requested;
+const adminRequest = { "admin-find-results": "admin-find", "admin-find-torrents": "admin-find", "admin-find-show": "admin-find", "admin-find-sources": "admin-find", "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-agents-new": "admin-agents", "admin-agents-created": "admin-agents", "admin-notifications": "admin-downloads", "admin-notifications-match": "admin-downloads", "admin-account": "admin-downloads" }[requested] ?? requested;
 const adminTab = adminRequest.startsWith("admin-") && isAdminTab(adminRequest.slice(6)) ? adminRequest.slice(6) as AdminTab : null;
-// "admin-users-invite" opens the invite dialog.
-if (requested === "admin-users-invite") {
+// "admin-users-invite" opens the invite dialog; "admin-agents-new" the new agent key dialog.
+if (requested === "admin-users-invite" || requested === "admin-agents-new") {
   setTimeout(() => {
     [...document.querySelectorAll<HTMLButtonElement>("main header button")].at(0)?.click();
   }, 400);
@@ -132,7 +132,7 @@ function PreviewPage(): React.JSX.Element {
     return <SkeletonPreview page={requested.slice("skeleton-".length)} />;
   }
   if (adminTab !== null) {
-    return <AdminPreview tab={adminTab} />;
+    return <AdminPreview tab={adminTab} createdKey={requested === "admin-agents-created"} />;
   }
   if (profileState) {
     return <ProfilePreview />;

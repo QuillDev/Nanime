@@ -1,5 +1,5 @@
 import { useCallback, type MouseEvent } from "react";
-import { Download, Film, FolderTree, Search, Server, Users, Clapperboard, type LucideIcon } from "lucide-react";
+import { Bot, Download, Film, FolderTree, Search, Server, Users, Clapperboard, type LucideIcon } from "lucide-react";
 import { formatSize } from "../format.ts";
 import { adminTabHref, navigateToAdminTab, type AdminTab } from "../hooks/useMediaRoute.ts";
 import { useStorageStatus } from "../hooks/useStorageStatus.ts";
@@ -26,6 +26,7 @@ const GROUPS: readonly { readonly label: string; readonly items: readonly NavIte
   ] },
   { label: "Server", items: [
     { tab: "users", label: "Users", icon: Users },
+    { tab: "agents", label: "Agents", icon: Bot },
     { tab: "system", label: "System", icon: Server },
   ] },
 ];

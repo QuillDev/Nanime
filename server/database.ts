@@ -75,6 +75,16 @@ database.run(`
 `);
 database.run("CREATE INDEX IF NOT EXISTS sessions_user_id ON sessions(user_id)");
 database.run("CREATE INDEX IF NOT EXISTS sessions_expires_at ON sessions(expires_at)");
+database.run(`
+  CREATE TABLE IF NOT EXISTS agent_keys (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    key_hash TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    last_used_at INTEGER
+  )
+`);
 
 const playbackColumns = database
   .query<TableColumn, []>("PRAGMA table_info(playback_progress)")

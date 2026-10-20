@@ -5,10 +5,10 @@ import { registerNanimeTools } from "./mcpTools.ts";
 
 /**
  * A stdio MCP server for agents: searches Nanime's source plugins and queues
- * downloads through a running Nanime, signed in as an admin account.
- * `bun run mcp` with NANIME_URL, NANIME_USERNAME and NANIME_PASSWORD_FILE set.
+ * downloads through a running Nanime, signed with an agent key.
+ * `bun run mcp` with NANIME_URL and NANIME_KEY (an agent key from Admin → Agents) set.
  */
-const connection = await connectionFromEnvironment(process.env);
+const connection = connectionFromEnvironment(process.env);
 const server = new McpServer({ name: "nanime", version: "1.0.0" });
 registerNanimeTools(server, nanimeClient(connection));
 await server.connect(new StdioServerTransport());

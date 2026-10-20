@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { agentKeyUser } from "./agentKeys.ts";
 import { database } from "./database.ts";
 import type { AuthUser } from "../shared/types.ts";
 import { isPreferredAudioLanguage } from "../shared/audioLanguage.ts";
@@ -152,7 +153,7 @@ function validSetupToken(value: unknown): value is string {
 export function authenticatedUser(req: Request): AuthUser | null {
   const token = cookieValue(req);
   if (token === null) {
-    return null;
+    return agentKeyUser(req);
   }
   const row = findSessionUser.get(tokenHash(token), Date.now());
   return row === null ? null : publicUser(row);
