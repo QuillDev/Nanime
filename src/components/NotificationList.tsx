@@ -14,14 +14,16 @@ function UnmappedRow({ show, onMatch }: { readonly show: ShowGroup; readonly onM
     onMatch(show);
   }, [onMatch, show]);
   return (
-    <li className="flex items-center gap-3 px-2 py-2">
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium" title={show.name}>{show.name}</span>
-        <span className="mt-0.5 block text-xs text-warning">Hidden until matched</span>
-      </span>
-      <button type="button" onClick={handleMatch} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <Link className="size-3.5" />
-        Match
+    <li>
+      <button type="button" onClick={handleMatch} title={show.name} className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium">{show.name}</span>
+          <span className="mt-0.5 block text-xs text-warning">Hidden until matched</span>
+        </span>
+        <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground">
+          <Link className="size-3.5" />
+          Match
+        </span>
       </button>
     </li>
   );
@@ -50,7 +52,7 @@ export function NotificationList({ notifications, onMatch, onNavigate }: Notific
     return <p className="px-2 py-6 text-center text-muted-foreground">All caught up.</p>;
   }
   return (
-    <div className="grid gap-2">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-2">
       {unmapped.length > 0 && (
         <Section title="Needs metadata">
           {unmapped.map((show) => <UnmappedRow key={show.name} show={show} onMatch={onMatch} />)}

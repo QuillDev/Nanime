@@ -80,7 +80,7 @@ function ShowPreview(): React.JSX.Element {
   );
 }
 
-const adminRequest = { "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-notifications": "admin-downloads" }[requested] ?? requested;
+const adminRequest = { "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-notifications": "admin-downloads", "admin-notifications-match": "admin-downloads" }[requested] ?? requested;
 const adminTab = adminRequest.startsWith("admin-") && isAdminTab(adminRequest.slice(6)) ? adminRequest.slice(6) as AdminTab : null;
 // "admin-users-invite" opens the invite dialog.
 if (requested === "admin-users-invite") {
@@ -88,10 +88,13 @@ if (requested === "admin-users-invite") {
     [...document.querySelectorAll<HTMLButtonElement>("main header button")].at(0)?.click();
   }, 400);
 }
-// "admin-notifications" opens the header notification bell.
-if (requested === "admin-notifications") {
+// "admin-notifications" opens the header notification bell; "-match" also opens the first show's match dialog.
+if (requested.startsWith("admin-notifications")) {
   setTimeout(() => {
     document.querySelector<HTMLButtonElement>("button[aria-label=Notifications]")?.click();
+    if (requested === "admin-notifications-match") {
+      document.querySelector<HTMLButtonElement>("[popover] section button")?.click();
+    }
   }, 400);
 }
 // "admin-videos-selected" expands the first show and selects it, so the bulk bar shows.
