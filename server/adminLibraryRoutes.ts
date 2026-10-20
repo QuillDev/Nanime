@@ -5,8 +5,8 @@ import { episodeNamesResponse } from "./episodeNames.ts";
 import { libraryFilesResponse } from "./libraryFilesRoutes.ts";
 import { absolutePath } from "./libraryPaths.ts";
 import { beginLibraryMutation, noteLibraryMutation, refreshInBackground } from "./mediaLibrary.ts";
-import { activeUploadPaths } from "./mediaUpload.ts";
-import { torrentOwnership, torrentsResponse } from "./torrents.ts";
+import { torrentOwnership } from "./torrents.ts";
+import { activeTransferPaths, downloadRoutes } from "./downloads.ts";
 import { moveTrickplayCache } from "./trickplay.ts";
 
 interface AdminLibraryConfiguration {
@@ -35,7 +35,7 @@ function libraryFileContext(configuration: AdminLibraryConfiguration): LibraryFi
   return {
     root: mediaRoot,
     videoExtensions,
-    lockSources: { roots: [...new Set([mediaRoot, mediaDir])], torrents: torrentOwnership, uploads: activeUploadPaths },
+    lockSources: { roots: [...new Set([mediaRoot, mediaDir])], torrents: torrentOwnership, uploads: activeTransferPaths },
     beginMutation: beginLibraryMutation,
     afterCommit: async (plan) => {
       noteLibraryMutation();
@@ -50,9 +50,10 @@ function forbidden(): Promise<Response> {
   return Promise.resolve(new Response("Forbidden", { status: 403 }));
 }
 
-/** Admin-only library management: qBittorrent downloads and the library file manager. */
+/** Admin-only library management: downloads and the library file manager. */
 export function adminLibraryRoutes(configuration: AdminLibraryConfiguration): AdminLibraryRoutes {
   const context = libraryFileContext(configuration);
+  const downloads = downloadRoutes(configuration);
   return {
     respond: ({ req, pathname, url, user }) => {
       if (pathname === "/api/library/files/episode-names" && req.method === "POST") {
@@ -61,11 +62,15 @@ export function adminLibraryRoutes(configuration: AdminLibraryConfiguration): Ad
       if (pathname === "/api/library/files" || pathname.startsWith("/api/library/files/")) {
         return user.isAdmin ? libraryFilesResponse({ req, pathname, context, actor: user }) : forbidden();
       }
-      if (pathname === "/api/torrents" || pathname.startsWith("/api/torrents/")) {
-        return user.isAdmin ? torrentsResponse(req, configuration.mediaDir, url) : forbidden();
+      if (downloads.handles(pathname)) {
+        return user.isAdmin ? downloads.respond(req, url) : forbidden();
       }
       return null;
     },
-    recover: () => recoverLibraryFileOperations(configuration.mediaRoot),
+    recover: async () => {
+      const recovered = await recoverLibraryFileOperations(configuration.mediaRoot);
+      downloads.start();
+      return recovered;
+    },
   };
 }

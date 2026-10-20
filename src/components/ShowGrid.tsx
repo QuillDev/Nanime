@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { Download } from "lucide-react";
-import type { AniListMedia, ShowMetadata, TorrentStatus } from "../types.ts";
+import type { AniListMedia, DownloadStatus, ShowMetadata } from "../types.ts";
 import {
   primaryShowMetadata,
   type ShowGroup,
@@ -80,7 +80,7 @@ interface ShowGridProps {
   readonly shows: readonly ShowGroup[];
   readonly metadata: ShowMetadata;
   readonly onSelect: (show: ShowGroup) => void;
-  readonly downloads: readonly TorrentStatus[];
+  readonly downloads: readonly DownloadStatus[];
   readonly watched?: boolean | ((show: ShowGroup) => boolean);
 }
 
@@ -128,14 +128,14 @@ function showDownloadPercent(
     : Math.round(Math.min(1, totals.completed / totals.size) * 100);
 }
 
-function indexDownloads(downloads: readonly TorrentStatus[]): ReadonlyMap<string, DownloadTotals> {
+function indexDownloads(downloads: readonly DownloadStatus[]): ReadonlyMap<string, DownloadTotals> {
   const indexed = new Map<string, DownloadTotals>();
-  for (const torrent of downloads) {
-    if (torrent.showFolder !== null) {
-      const current = indexed.get(torrent.showFolder);
-      indexed.set(torrent.showFolder, {
-        completed: (current?.completed ?? 0) + torrent.completed,
-        size: (current?.size ?? 0) + torrent.size,
+  for (const download of downloads) {
+    if (download.showFolder !== null) {
+      const current = indexed.get(download.showFolder);
+      indexed.set(download.showFolder, {
+        completed: (current?.completed ?? 0) + download.completed,
+        size: (current?.size ?? 0) + download.size,
       });
     }
   }

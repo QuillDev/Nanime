@@ -9,7 +9,7 @@ export function useDeleteMedia(): UseMutationResult<number, Error, readonly stri
     onSuccess: () => Promise.all([
       refreshLibraryCache(queryClient),
       queryClient.invalidateQueries({ queryKey: ["playback-progress"] }),
-      queryClient.invalidateQueries({ queryKey: ["torrents"] }),
+      queryClient.invalidateQueries({ queryKey: ["downloads"] }),
     ]),
   });
 }

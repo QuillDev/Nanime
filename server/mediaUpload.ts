@@ -73,7 +73,7 @@ function folderParts(value: string): readonly string[] | null {
   return parts.every((part) => safePart(part)) ? parts : null;
 }
 
-async function safeDestinationDirectory(
+export async function safeDestinationDirectory(
   mediaRoot: string,
   parts: readonly string[],
 ): Promise<string | null> {

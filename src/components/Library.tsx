@@ -4,7 +4,7 @@ import type {
   MediaEntry,
   PlaybackProgressMap,
   ShowMetadata,
-  TorrentStatus,
+  DownloadStatus,
 } from "../types.ts";
 import {
   seasonDisplayName,
@@ -22,12 +22,12 @@ import {
 } from "./ContinueWatching.tsx";
 import { ShowPage } from "./ShowPage.tsx";
 import { MoviePage } from "./MoviePage.tsx";
-import { useTorrents } from "../hooks/useTorrents.ts";
+import { useDownloads } from "../hooks/useDownloads.ts";
 import { LibraryHome } from "./LibraryHome.tsx";
 
 export { RouteLibrarySkeleton } from "./LibrarySkeletons.tsx";
 
-const EMPTY_TORRENTS: readonly TorrentStatus[] = [];
+const NO_DOWNLOADS: readonly DownloadStatus[] = [];
 
 interface LibraryProps {
   readonly entries: readonly MediaEntry[];
@@ -176,7 +176,7 @@ interface LibraryViewProps extends Pick<
   "onShowsBack" | "progress" | "query"
 > {
   readonly continueWatching: readonly ContinueWatchingItem[];
-  readonly downloads: readonly TorrentStatus[];
+  readonly downloads: readonly DownloadStatus[];
   readonly selectedShow: ShowGroup | null;
   readonly showMedia: AniListMedia | undefined;
   readonly shows: readonly ShowGroup[];
@@ -233,7 +233,7 @@ export function Library({
     query,
     selectedShowName,
   });
-  const torrents = useTorrents(canManageMappings && selectedShow === null);
+  const downloads = useDownloads(canManageMappings && selectedShow === null);
   const continueWatching = useContinueWatchingItems(allShows, metadata, progress);
   const showMedia = selectedShow === null
     ? undefined
@@ -243,7 +243,7 @@ export function Library({
   const suggestedSearch = suggestedMetadataSearch(navigation.linkTarget, displayShowName);
   return (
     <>
-      <LibraryView canManageMappings={canManageMappings} entries={entries} metadata={metadata} onSelect={onSelect} onShowSelect={onShowSelect} onShowsBack={onShowsBack} progress={progress} query={query} continueWatching={continueWatching} downloads={torrents.data ?? EMPTY_TORRENTS} selectedShow={selectedShow} showMedia={showMedia} shows={shows} navigation={navigation} />
+      <LibraryView canManageMappings={canManageMappings} entries={entries} metadata={metadata} onSelect={onSelect} onShowSelect={onShowSelect} onShowsBack={onShowsBack} progress={progress} query={query} continueWatching={continueWatching} downloads={downloads.data?.downloads ?? NO_DOWNLOADS} selectedShow={selectedShow} showMedia={showMedia} shows={shows} navigation={navigation} />
       <MetadataLinkDialog canManageMappings={canManageMappings} dialogKey={dialogKey} metadata={metadata} navigation={navigation} suggestedSearch={suggestedSearch} />
     </>
   );

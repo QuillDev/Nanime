@@ -14,6 +14,8 @@ export interface FakeTorrent {
   readonly name: string;
   readonly content: string;
   readonly progress: number;
+  readonly state?: string;
+  readonly tags?: string;
 }
 
 /** How the fake qBittorrent answers a login; omitted means it needs none. */
@@ -24,6 +26,8 @@ export interface FakeLogin {
 
 export interface FakeQbittorrent {
   readonly origin: string;
+  /** Torrents as qBittorrent lists them, including ones Nanime added. */
+  torrents: () => readonly FakeTorrent[];
   setTorrents: (torrents: readonly FakeTorrent[]) => void;
   setReachable: (reachable: boolean) => void;
   stop: () => void;
@@ -51,6 +55,9 @@ export interface LibraryTestServer {
 
 interface TestServerOptions {
   readonly qbittorrentLogin?: FakeLogin;
+  /** 5 (default) pauses with stop/start, 4 with pause/resume. */
+  readonly qbittorrentVersion?: 4 | 5;
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 /** The fictitious library the route tests start from. */
@@ -75,15 +82,36 @@ export async function writeLibraryFixture(media: string): Promise<void> {
 
 const QBITTORRENT_SESSION = "SID=fake-qbittorrent-session";
 
-export function startFakeQbittorrent(login?: FakeLogin): FakeQbittorrent {
+function addedTorrent(form: Awaited<ReturnType<Request["formData"]>>): FakeTorrent {
+  const magnet = new URL(form.get("urls")?.toString() ?? "magnet:?");
+  const hash = /urn:btih:(?<hash>[a-f0-9]{40})/iu.exec(magnet.searchParams.get("xt") ?? "")?.groups?.["hash"]?.toLowerCase() ?? "f".repeat(40);
+  const name = magnet.searchParams.get("dn") ?? "Added torrent";
+  return { hash, name, content: join(form.get("savepath")?.toString() ?? "", name), progress: 0, state: "downloading", tags: form.get("tags")?.toString() ?? "" };
+}
+
+async function hashesOf(request: Request): Promise<ReadonlySet<string>> {
+  const form = await request.formData();
+  return new Set(form.get("hashes")?.toString().split("|"));
+}
+
+export function startFakeQbittorrent(login?: FakeLogin, version: 4 | 5 = 5): FakeQbittorrent {
   let torrents: readonly FakeTorrent[] = [];
   let reachable = true;
   const removeTorrents = async (request: Request): Promise<Response> => {
-    const form = await request.formData();
-    const hashes = new Set(form.get("hashes")?.toString().split("|"));
+    const hashes = await hashesOf(request);
     torrents = torrents.filter((torrent) => !hashes.has(torrent.hash));
     return new Response("");
   };
+  const setState = async (request: Request, state: string): Promise<Response> => {
+    const hashes = await hashesOf(request);
+    torrents = torrents.map((torrent) => (hashes.has(torrent.hash) ? { ...torrent, state } : torrent));
+    return new Response("");
+  };
+  const add = async (request: Request): Promise<Response> => {
+    torrents = [...torrents, addedTorrent(await request.formData())];
+    return new Response("Ok.");
+  };
+  const [pause, resume, paused] = version === 5 ? ["stop", "start", "stoppedDL"] : ["pause", "resume", "pausedDL"];
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -101,6 +129,15 @@ export function startFakeQbittorrent(login?: FakeLogin): FakeQbittorrent {
       if (pathname === "/api/v2/torrents/delete") {
         return removeTorrents(request);
       }
+      if (pathname === "/api/v2/torrents/add") {
+        return add(request);
+      }
+      if (pathname === `/api/v2/torrents/${pause}`) {
+        return setState(request, paused);
+      }
+      if (pathname === `/api/v2/torrents/${resume}`) {
+        return setState(request, "downloading");
+      }
       if (pathname !== "/api/v2/torrents/info") {
         return new Response("Not found", { status: 404 });
       }
@@ -109,7 +146,8 @@ export function startFakeQbittorrent(login?: FakeLogin): FakeQbittorrent {
         name: torrent.name,
         content_path: torrent.content,
         progress: torrent.progress,
-        state: torrent.progress < 1 ? "downloading" : "stalledUP",
+        state: torrent.state ?? (torrent.progress < 1 ? "downloading" : "stalledUP"),
+        tags: torrent.tags ?? "",
         dlspeed: 0,
         eta: 0,
         completed: 0,
@@ -120,6 +158,7 @@ export function startFakeQbittorrent(login?: FakeLogin): FakeQbittorrent {
   });
   return {
     origin: `http://127.0.0.1:${String(server.port)}`,
+    torrents: () => torrents,
     setTorrents: (next) => {
       torrents = next;
     },
@@ -207,7 +246,7 @@ export async function startLibraryTestServer(
   const databasePath = join(directory, "nanime.sqlite");
   await mkdir(media);
   await prepare(media);
-  const qbittorrent = startFakeQbittorrent(options.qbittorrentLogin);
+  const qbittorrent = startFakeQbittorrent(options.qbittorrentLogin, options.qbittorrentVersion);
   const origin = `http://127.0.0.1:${String(freePort())}`;
   const login = options.qbittorrentLogin === undefined ? "" : "fake-qbittorrent-user";
   const env = {
@@ -227,6 +266,7 @@ export async function startLibraryTestServer(
     QBITTORRENT_URL: qbittorrent.origin,
     QBITTORRENT_USERNAME: login,
     QBITTORRENT_PASSWORD: login,
+    ...options.env,
   };
   let running = await spawnServer(origin, env);
   const setup = await fetch(`${origin}/api/auth/setup`, {

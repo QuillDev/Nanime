@@ -25,7 +25,10 @@ export type {
   PlaybackAuditEvent,
   PlaybackAuditOrigin,
   TrickplayManifest,
-  TorrentStatus,
+  DownloadItem,
+  DownloadKind,
+  DownloadState,
+  DownloadStatus,
   TranscodePreset,
   UploadActivityState,
 } from "../shared/types.ts";

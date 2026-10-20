@@ -1,7 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { LibraryFileItem, LibraryFilesSnapshot } from "../../shared/libraryFiles.ts";
 import type {
-  LibraryStatus, MediaScan, MetadataRefreshStatus, ProvisionedUser, StorageStatus, TorrentStatus, TranscodeJob,
+  DownloadState, DownloadStatus, LibraryStatus, MediaScan, MetadataRefreshStatus, ProvisionedUser, StorageStatus, TranscodeJob,
 } from "../types.ts";
 import { homeEntries, homeMetadata, homeShows } from "./homeFixtures.ts";
 
@@ -22,20 +22,37 @@ function showName(index: number): string {
   return homeShows[index]?.name ?? "Untitled";
 }
 
-function torrent(index: number, progress: number, state: string): TorrentStatus {
+function download(index: number, progress: number, state: DownloadState): DownloadStatus {
   const name = `[Fansub] ${showName(index)} - Batch [1080p]`;
   return {
-    hash: `hash${String(index)}`, name, showFolder: showName(index), progress,
+    id: `torrent:${String(index).repeat(40)}`, kind: "torrent", name, showFolder: showName(index), progress,
     downloadSpeed: state === "downloading" ? 6_400_000 : 0, eta: state === "downloading" ? 1260 : 0,
-    completed: Math.round(progress * 14 * GB), size: 14 * GB, state, addedOn: (NOW - index * 90 * MINUTE) / 1000,
+    completed: Math.round(progress * 14 * GB), size: 14 * GB, state, addedOn: (NOW - index * 90 * MINUTE) / 1000, error: null,
   };
 }
 
-const torrents: readonly TorrentStatus[] = [
-  torrent(2, 0.42, "downloading"),
-  torrent(4, 0.08, "stalledDL"),
-  torrent(1, 1, "uploading"),
-];
+/** A direct download of one episode, as a source plugin queues them. */
+function episodeDownload(index: number, number: number, state: DownloadState): DownloadStatus {
+  const error = state === "failed" ? "The source answered 403" : null;
+  const progress = state === "queued" ? 0 : 0.35 + number * 0.1;
+  return {
+    id: `episode-${String(index)}-${String(number)}`, kind: "file", name: `${showName(index)} - 0${String(number)}.mp4`, showFolder: showName(index),
+    progress, state, downloadSpeed: state === "downloading" ? 3_100_000 : 0, eta: state === "downloading" ? 240 : 0,
+    completed: Math.round(progress * 0.9 * GB), size: Math.round(0.9 * GB), addedOn: (NOW - number * MINUTE) / 1000, error,
+  };
+}
+
+const downloads = {
+  downloads: [
+    episodeDownload(3, 1, "downloading"),
+    episodeDownload(3, 2, "paused"),
+    episodeDownload(3, 3, "failed"),
+    episodeDownload(3, 4, "queued"),
+    download(2, 0.42, "downloading"),
+    download(4, 0.08, "stalled"),
+  ],
+  torrentError: null,
+};
 
 const users: readonly ProvisionedUser[] = [
   { id: 1, username: "preview", isAdmin: true, passwordSet: true },
@@ -93,7 +110,7 @@ const metadataRefresh: MetadataRefreshStatus = {
 export function adminQueryClient(): QueryClient {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY, retry: false } } });
   const seeded: readonly (readonly [string, unknown])[] = [
-    ["library", libraryEntries], ["show-metadata", homeMetadata], ["torrents", torrents], ["users", users],
+    ["library", libraryEntries], ["show-metadata", homeMetadata], ["downloads", downloads], ["users", users],
     ["transcodes", transcodes], ["media-scans", scans], ["library-files", libraryFiles()],
     ["storage-status", storage], ["library-status", libraryStatus], ["metadata-refresh", metadataRefresh],
   ];

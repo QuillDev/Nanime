@@ -3,7 +3,7 @@ import type {
   MediaEntry,
   PlaybackProgressMap,
   ShowMetadata,
-  TorrentStatus,
+  DownloadStatus,
 } from "../types.ts";
 import type { ShowGroup } from "../lib/library.ts";
 import type { ContinueWatchingItem } from "../lib/continueWatching.ts";
@@ -16,7 +16,7 @@ import { SortTabs, useShowSort } from "./SortTabs.tsx";
 
 interface LibraryHomeProps {
   readonly continueWatching: readonly ContinueWatchingItem[];
-  readonly downloads: readonly TorrentStatus[];
+  readonly downloads: readonly DownloadStatus[];
   readonly entries: readonly MediaEntry[];
   readonly metadata: ShowMetadata;
   readonly onEpisodeSelect: (entry: MediaEntry) => void;

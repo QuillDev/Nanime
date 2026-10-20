@@ -12,7 +12,7 @@ export function usePruneTracks(): UseMutationResult<number, Error, readonly Trac
       client.invalidateQueries({ queryKey: ["audio-tracks"] }),
       client.invalidateQueries({ queryKey: ["subtitle-tracks"] }),
       client.invalidateQueries({ queryKey: ["library"] }),
-      client.invalidateQueries({ queryKey: ["torrents"] }),
+      client.invalidateQueries({ queryKey: ["downloads"] }),
     ]),
   });
 }

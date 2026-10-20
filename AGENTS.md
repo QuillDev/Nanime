@@ -168,4 +168,11 @@ No frontend tests: nothing under `src/`, `public/` or `preview/` gets a test,
 and no browser or UI-driven suites. Cover behavior with `bun test` in
 `server/` and `shared/`, through real routes and real state where possible.
 Test-only helpers live in `server/test*.ts` (`testProcess.ts`, `testFetch.ts`,
-`testMedia.ts`, `libraryFilesTestServer.ts`); reuse them before adding more.
+`testMedia.ts`, `testSource.ts`, `libraryFilesTestServer.ts`); reuse them before adding more.
+
+Every download (torrent or direct link) goes through `/api/downloads`
+(`server/downloads.ts`): torrents are handed to qBittorrent
+(`torrentDownloads.ts`), direct links and HLS streams are fetched by Nanime
+(`fileDownloads.ts`) into `.nanime-downloads/` and hard-linked into the show
+folder when complete. New sources produce download items; they don't add new
+download paths.

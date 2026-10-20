@@ -168,18 +168,41 @@ export interface AniListListEntry {
   readonly score: number;
 }
 
-export interface TorrentStatus {
-  readonly hash: string;
+/** Who fetches a download: qBittorrent for torrents, Nanime itself for direct links. */
+export type DownloadKind = "torrent" | "file";
+
+export type DownloadState = "queued" | "downloading" | "paused" | "stalled" | "failed";
+
+/** One unfinished download, whichever backend runs it. */
+export interface DownloadStatus {
+  /** `torrent:<hash>` for torrents, a UUID for direct downloads. */
+  readonly id: string;
+  readonly kind: DownloadKind;
   readonly name: string;
   readonly showFolder: string | null;
+  readonly state: DownloadState;
   readonly progress: number;
   readonly downloadSpeed: number;
+  /** Seconds left, or 0 when unknown. */
   readonly eta: number;
   readonly completed: number;
+  /** Total bytes, or 0 when unknown (a stream whose size shows only at the end). */
   readonly size: number;
-  readonly state: string;
+  /** Unix seconds. */
   readonly addedOn: number;
+  readonly error: string | null;
 }
+
+/** What to download. A season is one torrent, or one file item per episode. */
+export type DownloadItem =
+  | { readonly kind: "torrent"; readonly magnet: string }
+  | {
+    readonly kind: "file";
+    readonly url: string;
+    /** File name in the show folder; HLS streams are saved as `.mp4`. */
+    readonly fileName: string;
+    readonly headers?: Readonly<Record<string, string>>;
+  };
 
 export type TranscodePreset = "space-saver" | "compatibility";
 

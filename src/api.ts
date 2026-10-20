@@ -21,7 +21,6 @@ import type {
   TranscodeJob,
   TrickplayManifest,
   TranscodePreset,
-  TorrentStatus,
 } from "./types.ts";
 import type { PreferredAudioLanguage } from "../shared/audioLanguage.ts";
 
@@ -229,13 +228,6 @@ function torrentBody(file: File | null, magnet: string, showFolder: string) {
     return magnet === "" ? { showFolder } : { magnet, showFolder };
   }
   return magnet === "" ? { torrent: file, showFolder } : { torrent: file, magnet, showFolder };
-}
-
-export async function fetchTorrents(signal: AbortSignal): Promise<readonly TorrentStatus[]> {
-  return unwrap(
-    await api.api.torrents.get({ fetch: { signal } }),
-    "Torrent status request",
-  );
 }
 
 export async function fetchStorageStatus(signal: AbortSignal): Promise<StorageStatus> {

@@ -3,7 +3,7 @@ import { Download, Film, FolderTree, Server, Users, Clapperboard, type LucideIco
 import { formatSize } from "../format.ts";
 import { adminTabHref, navigateToAdminTab, type AdminTab } from "../hooks/useMediaRoute.ts";
 import { useStorageStatus } from "../hooks/useStorageStatus.ts";
-import { useTorrents } from "../hooks/useTorrents.ts";
+import { useDownloads } from "../hooks/useDownloads.ts";
 import { useTranscodes } from "../hooks/useTranscodes.ts";
 import { downloadsSummary, transcodesSummary, type ActivitySummary } from "../lib/adminActivity.ts";
 import { cn } from "../lib/utils.ts";
@@ -32,10 +32,10 @@ const GROUPS: readonly { readonly label: string; readonly items: readonly NavIte
 const IDLE: ActivitySummary = { label: "", progress: null };
 
 function useActivity() {
-  const torrents = useTorrents(true);
+  const downloads = useDownloads(true);
   const transcodes = useTranscodes();
   return {
-    downloads: torrents.data === undefined ? IDLE : downloadsSummary(torrents.data),
+    downloads: downloads.data === undefined ? IDLE : downloadsSummary(downloads.data.downloads),
     transcodes: transcodes.data === undefined ? IDLE : transcodesSummary(transcodes.data),
   };
 }
