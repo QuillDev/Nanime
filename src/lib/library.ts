@@ -141,28 +141,36 @@ interface FolderIdentity {
   readonly season: string;
 }
 
+/** Season tags in release folder names: `(Season 03)`, `(Season 03 pt.2)`, `(Season 3 Part 2)`, or a bare ` S03 `. */
+const SEASON_TAGS = [
+  /\(Season\s+0*(?<number>\d+)(?:\s*(?:pt\.?|part)\s*0*(?<part>\d+))?\)/iu,
+  /\sS0*(?<number>\d{1,2})(?![\dE])/u,
+] as const;
+
 function releaseTitle(folder: string, seasonIndex: number): string {
   const beforeSeason = folder.slice(0, seasonIndex).trim();
   const alias = /\((?<title>[^()]*)\)$/u.exec(beforeSeason)?.groups?.["title"];
   return alias?.trim() || beforeSeason.replace(/^\[[^\]]+\]\s*/u, "");
 }
 
+function releaseIdentity(top: string): FolderIdentity {
+  const match = SEASON_TAGS.map((pattern) => pattern.exec(top)).find((found) => found !== null);
+  const number = match?.groups?.["number"];
+  if (match === undefined || number === undefined) {
+    return { show: top, season: "Episodes" };
+  }
+  const part = match.groups?.["part"];
+  return {
+    show: releaseTitle(top, match.index),
+    season: `Season ${String(Number(number))}${part === undefined ? "" : ` Part ${String(Number(part))}`}`,
+  };
+}
+
 function folderIdentity(entry: MediaEntry): FolderIdentity {
   const parts = pathParts(entry.folder);
   const top = parts[0] ?? "Unsorted";
   const nested = parts.slice(1).join(" / ");
-  if (nested !== "") {
-    return { show: top, season: nested };
-  }
-  const match = /\(Season\s+0*(?<number>\d+)\)/iu.exec(top);
-  const number = match?.groups?.["number"];
-  if (match === null || number === undefined) {
-    return { show: top, season: "Episodes" };
-  }
-  return {
-    show: releaseTitle(top, match.index),
-    season: `Season ${String(Number(number))}`,
-  };
+  return nested === "" ? releaseIdentity(top) : { show: top, season: nested };
 }
 
 function showName(entry: MediaEntry): string {
