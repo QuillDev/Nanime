@@ -5,7 +5,7 @@ import { navigateToShows } from "../hooks/useMediaRoute.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
 import { HeaderActivity } from "./HeaderActivity.tsx";
 import { LibrarySearch } from "./LibrarySearch.tsx";
-import { PrimaryNav } from "./PrimaryNav.tsx";
+import { AccountMenu } from "./AccountMenu.tsx";
 import { useHeaderSurface } from "../hooks/useScrolled.ts";
 import { preloadMediaApp } from "../routeModules.ts";
 
@@ -50,7 +50,7 @@ export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
         />
       )}
       <HeaderActivity isAdmin={user.isAdmin} />
-      <PrimaryNav user={user} view={view} />
+      <AccountMenu user={user} view={view} />
     </header>
   );
 }

@@ -57,7 +57,7 @@ export function PartyMenu(): React.JSX.Element {
   const id = session.host?.id ?? session.guestId;
   const handleCreate = useCallback(() => session.start.mutate(), [session.start]);
   return <>
-    <button ref={triggerRef} type="button" aria-label="Party" title="Party" aria-expanded={open} aria-controls={popupId} popoverTarget={popupId} data-active={id !== null} className="mobile-nav-item">
+    <button ref={triggerRef} type="button" aria-label="Party" title="Party" aria-expanded={open} aria-controls={popupId} popoverTarget={popupId} data-active={id !== null} className="header-icon-button">
       <UsersRound className="size-4" />
     </button>
     <div ref={panelRef} id={popupId} popover="auto" onToggle={handleToggle} aria-label="Party" className="fixed m-0 max-h-[75dvh] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-border bg-black p-4 text-sm text-foreground shadow-lg">
