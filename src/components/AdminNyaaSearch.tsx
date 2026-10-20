@@ -132,7 +132,7 @@ export function AdminNyaaSearchDialog({
 }): React.JSX.Element {
   const filters = useNyaaFilters();
   const { category, trusted } = filters;
-  const [sort, setSort] = useState<NyaaSort>("id");
+  const [sort, setSort] = useState<NyaaSort>("seeders");
   const [order, setOrder] = useState<NyaaSortOrder>("desc");
   const handleSort = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
     setSort(nyaaSort(event.target.value));

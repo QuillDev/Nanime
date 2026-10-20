@@ -53,3 +53,23 @@ test("uses Nyaa's sortable HTML search results", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("searches by seeders, most first, when no sort is given", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = "";
+  globalThis.fetch = Object.assign(
+    (input: string | URL | Request): Promise<Response> => {
+      requestedUrl = String(input);
+      return Promise.resolve(new Response(SEARCH_PAGE));
+    },
+    { preconnect: originalFetch.preconnect },
+  );
+
+  try {
+    await searchNyaaResponse(new URL("http://localhost/api/torrents/search?q=example"));
+    expect(requestedUrl).toContain("s=seeders");
+    expect(requestedUrl).toContain("o=desc");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
