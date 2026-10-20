@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fixtureMapping, getJson, startLibraryTestServer, type LibraryTestServer } from "./libraryFilesTestServer.ts";
+import { fixtureMapping, getJson, startLibraryTestServer, statusOf, type LibraryTestServer } from "./libraryFilesTestServer.ts";
 
 const RELEASE = "[Group] Fixture Title (Season 02) [1080p]";
 let server: LibraryTestServer | null = null;
@@ -92,15 +92,28 @@ test("linking a show writes every release folder that shares its card, and recor
     "[Other] Shared Show (Season 02)/Shared Show - 01.mkv": "episode",
   }));
   const target = server;
-  const link = await target.request("/api/anilist/link", { method: "POST", body: JSON.stringify({ key: "show:Shared Show", id: 41, manualTitle: "Shared Show" }) });
+  const link = await target.request("/api/anilist/link", { method: "POST", json: { key: "show:Shared Show", id: 41, manualTitle: "Shared Show" } });
   expect(link.status).toBe(200);
   const files = await Promise.all(["[Group] Shared Show (Season 01)", "[Other] Shared Show (Season 02)"].map((folder) => fileText(target, `${folder}/nanime.json`)));
   expect(files.map((text) => JSON.parse(text) as unknown)).toEqual([0, 1].map(() => ({ version: 1, show: { provider: "anilist", id: 41, title: "Shared Show" } })));
   const activity = await getJson<readonly { readonly action: string; readonly subject: string }[]>(target, "/api/library/activity");
   expect(activity.map((event) => [event.action, event.subject])).toEqual([["mapping-updated", "show:Shared Show"]]);
 
-  const missing = await target.request("/api/anilist/link", { method: "POST", body: JSON.stringify({ key: "show:Not In Library", id: 42, manualTitle: "Nope" }) });
-  expect(missing.status).toBe(404);
-  const after = await getJson<readonly unknown[]>(target, "/api/library/activity");
-  expect(after).toHaveLength(1);
+  const linked = await getJson<Metadata>(target, "/api/metadata");
+  expect(linked["show:Shared Show"]).toMatchObject({ id: 41, title: { english: "Shared Show" } });
+
+  const relink = (body: { readonly key?: string; readonly id?: number; readonly manualTitle?: string }): Promise<number> => statusOf(target.request("/api/anilist/link", {
+    method: "POST", json: { key: "show:Shared Show", id: 41, manualTitle: "Shared Show", ...body },
+  }));
+  expect(await relink({ key: "show:Not In Library" })).toBe(404);
+  expect(await relink({ manualTitle: "   " })).toBe(400);
+  expect(await relink({ id: 0 })).toBe(400);
+  const rejected = await getJson<readonly unknown[]>(target, "/api/library/activity");
+  expect(rejected).toHaveLength(1);
+
+  expect(await relink({ manualTitle: "Shared Show (Renamed)" })).toBe(200);
+  const relinked = await fileText(target, "[Group] Shared Show (Season 01)/nanime.json");
+  expect(JSON.parse(relinked)).toEqual({ version: 1, show: { provider: "anilist", id: 41, title: "Shared Show (Renamed)" } });
+  const history = await getJson<readonly { readonly action: string }[]>(target, "/api/library/activity");
+  expect(history.map((event) => event.action)).toEqual(["mapping-updated", "mapping-updated"]);
 });

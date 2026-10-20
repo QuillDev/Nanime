@@ -16,6 +16,12 @@ export interface FakeTorrent {
   readonly progress: number;
 }
 
+/** How the fake qBittorrent answers a login; omitted means it needs none. */
+export interface FakeLogin {
+  readonly status: number;
+  readonly body: string;
+}
+
 export interface FakeQbittorrent {
   readonly origin: string;
   setTorrents: (torrents: readonly FakeTorrent[]) => void;
@@ -23,8 +29,11 @@ export interface FakeQbittorrent {
   stop: () => void;
 }
 
-/** `cookie`: omitted or undefined sends the admin session, null sends none. */
-export type TestRequestInit = RequestInit & { readonly cookie?: string | null | undefined };
+/**
+ * `cookie`: omitted or undefined sends the admin session, null sends none.
+ * `json`: sent as the JSON request body.
+ */
+export type TestRequestInit = RequestInit & { readonly cookie?: string | null | undefined; readonly json?: unknown };
 
 export interface LibraryTestServer {
   readonly origin: string;
@@ -35,7 +44,13 @@ export interface LibraryTestServer {
   readonly request: (path: string, init?: TestRequestInit) => Promise<Response>;
   readonly database: () => Database;
   readonly log: () => string;
+  /** Stops the server process (gracefully, or with SIGKILL as a crash) and starts it again on the same state. */
+  readonly restart: (how?: "graceful" | "crash") => Promise<void>;
   readonly close: () => Promise<void>;
+}
+
+interface TestServerOptions {
+  readonly qbittorrentLogin?: FakeLogin;
 }
 
 /** The fictitious library the route tests start from. */
@@ -58,7 +73,9 @@ export async function writeLibraryFixture(media: string): Promise<void> {
   }
 }
 
-export function startFakeQbittorrent(): FakeQbittorrent {
+const QBITTORRENT_SESSION = "SID=fake-qbittorrent-session";
+
+export function startFakeQbittorrent(login?: FakeLogin): FakeQbittorrent {
   let torrents: readonly FakeTorrent[] = [];
   let reachable = true;
   const removeTorrents = async (request: Request): Promise<Response> => {
@@ -74,6 +91,12 @@ export function startFakeQbittorrent(): FakeQbittorrent {
       const { pathname } = new URL(request.url);
       if (!reachable) {
         return new Response("unavailable", { status: 503 });
+      }
+      if (login !== undefined && pathname === "/api/v2/auth/login") {
+        return new Response(login.body, { status: login.status, headers: { "set-cookie": `${QBITTORRENT_SESSION}; HttpOnly` } });
+      }
+      if (login !== undefined && request.headers.get("cookie") !== QBITTORRENT_SESSION) {
+        return new Response("Forbidden", { status: 403 });
       }
       if (pathname === "/api/v2/torrents/delete") {
         return removeTorrents(request);
@@ -150,41 +173,62 @@ function sessionCookie(response: Response): string {
   return cookie;
 }
 
-export async function startLibraryTestServer(prepare: (media: string) => Promise<void> = writeLibraryFixture): Promise<LibraryTestServer> {
-  const directory = await mkdtemp(join(tmpdir(), "nanime-library-files-"));
-  const media = join(directory, "media");
-  const databasePath = join(directory, "nanime.sqlite");
-  await mkdir(media);
-  await prepare(media);
-  const qbittorrent = startFakeQbittorrent();
-  const origin = `http://127.0.0.1:${String(freePort())}`;
+interface ServerProcess {
+  readonly child: Bun.Subprocess<"ignore", "pipe", "pipe">;
+  readonly log: () => string;
+}
+
+async function spawnServer(origin: string, env: Record<string, string | undefined>): Promise<ServerProcess> {
   const child = Bun.spawn([process.execPath, "run", "server/app.ts"], {
-    cwd: join(import.meta.dir, ".."),
-    env: {
-      ...process.env,
-      HOST: "127.0.0.1",
-      PORT: new URL(origin).port,
-      MEDIA_DIR: media,
-      NANIME_DATABASE: databasePath,
-      NANIME_ADMIN_SETUP_TOKEN: SETUP_TOKEN,
-      NANIME_PUBLIC_ORIGIN: origin,
-      NANIME_SECURE_COOKIES: "false",
-      NANIME_ANILIST_CLIENT_ID: "",
-      NANIME_ANILIST_CLIENT_SECRET: "",
-      NANIME_ANILIST_REDIRECT_URI: "",
-      NANIME_TOKEN_ENCRYPTION_KEY: "",
-      MEDIA_METADATA_FILE: join(directory, "metadata.json"),
-      QBITTORRENT_URL: qbittorrent.origin,
-      QBITTORRENT_USERNAME: "",
-      QBITTORRENT_PASSWORD: "",
-    },
-    stdout: "pipe",
-    stderr: "pipe",
+    cwd: join(import.meta.dir, ".."), env, stdout: "pipe", stderr: "pipe",
   });
   const stdout = collect(child.stdout);
   const stderr = collect(child.stderr);
   const log = (): string => `${stdout()}\n${stderr()}`;
   await waitUntilReady(origin, child, log);
+  return { child, log };
+}
+
+async function stopServer({ child }: ServerProcess, signal: "SIGTERM" | "SIGKILL"): Promise<void> {
+  child.kill(signal);
+  await Promise.race([child.exited, Bun.sleep(3000)]);
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill("SIGKILL");
+    await child.exited;
+  }
+}
+
+export async function startLibraryTestServer(
+  prepare: (media: string) => Promise<void> = writeLibraryFixture,
+  options: TestServerOptions = {},
+): Promise<LibraryTestServer> {
+  const directory = await mkdtemp(join(tmpdir(), "nanime-library-files-"));
+  const media = join(directory, "media");
+  const databasePath = join(directory, "nanime.sqlite");
+  await mkdir(media);
+  await prepare(media);
+  const qbittorrent = startFakeQbittorrent(options.qbittorrentLogin);
+  const origin = `http://127.0.0.1:${String(freePort())}`;
+  const login = options.qbittorrentLogin === undefined ? "" : "fake-qbittorrent-user";
+  const env = {
+    ...process.env,
+    HOST: "127.0.0.1",
+    PORT: new URL(origin).port,
+    MEDIA_DIR: media,
+    NANIME_DATABASE: databasePath,
+    NANIME_ADMIN_SETUP_TOKEN: SETUP_TOKEN,
+    NANIME_PUBLIC_ORIGIN: origin,
+    NANIME_SECURE_COOKIES: "false",
+    NANIME_ANILIST_CLIENT_ID: "",
+    NANIME_ANILIST_CLIENT_SECRET: "",
+    NANIME_ANILIST_REDIRECT_URI: "",
+    NANIME_TOKEN_ENCRYPTION_KEY: "",
+    MEDIA_METADATA_FILE: join(directory, "metadata.json"),
+    QBITTORRENT_URL: qbittorrent.origin,
+    QBITTORRENT_USERNAME: login,
+    QBITTORRENT_PASSWORD: login,
+  };
+  let running = await spawnServer(origin, env);
   const setup = await fetch(`${origin}/api/auth/setup`, {
     method: "POST",
     headers: { "content-type": "application/json", origin },
@@ -200,10 +244,11 @@ export async function startLibraryTestServer(prepare: (media: string) => Promise
     if (!headers.has("origin")) {
       headers.set("origin", origin);
     }
-    if (typeof init.body === "string") {
+    const body = init.json === undefined ? init.body : JSON.stringify(init.json);
+    if (typeof body === "string") {
       headers.set("content-type", "application/json");
     }
-    return fetch(`${origin}${path}`, { ...init, headers });
+    return fetch(`${origin}${path}`, { ...init, headers, body: body ?? null });
   };
   return {
     origin,
@@ -213,13 +258,13 @@ export async function startLibraryTestServer(prepare: (media: string) => Promise
     adminCookie,
     request,
     database: () => new Database(databasePath),
-    log,
+    log: () => running.log(),
+    restart: async (how = "graceful") => {
+      await stopServer(running, how === "crash" ? "SIGKILL" : "SIGTERM");
+      running = await spawnServer(origin, env);
+    },
     close: async () => {
-      child.kill("SIGTERM");
-      await Promise.race([child.exited, Bun.sleep(3000)]);
-      if (child.exitCode === null) {
-        child.kill("SIGKILL");
-      }
+      await stopServer(running, "SIGTERM");
       qbittorrent.stop();
       await rm(directory, { recursive: true, force: true });
     },

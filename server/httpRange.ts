@@ -100,7 +100,10 @@ export function rangedFileResponse(options: FileResponseOptions): Response {
     });
   }
   if (range === null) {
-    return new Response(req.method === "HEAD" ? null : file, {
+    // Our own stream: Bun.serve applies the Range header to any file-backed body
+    // (Bun.file or file.stream()) and would serve a slice even when If-Range said not to.
+    const whole = file.size === 0 ? "" : fileRangeStream(path, 0, file.size - 1);
+    return new Response(req.method === "HEAD" ? null : whole, {
       headers: { ...common, "content-length": String(file.size) },
     });
   }

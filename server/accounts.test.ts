@@ -16,7 +16,7 @@ afterEach(async () => {
 interface Me { readonly username: string; readonly isAdmin: boolean }
 
 function login(target: LibraryTestServer, password: string): Promise<Response> {
-  return target.request("/api/auth/login", { method: "POST", body: JSON.stringify({ username: "viewer", password }), cookie: null });
+  return target.request("/api/auth/login", { method: "POST", json: { username: "viewer", password }, cookie: null });
 }
 
 function sessionCookie(response: Response): string {
@@ -42,6 +42,50 @@ test("a provisioned user signs in with their password, and signing out ends that
   expect(await getJson<Me | null>(target, "/api/auth/me", cookie)).toBeNull();
   expect(await statusOf(target.request("/api/progress", { cookie }))).toBe(401);
   expect(await statusOf(target.request("/api/list", { cookie: null }))).toBe(401);
+});
+
+interface ProvisionedUser { readonly id: number; readonly username: string; readonly isAdmin: boolean; readonly passwordSet: boolean }
+
+function provision(target: LibraryTestServer, username: string): Promise<Response> {
+  return target.request("/api/users", { method: "POST", json: { username, isAdmin: false } });
+}
+
+function setUpPassword(target: LibraryTestServer, username: string, setupToken: string): Promise<Response> {
+  return target.request("/api/auth/setup", {
+    method: "POST", json: { username, password: "a-long-enough-test-password", setupToken }, cookie: null,
+  });
+}
+
+async function userNamed(target: LibraryTestServer, username: string): Promise<ProvisionedUser | undefined> {
+  const users = await getJson<readonly ProvisionedUser[]>(target, "/api/users");
+  return users.find((user) => user.username === username);
+}
+
+test("an admin invites a user who sets their own password once; unused invites can be cancelled", async () => {
+  server = await startLibraryTestServer();
+  const target = server;
+  expect(await statusOf(provision(target, ""))).toBe(400);
+
+  const invited = await provision(target, "guest");
+  expect(invited.status).toBe(201);
+  const { setupToken } = await invited.json() as { readonly setupToken: string };
+  expect(await userNamed(target, "guest")).toMatchObject({ isAdmin: false, passwordSet: false });
+
+  expect(await statusOf(setUpPassword(target, "guest", "not-the-invite-code-at-all-000000"))).toBe(401);
+  const joined = await setUpPassword(target, "guest", setupToken);
+  expect(joined.status).toBe(200);
+  expect(sessionCookie(joined)).not.toBe("");
+  expect(await userNamed(target, "guest")).toMatchObject({ passwordSet: true });
+  expect(await statusOf(setUpPassword(target, "guest", setupToken))).toBe(401);
+
+  const guest = await userNamed(target, "guest");
+  const keep = target.request(`/api/users/${String(guest?.id)}`, { method: "DELETE" });
+  expect(await statusOf(keep)).toBe(409);
+  expect(await statusOf(provision(target, "never-joined"))).toBe(201);
+  const unused = await userNamed(target, "never-joined");
+  const cancel = target.request(`/api/users/${String(unused?.id)}`, { method: "DELETE" });
+  expect(await statusOf(cancel)).toBe(204);
+  expect(await userNamed(target, "never-joined")).toBeUndefined();
 });
 
 interface AdminAction {
@@ -105,7 +149,7 @@ test("a viewer is refused every admin library operation and nothing changes", as
   const before = await adminView(target);
 
   const statuses = await Promise.all(ADMIN_ACTIONS.map(async ({ method, path, body }) => {
-    const init = body === undefined ? { method, cookie: viewer } : { method, cookie: viewer, body: JSON.stringify(body) };
+    const init = body === undefined ? { method, cookie: viewer } : { method, cookie: viewer, json: body };
     const response = await target.request(path, init);
     return `${method} ${path} -> ${String(response.status)}`;
   }));

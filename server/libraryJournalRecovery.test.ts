@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { entryId } from "./libraryPaths.ts";
 import type { RunOutcome as Outcome } from "./libraryJournalFaultHarness.ts";
+import { runBun, runScript } from "./testProcess.ts";
 
 const directory = await mkdtemp(join(tmpdir(), "nanime-journal-recovery-"));
-const REPOSITORY = join(import.meta.dir, "..");
 
 afterAll(async () => {
   await rm(directory, { recursive: true, force: true });
@@ -40,10 +40,9 @@ async function startupRecovery(name: string, steps?: readonly object[], progress
     const locks = await currentLocks({ roots: [], torrents: async () => ({ state: "unconfigured" }), uploads: () => [] });
     console.log(JSON.stringify({ status: row.status, locks: locks.paths.map((lock) => lock.path) }));
   `;
-  const child = Bun.spawn([process.execPath, "--eval", script], { cwd: REPOSITORY, env: childEnvironment(name), stdout: "pipe", stderr: "pipe" });
-  const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
-  expect({ code, stderr: stderr.replaceAll(/^Library file operation .* needs manual recovery.*\n/gmu, "") }).toEqual({ code: 0, stderr: "" });
-  return JSON.parse(stdout) as Recovery;
+  const { code, output, error } = await runScript(script, childEnvironment(name));
+  expect({ code, error: error.replaceAll(/^Library file operation .* needs manual recovery.*\n/gmu, "") }).toEqual({ code: 0, error: "" });
+  return JSON.parse(output) as Recovery;
 }
 
 async function library(name: string, files: Readonly<Record<string, string>>): Promise<string> {
@@ -65,6 +64,61 @@ async function exists(abs: string): Promise<boolean> {
 
 const STARTED = { state: "started", created: null } as const;
 const DONE = { state: "done", created: null } as const;
+
+test("rolls back a completed step when the crash came before the next one", async () => {
+  const root = await library("partial-move", { "Show/Season 1/a.mkv": "a", "Show/Season 1/b.mkv": "b", "Show/Misc/keep.txt": "k" });
+  const [a, b] = [await idOf(join(root, "Show/Season 1/a.mkv")), await idOf(join(root, "Show/Season 1/b.mkv"))];
+  await rename(join(root, "Show/Season 1/a.mkv"), join(root, "Show/Misc/a.mkv"));
+  const result = await startupRecovery("partial-move", [
+    { kind: "move-file", from: "Show/Season 1/a.mkv", to: "Show/Misc/a.mkv", id: a },
+    { kind: "move-file", from: "Show/Season 1/b.mkv", to: "Show/Misc/b.mkv", id: b },
+  ], [DONE, null]);
+  expect(result).toEqual({ status: "rolled-back", locks: [] });
+  const season = await readdir(join(root, "Show/Season 1"));
+  expect(season.toSorted()).toEqual(["a.mkv", "b.mkv"]);
+  expect(await readdir(join(root, "Show/Misc"))).toEqual(["keep.txt"]);
+});
+
+test("removes a half-made hard link and an unused folder reservation", async () => {
+  const root = await library("half-steps", { "Show/a.mkv": "a", "Show/Folder/inside.mkv": "i", "Target/.keep": "" });
+  await link(join(root, "Show/a.mkv"), join(root, "Target/a.mkv"));
+  await mkdir(join(root, "Target/Folder"));
+  const result = await startupRecovery("half-steps", [
+    { kind: "move-file", from: "Show/a.mkv", to: "Target/a.mkv", id: await idOf(join(root, "Show/a.mkv")) },
+    { kind: "move-folder", from: "Show/Folder", to: "Target/Folder", id: await idOf(join(root, "Show/Folder")) },
+  ], [{ state: "started", created: null }, { state: "started", created: await idOf(join(root, "Target/Folder")) }]);
+  expect(result.status).toBe("rolled-back");
+  expect(await readdir(join(root, "Target"))).toEqual([".keep"]);
+  expect(await readFile(join(root, "Show/a.mkv"), "utf8")).toBe("a");
+  expect(await readFile(join(root, "Show/Folder/inside.mkv"), "utf8")).toBe("i");
+});
+
+test("restores a folder from an interrupted trash and removes its staging folders", async () => {
+  const root = await library("trash", { "Show/Season 1/a.mkv": "a" });
+  const season = await idOf(join(root, "Show/Season 1"));
+  await mkdir(join(root, ".nanime-trash/op/1"), { recursive: true });
+  await rename(join(root, "Show/Season 1"), join(root, ".nanime-trash/op/1/Season 1"));
+  const result = await startupRecovery("trash", [
+    { kind: "mkdir", from: null, to: ".nanime-trash/op" },
+    { kind: "mkdir", from: null, to: ".nanime-trash/op/1" },
+    { kind: "move-folder", from: "Show/Season 1", to: ".nanime-trash/op/1/Season 1", id: season },
+  ], [
+    { state: "done", created: await idOf(join(root, ".nanime-trash/op")) },
+    { state: "done", created: await idOf(join(root, ".nanime-trash/op/1")) },
+    DONE,
+  ]);
+  expect(result.status).toBe("rolled-back");
+  expect(await readFile(join(root, "Show/Season 1/a.mkv"), "utf8")).toBe("a");
+  expect(await readdir(join(root, ".nanime-trash"))).toEqual([]);
+});
+
+test("leaves ambiguous state untouched and locks it instead of guessing", async () => {
+  const root = await library("ambiguous", { "Show/a.mkv": "original", "Target/a.mkv": "someone else's file" });
+  const result = await startupRecovery("ambiguous", [{ kind: "move-file", from: "Show/a.mkv", to: "Target/a.mkv", id: "x" }]);
+  expect(result).toEqual({ status: "recovery-required", locks: ["Show/a.mkv", "Target/a.mkv"] });
+  expect(await readFile(join(root, "Show/a.mkv"), "utf8")).toBe("original");
+  expect(await readFile(join(root, "Target/a.mkv"), "utf8")).toBe("someone else's file");
+});
 
 test("never moves an unrelated entry that appeared at the target back to the source", async () => {
   const root = await library("foreign-target", { "Show/a.mkv": "original", "Target/keep.txt": "k" });
@@ -219,14 +273,10 @@ async function faultScenario<T extends { readonly outcome: Outcome }>(scenario: 
   const root = join(directory, `fault-${scenario}`);
   await mkdir(root);
   const output = join(directory, `fault-${scenario}.json`);
-  const child = Bun.spawn([process.execPath, "test", "./server/libraryJournalFaultHarness.ts"], {
-    cwd: REPOSITORY,
-    env: { ...childEnvironment(`fault-${scenario}`), NANIME_FAULT_ROOT: root, NANIME_FAULT_SCENARIO: scenario, NANIME_FAULT_OUT: output },
-    stdout: "pipe",
-    stderr: "pipe",
+  const run = await runBun(["test", "./server/libraryJournalFaultHarness.ts"], {
+    ...childEnvironment(`fault-${scenario}`), NANIME_FAULT_ROOT: root, NANIME_FAULT_SCENARIO: scenario, NANIME_FAULT_OUT: output,
   });
-  const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
-  expect({ code, log: code === 0 ? "" : `${stdout}\n${stderr}` }).toEqual({ code: 0, log: "" });
+  expect({ code: run.code, log: run.code === 0 ? "" : `${run.output}\n${run.error}` }).toEqual({ code: 0, log: "" });
   return JSON.parse(await readFile(output, "utf8")) as T;
 }
 
@@ -416,23 +466,19 @@ for (const [kind, boundary] of [["file", "capture"], ["file", "publication"], ["
     const name = `fault-${scenario}`;
     const root = join(directory, name);
     await mkdir(root);
-    const child = Bun.spawn([process.execPath, "test", "./server/libraryJournalFaultHarness.ts"], {
-      cwd: REPOSITORY,
-      env: { ...childEnvironment(name), NANIME_FAULT_ROOT: root, NANIME_FAULT_SCENARIO: scenario, NANIME_FAULT_OUT: join(directory, `${name}.json`) },
-      stdout: "pipe", stderr: "pipe",
+    const crashed = await runBun(["test", "./server/libraryJournalFaultHarness.ts"], {
+      ...childEnvironment(name), NANIME_FAULT_ROOT: root, NANIME_FAULT_SCENARIO: scenario, NANIME_FAULT_OUT: join(directory, `${name}.json`),
     });
-    const [code] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
-    expect(code).toBe(86);
+    expect(crashed.code).toBe(86);
     // The row's id is the scenario, whereas this fixture/database is prefixed.
     const script = `import { database } from './server/database.ts'; import { recoverInterruptedOperations } from './server/libraryJournal.ts';
       const before = database.query('SELECT progress FROM library_file_operations WHERE id = ?').get(${JSON.stringify(scenario)});
       await recoverInterruptedOperations(${JSON.stringify(root)});
       const row = database.query('SELECT status FROM library_file_operations WHERE id = ?').get(${JSON.stringify(scenario)});
       console.log(JSON.stringify({ status: row.status, progress: JSON.parse(before.progress) }));`;
-    const recovery = Bun.spawn([process.execPath, "--eval", script], { cwd: REPOSITORY, env: childEnvironment(name), stdout: "pipe", stderr: "pipe" });
-    const [exit, stdout, stderr] = await Promise.all([recovery.exited, new Response(recovery.stdout).text(), new Response(recovery.stderr).text()]);
-    expect({ exit, stderr }).toEqual({ exit: 0, stderr: "" });
-    const row = JSON.parse(stdout) as { status: string; progress: readonly { state: string; stage: string; created: string | null }[] };
+    const recovery = await runScript(script, childEnvironment(name));
+    expect({ code: recovery.code, error: recovery.error }).toEqual({ code: 0, error: "" });
+    const row = JSON.parse(recovery.output) as { status: string; progress: readonly { state: string; stage: string; created: string | null }[] };
     expect(row.status).toBe("rolled-back");
     expect(row.progress[0]?.state).toBe(boundary.startsWith("recovery") ? "done" : "started");
     expect(row.progress[0]?.stage).toBeString();

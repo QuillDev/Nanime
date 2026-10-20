@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  fileOperation, getJson, idAt, listedItems, operationStatus, reference, startLibraryTestServer, type LibraryTestServer,
+  fileOperation, getJson, idAt, listedItems, operationStatus, reference, startLibraryTestServer, statusOf, type LibraryTestServer,
 } from "./libraryFilesTestServer.ts";
 
 const EPISODE_ONE = "Example Show/Season 1/Example Show - 01.mkv";
@@ -34,7 +34,7 @@ async function onDisk(target: LibraryTestServer, path: string): Promise<boolean>
 }
 
 async function markWatched(target: LibraryTestServer, rel: string): Promise<void> {
-  const response = await target.request("/api/progress/watched", { method: "POST", body: JSON.stringify({ rel, watched: true }) });
+  const response = await target.request("/api/progress/watched", { method: "POST", json: { rel, watched: true } });
   expect(response.status).toBe(200);
 }
 
@@ -130,7 +130,7 @@ test("renames a video together with its subtitle sidecar and keeps the extension
 });
 
 async function linkManually(target: LibraryTestServer, link: { readonly key: string; readonly id: number; readonly manualTitle: string }): Promise<void> {
-  const response = await target.request("/api/anilist/link", { method: "POST", body: JSON.stringify(link) });
+  const response = await target.request("/api/anilist/link", { method: "POST", json: link });
   expect(response.status).toBe(200);
 }
 
@@ -218,7 +218,23 @@ test("history restore writes to the media's current path after a move", async ()
   const restored = await target.request(`/api/progress/history/${String(watched?.id)}/restore`, { method: "POST" });
   expect(restored.status).toBe(200);
   expect(progressRels(target)).toEqual([]);
-  const stale = await target.request("/api/progress/watched", { method: "POST", body: JSON.stringify({ rel: EPISODE_ONE, watched: true }) });
+  const stale = await target.request("/api/progress/watched", { method: "POST", json: { rel: EPISODE_ONE, watched: true } });
   expect(stale.status).toBe(200);
   expect(progressRels(target)).toEqual(["Example Show/Season 1/Renamed.mkv"]);
+});
+
+test("deleting an episode removes the file, its library entry and its watch progress, and nothing else", async () => {
+  const target = await start();
+  await markWatched(target, EPISODE_ONE);
+  await markWatched(target, "Example Show/Season 1/Example Show - 02.mkv");
+  expect(await statusOf(target.request("/api/media/delete", { method: "POST", json: { paths: ["Example Show/Misc/Notes.txt"] } }))).toBe(404);
+
+  const deleted = await target.request("/api/media/delete", { method: "POST", json: { paths: [EPISODE_ONE] } });
+  expect(deleted.status).toBe(200);
+  expect(await deleted.json()).toEqual({ deleted: 1 });
+  expect(await onDisk(target, EPISODE_ONE)).toBe(false);
+  expect(await onDisk(target, "Example Show/Season 1/Example Show - 02.mkv")).toBe(true);
+  const listed = await getJson<readonly { readonly rel: string }[]>(target, "/api/list");
+  expect(listed.map((entry) => entry.rel)).not.toContain(EPISODE_ONE);
+  expect(progressRels(target)).toEqual(["Example Show/Season 1/Example Show - 02.mkv"]);
 });
