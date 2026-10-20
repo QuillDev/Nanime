@@ -98,37 +98,78 @@ function exactShow(
   }) ?? null;
 }
 
-export async function matchTvmaze(media: AnimeMetadata): Promise<TvmazeMatch | null> {
+const SEASON_SUFFIX = /[\s:,-]*(?:Season\s*0*(?<plain>\d+)|(?<ordinal>\d+)(?:st|nd|rd|th)\s+Season)\s*$/iu;
+
+/**
+ * AniList lists later seasons as their own media ("... Season 3", "... 3rd
+ * Season"); TVmaze keeps one show holding every season. Strip that suffix to
+ * find the parent show.
+ */
+export function seasonedTitle(title: string): { readonly base: string; readonly season: number } | null {
+  const match = SEASON_SUFFIX.exec(title);
+  const number = match?.groups?.["plain"] ?? match?.groups?.["ordinal"];
+  if (match === null || number === undefined) {
+    return null;
+  }
+  const base = title.slice(0, match.index).trim();
+  return base === "" ? null : { base, season: Number(number) };
+}
+
+interface ShowQuery {
+  readonly search: readonly string[];
+  readonly names: readonly string[];
+  /** Premiere year the show must match; null accepts any. */
+  readonly year: number | null;
+  /** Season the show must contain episodes for; null accepts any. */
+  readonly season: number | null;
+}
+
+function showQueries(media: AnimeMetadata): readonly ShowQuery[] {
   const titles = titleCandidates(media);
-  for (const title of titles) {
-    const response = await fetch(`${TVMAZE_URL}/search/shows?q=${encodeURIComponent(title)}`);
-    if (!response.ok) {
-      throw new Error(`TVmaze returned HTTP ${String(response.status)}`);
-    }
-    const payload: unknown = await response.json();
-    const show = Array.isArray(payload)
-      ? exactShow(payload, titles, media.seasonYear)
-      : null;
+  const seasoned = titles.map((title) => seasonedTitle(title)).filter((value) => value !== null);
+  const bases = [...new Set(seasoned.map((value) => value.base))];
+  const exact = { search: titles, names: titles, year: media.seasonYear, season: null };
+  const season = seasoned[0]?.season;
+  // A later season premieres years after its parent show, so only the season's episodes vouch for the match.
+  return season === undefined ? [exact] : [exact, { search: bases, names: bases, year: null, season }];
+}
+
+/** TVmaze answers these endpoints with arrays; anything else counts as no results. */
+async function tvmazeList(path: string): Promise<readonly unknown[]> {
+  const response = await fetch(`${TVMAZE_URL}${path}`);
+  if (!response.ok) {
+    throw new Error(`TVmaze returned HTTP ${String(response.status)}`);
+  }
+  const payload: unknown = await response.json();
+  return Array.isArray(payload) ? payload : [];
+}
+
+async function showEpisodes(show: TvmazeShow): Promise<readonly TvmazeEpisode[]> {
+  const payload = await tvmazeList(`/shows/${String(show.id)}/episodes?specials=1`);
+  return payload.map((episode) => episodeFromResult(episode)).filter(
+    (episode): episode is TvmazeEpisode => episode !== null,
+  );
+}
+
+async function queryMatch(query: ShowQuery): Promise<TvmazeMatch | null> {
+  for (const title of query.search) {
+    const show = exactShow(await tvmazeList(`/search/shows?q=${encodeURIComponent(title)}`), query.names, query.year);
     if (show !== null) {
-      const episodesResponse = await fetch(
-        `${TVMAZE_URL}/shows/${String(show.id)}/episodes?specials=1`,
-      );
-      if (!episodesResponse.ok) {
-        throw new Error(`TVmaze returned HTTP ${String(episodesResponse.status)}`);
-      }
-      const episodesPayload: unknown = await episodesResponse.json();
-      const episodes = Array.isArray(episodesPayload)
-        ? episodesPayload.map((episode) => episodeFromResult(episode)).filter(
-          (episode): episode is TvmazeEpisode => episode !== null,
-        )
-        : [];
-      return {
-        id: show.id,
-        name: show.name,
-        siteUrl: show.url,
-        premiered: show.premiered,
-        episodes,
-      };
+      const episodes = await showEpisodes(show);
+      const hasSeason = query.season === null || episodes.some((episode) => episode.season === query.season);
+      return hasSeason
+        ? { id: show.id, name: show.name, siteUrl: show.url, premiered: show.premiered, episodes }
+        : null;
+    }
+  }
+  return null;
+}
+
+export async function matchTvmaze(media: AnimeMetadata): Promise<TvmazeMatch | null> {
+  for (const query of showQueries(media)) {
+    const match = await queryMatch(query);
+    if (match !== null) {
+      return match;
     }
   }
   return null;
