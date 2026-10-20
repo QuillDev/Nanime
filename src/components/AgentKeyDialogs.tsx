@@ -19,11 +19,11 @@ interface CreatedProps {
 
 function AgentPicker({ value, onSelect }: { readonly value: AgentKind; readonly onSelect: (event: ChangeEvent<HTMLInputElement>) => void }): React.JSX.Element {
   return (
-    <fieldset aria-label="Agent" className="inline-flex w-fit rounded-lg bg-secondary p-0.5">
+    <fieldset aria-label="Agent" className="flex gap-5 border-b border-border">
       {AGENT_KINDS.map((option) => (
-        <label key={option.kind} className="cursor-pointer">
+        <label key={option.kind} className="-mb-px cursor-pointer">
           <input type="radio" name="agent-kind" value={option.kind} checked={value === option.kind} onChange={onSelect} className="peer sr-only" />
-          <span className="block rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground peer-checked:bg-accent peer-checked:text-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring">
+          <span className="block border-b-2 border-transparent pb-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground peer-checked:border-primary peer-checked:text-foreground">
             {option.label}
           </span>
         </label>
