@@ -25,7 +25,7 @@ import type {
 } from "./types.ts";
 import type { PreferredAudioLanguage } from "../shared/audioLanguage.ts";
 
-// TVmaze air dates are contractually strings. Eden otherwise revives date-like
+// Dates in responses are contractually strings. Eden otherwise revives date-like
 // JSON strings into Date objects even when the Elysia response schema says string.
 export const api = treaty<App>(globalThis.location.origin, { parseDate: false });
 

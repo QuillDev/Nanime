@@ -211,7 +211,7 @@ function MetadataLinkDialog({
     return null;
   }
   return (
-    <AniListLinkDialog currentMedia={metadata[dialogKey]} initialProvider={metadata[dialogKey]?.provider ?? "anilist"} metadataKey={dialogKey} suggestedSearch={suggestedSearch} subject={navigation.linkTarget.type} onClose={navigation.handleLinkClose} />
+    <AniListLinkDialog currentMedia={metadata[dialogKey]} metadataKey={dialogKey} suggestedSearch={suggestedSearch} subject={navigation.linkTarget.type} onClose={navigation.handleLinkClose} />
   );
 }
 

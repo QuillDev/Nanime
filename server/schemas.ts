@@ -160,23 +160,6 @@ export const libraryActivityEventSchema = object({
   createdAt: number(),
 });
 
-const tvmazeEpisodeSchema = object({
-  id: number(),
-  season: number(),
-  number: nullableNumber,
-  type: string(),
-  title: string(),
-  summary: nullableString,
-  airDate: nullableString,
-  thumbnail: nullableString,
-});
-const tvmazeMatchSchema = object({
-  id: number(),
-  name: string(),
-  siteUrl: string(),
-  premiered: nullableString,
-  episodes: array(tvmazeEpisodeSchema),
-});
 const aniListTitleSchema = object({
   english: nullableString,
   romaji: string(),
@@ -197,9 +180,8 @@ const mediaDateSchema = object({
   month: nullableNumber,
   day: nullableNumber,
 });
-const optionalTvmazeSchema = optional(union([tvmazeMatchSchema, nullValue()]));
 export const aniListMediaSchema = object({
-  provider: union([literal("anilist"), literal("jikan")]),
+  provider: literal("anilist"),
   id: number(),
   anilistId: nullableNumber,
   idMal: nullableNumber,
@@ -218,8 +200,6 @@ export const aniListMediaSchema = object({
   averageScore: nullableNumber,
   siteUrl: string(),
   streamingEpisodes: array(streamingEpisodeSchema),
-  tvmaze: optionalTvmazeSchema,
-  tvmazeCheckedAt: optional(number()),
 });
 export const torrentStatusSchema = object({
   hash: string(),

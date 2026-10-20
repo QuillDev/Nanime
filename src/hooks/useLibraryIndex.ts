@@ -13,7 +13,6 @@ import {
   partitionShowsByMetadata,
   primaryShowMetadata,
   seasonMetadata,
-  seasonNumber,
   sortShowsByMetadataTitle,
   type SeasonGroup,
   type ShowGroup,
@@ -89,16 +88,14 @@ interface EntryTargetOptions {
   readonly entry: MediaEntry;
   readonly media: AniListMedia | undefined;
   readonly movie: boolean;
-  readonly seasonNumber: number;
-  readonly showMedia: AniListMedia | undefined;
   readonly targets: Map<string, AniListPlaybackTarget>;
   readonly displays: Map<string, EpisodeDisplay>;
 }
 
 function entryDisplay(options: EntryTargetOptions): EpisodeDisplay {
-  const { entry, media, movie, seasonNumber: number, showMedia } = options;
+  const { entry, media, movie } = options;
   const episode = episodeNumber(entry);
-  const details = movie ? undefined : episodeMetadata(entry, media, { showMedia, season: number });
+  const details = movie ? undefined : episodeMetadata(entry, media);
   return {
     number: movie ? null : episode,
     title: movie && media !== undefined
@@ -140,17 +137,13 @@ function indexSeasonEntry(options: EntryTargetOptions): void {
 
 function indexSeason(options: SeasonTargetOptions): void {
   const { season, show, metadata, targets, displays } = options;
-  const showMedia = primaryShowMetadata(show, metadata);
   const media = seasonMetadata(metadata, season.sourceShow, season.name) ??
-    showMedia;
-  const number = seasonNumber(season, media);
+    primaryShowMetadata(show, metadata);
   for (const entry of season.entries) {
     indexSeasonEntry({
       entry,
       media,
       movie: isMovieMedia(media),
-      seasonNumber: number,
-      showMedia,
       targets,
       displays,
     });

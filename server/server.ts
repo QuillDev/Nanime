@@ -5,14 +5,10 @@ import {
   aniListErrorResponse,
   configureMetadataLibrary,
   linkAniListResponse,
-  linkJikanResponse,
-  jikanErrorResponse,
   metadataResponse,
   metadataRefreshStatusResponse,
   searchAniListResponse,
-  searchJikanResponse,
   startMetadataRefreshResponse,
-  updateMetadataAniListIdResponse,
 } from "./anilist.ts";
 import { playbackRoute } from "./playbackRoutes.ts";
 import {
@@ -346,15 +342,12 @@ async function libraryInformationRoute(context: RouteContext): Promise<Response 
 
 const DIRECT_ADMIN_ROUTES = new Set([
   "GET /api/anilist/search",
-  "GET /api/jikan/search",
   "GET /api/library/status",
   "GET /api/library/activity",
   "GET /api/metadata/refresh",
   "POST /api/anilist/link",
-  "POST /api/jikan/link",
   "POST /api/library/refresh",
   "POST /api/metadata/refresh",
-  "PUT /api/metadata/anilist-id",
 ]);
 
 function directAdminResponse(context: RouteContext): Response | Promise<Response> {
@@ -364,10 +357,7 @@ function directAdminResponse(context: RouteContext): Response | Promise<Response
     case "POST /api/library/refresh": { return refreshLibraryResponse({ mediaDir: MEDIA_DIR, videoExtensions: VIDEO_EXTS, directPlayExtensions: DIRECT_PLAY }); }
     case "GET /api/anilist/search": { return searchAniListResponse(url); }
     case "POST /api/anilist/link": { return linkAniListResponse(req, user); }
-    case "GET /api/jikan/search": { return searchJikanResponse(url); }
-    case "POST /api/jikan/link": { return linkJikanResponse(req, user); }
     case "GET /api/metadata/refresh": { return metadataRefreshStatusResponse(); }
-    case "PUT /api/metadata/anilist-id": { return updateMetadataAniListIdResponse(req, user); }
     case "GET /api/library/activity": { return libraryActivityResponse(url); }
     case "POST /api/metadata/refresh": { return startMetadataRefreshResponse(); }
     default: { return new Response("Not found", { status: 404 }); }
@@ -478,8 +468,7 @@ async function route(context: RequestContext): Promise<Response> {
     }
     return await authenticatedRoute({ pathname, url, req, user });
   } catch (error) {
-    return aniListErrorResponse(error) ?? jikanErrorResponse(error) ??
-      new Response("Server error", { status: 500 });
+    return aniListErrorResponse(error) ?? new Response("Server error", { status: 500 });
   }
 }
 

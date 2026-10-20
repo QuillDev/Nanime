@@ -317,10 +317,10 @@ export async function fileOperation(server: LibraryTestServer, action: string, b
   return { status: response.status, text: await response.text() };
 }
 
-/** A minimal valid stored mapping, as metadata links would write it. */
-export function fixtureMapping(title: string, id: number): string {
+/** A minimal valid stored AniList mapping, as metadata links would write it. `provider` lets a test write a removed one. */
+export function fixtureMapping(title: string, id: number, provider = "anilist"): string {
   return JSON.stringify({
-    provider: "jikan", id, anilistId: null, idMal: id,
+    provider, id, anilistId: id, idMal: null,
     title: { english: title, romaji: title, native: null },
     description: "Fictitious library fixture", coverImage: { extraLarge: null, large: null, color: null },
     bannerImage: null, episodes: 3, duration: 24, season: null, seasonYear: null, startDate: null,

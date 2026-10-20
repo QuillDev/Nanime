@@ -12,14 +12,13 @@ import type { MetadataProvider } from "./metadataTypes.ts";
  *   {
  *     "version": 1,
  *     "show": { "provider": "anilist", "id": 108465 },
- *     "season": { "provider": "jikan", "id": 55888, "anilistId": 178789 }
+ *     "season": { "provider": "anilist", "id": 178789 }
  *   }
  *
  * `show` is the series of every video under a top-level folder and is only
  * read there. `season` is the season of the videos directly inside the folder
- * holding the file. An AniList match may carry `title`, a manual match whose
- * entry isn't fetched; a Jikan match may carry the `anilistId` used for list
- * sync.
+ * holding the file. A match may carry `title`, a manual match whose entry
+ * isn't fetched. AniList is the only provider; any other match is ignored.
  */
 export const FOLDER_METADATA_FILE = "nanime.json";
 const FORMAT_VERSION = 1;
@@ -33,9 +32,7 @@ type Draft<T> = { -readonly [K in keyof T]: T[K] };
 export interface FolderMatch {
   readonly provider: MetadataProvider;
   readonly id: number;
-  /** Jikan only: the AniList entry list sync uses, if any. */
-  readonly anilistId?: number | null;
-  /** AniList only: a manual match's title, used over the provider's. */
+  /** A manual match's title, used over AniList's. */
   readonly title?: string;
 }
 
@@ -55,13 +52,6 @@ function positiveInteger(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) > 0;
 }
 
-function aniListIdField(value: unknown): { readonly anilistId?: number | null } | null {
-  if (value === undefined) {
-    return {};
-  }
-  return value === null || positiveInteger(value) ? { anilistId: value } : null;
-}
-
 function titleField(value: unknown): { readonly title?: string } | null {
   if (value === undefined) {
     return {};
@@ -73,13 +63,11 @@ function parseMatch(value: unknown): FolderMatch | null {
   const object = jsonObject(value);
   const provider = object?.["provider"];
   const id = object?.["id"];
-  if ((provider !== "anilist" && provider !== "jikan") || !positiveInteger(id)) {
+  if (provider !== "anilist" || !positiveInteger(id)) {
     return null;
   }
-  const anilistId = provider === "jikan" ? aniListIdField(object?.["anilistId"]) : {};
-  // Manual titles stand in for an AniList entry, so only AniList matches take one.
-  const title = provider === "anilist" || object?.["title"] === undefined ? titleField(object?.["title"]) : null;
-  return anilistId === null || title === null ? null : { provider, id, ...anilistId, ...title };
+  const title = titleField(object?.["title"]);
+  return title === null ? null : { provider, id, ...title };
 }
 
 /** A file's matches, or null when it isn't a version 1 metadata file. A malformed match is dropped, not guessed at. */
@@ -104,16 +92,12 @@ export function parseFolderMetadata(value: unknown): FolderMetadata | null {
 interface MatchJson {
   provider: MetadataProvider;
   id: number;
-  anilistId?: number | null;
   title?: string;
 }
 
 /** The match's own fields, in a fixed order, so files stay readable and diffable. */
 function matchJson(match: FolderMatch): MatchJson {
   const json: MatchJson = { provider: match.provider, id: match.id };
-  if (match.provider === "jikan" && match.anilistId !== undefined) {
-    json.anilistId = match.anilistId;
-  }
   if (match.title !== undefined) {
     json.title = match.title;
   }
@@ -222,14 +206,11 @@ export function metadataSlots(videoFolders: readonly string[]): readonly Metadat
 }
 
 /**
- * The cache key for a match's fetched payload. Show matches carry TVmaze
- * episode data and season matches don't, so the role is part of the ref.
+ * The cache key for a match's fetched payload, by role so show and season
+ * payloads cached by earlier versions stay addressable.
  */
 export function matchRef(role: MetadataRole, match: FolderMatch): string {
   const parts = [role, `${match.provider}:${String(match.id)}`];
-  if (match.provider === "jikan") {
-    parts.push(`anilist:${String(match.anilistId ?? "none")}`);
-  }
   if (match.title !== undefined) {
     parts.push(`title:${JSON.stringify(match.title)}`);
   }

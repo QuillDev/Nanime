@@ -1,14 +1,9 @@
 import { useCallback, useState, type FormEvent } from "react";
 import { Search } from "lucide-react";
-import type { AniListMedia, MetadataProvider } from "../types.ts";
+import type { AniListMedia } from "../types.ts";
 import { mediaTitle } from "../lib/anilist.ts";
-import {
-  useLinkMetadata,
-  useMetadataSearch,
-  useUpdateMetadataAniListId,
-} from "../hooks/useShowMetadata.ts";
+import { useLinkMetadata, useMetadataSearch } from "../hooks/useShowMetadata.ts";
 import { Input } from "./ui/input.tsx";
-import { MetadataAniListSyncField } from "./MetadataAniListSyncField.tsx";
 import { ManualMetadataLink } from "./ManualMetadataLink.tsx";
 import {
   Dialog,
@@ -62,115 +57,31 @@ function SearchResult({ media, disabled, onSelect }: SearchResultProps): React.J
 
 interface AniListLinkDialogProps {
   readonly currentMedia: AniListMedia | undefined;
-  readonly initialProvider: MetadataProvider;
   readonly metadataKey: string;
   readonly suggestedSearch: string;
   readonly subject: "show" | "season";
   readonly onClose: () => void;
 }
 
-function parsedAniListId(value: string): number | null | undefined {
-  if (value.trim() === "") {
-    return null;
-  }
-  const id = Number(value);
-  return Number.isInteger(id) && id > 0 ? id : undefined;
-}
-
-function ProviderPicker({
-  provider,
-  onProvider,
-}: {
-  readonly provider: MetadataProvider;
-  readonly onProvider: (provider: MetadataProvider) => void;
-}): React.JSX.Element {
-  const handleProvider = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    const value = event.currentTarget.dataset["provider"];
-    if (value === "anilist" || value === "jikan") {
-      onProvider(value);
-    }
-  }, [onProvider]);
-  return (
-    <div className="grid grid-cols-2 rounded-md border border-border bg-black p-1">
-      {(["anilist", "jikan"] as const).map((value) => (
-        <button
-          key={value}
-          type="button"
-          data-provider={value}
-          onClick={handleProvider}
-          className={value === provider
-            ? "rounded bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
-            : "rounded px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground"}
-        >
-          {value === "anilist" ? "AniList" : "Jikan"}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function useAniListIdDraft(initialId: number | null | undefined) {
-  const [draft, setDraft] = useState<string>(() => (
-    initialId === null || initialId === undefined ? "" : String(initialId)
-  ));
-  const handleChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setDraft(event.target.value);
-  }, []);
-  return { draft, value: parsedAniListId(draft), handleChange };
-}
-
-interface LinkActionsOptions {
-  readonly anilistId: number | null | undefined;
-  readonly metadataKey: string;
-  readonly onClose: () => void;
-  readonly provider: MetadataProvider;
-}
-
-function useLinkActions(options: LinkActionsOptions) {
-  const { anilistId, metadataKey, onClose, provider } = options;
+function useLinkAction(metadataKey: string, onClose: () => void) {
   const link = useLinkMetadata();
-  const updateAniListId = useUpdateMetadataAniListId();
   const handleSelect = useCallback((id: number) => {
-    if (provider === "jikan" && anilistId === undefined) {
-      return;
-    }
-    void (async (): Promise<void> => {
-      await link.mutateAsync({
-        provider,
-        key: metadataKey,
-        id,
-        anilistId: provider === "jikan" ? anilistId ?? null : null,
-      });
-      onClose();
-    })();
-  }, [anilistId, link, metadataKey, onClose, provider]);
-  const handleSaveAniListId = useCallback(() => {
-    if (anilistId !== undefined) {
-      updateAniListId.mutate({ key: metadataKey, anilistId });
-    }
-  }, [anilistId, metadataKey, updateAniListId]);
-  return { link, updateAniListId, handleSelect, handleSaveAniListId };
+    link.mutate({ key: metadataKey, id }, { onSuccess: onClose });
+  }, [link, metadataKey, onClose]);
+  return { link, handleSelect };
 }
 
 export function AniListLinkDialog({
   currentMedia,
-  initialProvider,
   metadataKey,
   suggestedSearch,
   subject,
   onClose,
 }: AniListLinkDialogProps): React.JSX.Element {
-  const [provider, setProvider] = useState<MetadataProvider>(initialProvider);
   const [draft, setDraft] = useState<string>(suggestedSearch);
   const [searchTerm, setSearchTerm] = useState<string>(suggestedSearch);
-  const aniListId = useAniListIdDraft(currentMedia?.anilistId);
-  const results = useMetadataSearch(provider, searchTerm);
-  const actions = useLinkActions({
-    anilistId: aniListId.value,
-    metadataKey,
-    onClose,
-    provider,
-  });
+  const results = useMetadataSearch(searchTerm);
+  const actions = useLinkAction(metadataKey, onClose);
   const handleSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSearchTerm(draft.trim());
@@ -190,28 +101,15 @@ export function AniListLinkDialog({
         <DialogHeader>
           <DialogTitle>Match metadata</DialogTitle>
           <DialogDescription>
-            Choose one metadata source and entry for this local {subject}.
+            Choose the AniList entry for this local {subject}.
           </DialogDescription>
         </DialogHeader>
-        <ProviderPicker provider={provider} onProvider={setProvider} />
         <ManualMetadataLink metadataKey={metadataKey} suggestedTitle={suggestedSearch} initialId={currentMedia?.anilistId} onClose={onClose} />
-        {provider === "jikan" && (
-          <MetadataAniListSyncField
-            canSave={currentMedia?.provider === "jikan"}
-            draft={aniListId.draft}
-            value={aniListId.value}
-            pending={actions.updateAniListId.isPending}
-            saved={actions.updateAniListId.isSuccess}
-            error={actions.updateAniListId.error?.message ?? null}
-            onChange={aniListId.handleChange}
-            onSave={actions.handleSaveAniListId}
-          />
-        )}
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Input
             value={draft}
             onChange={handleDraftChange}
-            aria-label={`Search ${provider === "anilist" ? "AniList" : "Jikan"}`}
+            aria-label="Search AniList"
             placeholder="Anime title…"
           />
           <button
@@ -225,7 +123,7 @@ export function AniListLinkDialog({
         <div className="max-h-[55vh] overflow-y-auto">
           {results.status === "pending" && (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              Searching {provider === "anilist" ? "AniList" : "Jikan"}…
+              Searching AniList…
             </p>
           )}
           {results.status === "error" && (
@@ -242,7 +140,7 @@ export function AniListLinkDialog({
                 <SearchResult
                   key={media.id}
                   media={media}
-                  disabled={actions.link.isPending || provider === "jikan" && aniListId.value === undefined}
+                  disabled={actions.link.isPending}
                   onSelect={actions.handleSelect}
                 />
               ))}

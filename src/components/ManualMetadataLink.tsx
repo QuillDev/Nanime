@@ -17,7 +17,7 @@ export function ManualMetadataLink({ metadataKey, suggestedTitle, initialId, onC
     event.preventDefault();
     const mediaId = Number(id);
     if (!Number.isSafeInteger(mediaId) || mediaId <= 0 || title.trim() === "") { return; }
-    link.mutate({ provider: "anilist", key: metadataKey, id: mediaId, anilistId: mediaId, manualTitle: title.trim() }, { onSuccess: onClose });
+    link.mutate({ key: metadataKey, id: mediaId, manualTitle: title.trim() }, { onSuccess: onClose });
   }, [id, title, link, metadataKey, onClose]);
   return <details className="rounded border border-border p-3">
     <summary className="cursor-pointer font-medium focus-visible:ring-2 focus-visible:ring-primary">Link manually (no API)</summary>

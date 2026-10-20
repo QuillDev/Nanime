@@ -16,8 +16,6 @@ export interface EpisodeTileProps {
   readonly onSelect: (entry: MediaEntry) => void;
   readonly onSetWatched: EpisodeWatchedHandler;
   readonly pending: boolean;
-  readonly showMedia: AniListMedia | undefined;
-  readonly seasonNumber: number;
   readonly transcode: EpisodeTranscodeState;
   /** Admins can set the episode's title (its file name). */
   readonly canRename: boolean;
@@ -98,13 +96,13 @@ function blocksPlayback(state: EpisodeTranscodeState): boolean {
 }
 
 export function EpisodeTile({
-  entry, media, progress, onSelect, onSetWatched, pending, showMedia, seasonNumber, transcode, canRename,
+  entry, media, progress, onSelect, onSetWatched, pending, transcode, canRename,
 }: EpisodeTileProps): React.JSX.Element {
   const handleClick = useCallback(() => {
     onSelect(entry);
   }, [entry, onSelect]);
   const movie = isMovieMedia(media);
-  const details = movie ? null : episodeMetadata(entry, media, { showMedia, season: seasonNumber });
+  const details = movie ? null : episodeMetadata(entry, media);
   const number = movie ? null : episodeNumber(entry);
   const title = movie ? mediaTitle(media) : details?.title ?? entry.name;
   const watch = watchView(entry, progress);

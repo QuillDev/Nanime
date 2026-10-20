@@ -37,7 +37,6 @@ export function NotificationBell(): React.JSX.Element {
       {matching !== null && (
         <AniListLinkDialog
           currentMedia={undefined}
-          initialProvider="anilist"
           metadataKey={showMetadataKey(matching.name)}
           suggestedSearch={matching.name}
           subject="show"

@@ -17,8 +17,6 @@ interface EpisodeGridProps {
   readonly media: AniListMedia | undefined;
   readonly progress: PlaybackProgressMap;
   readonly onSelect: (entry: MediaEntry) => void;
-  readonly showMedia: AniListMedia | undefined;
-  readonly seasonNumber: number;
   readonly transcode: SeasonTranscodeSummary;
   readonly canRename: boolean;
 }
@@ -28,8 +26,6 @@ export function EpisodeGrid({
   media,
   progress,
   onSelect,
-  showMedia,
-  seasonNumber,
   transcode,
   canRename,
 }: EpisodeGridProps): React.JSX.Element {
@@ -76,8 +72,6 @@ export function EpisodeGrid({
             onSelect={onSelect}
             onSetWatched={handleSetWatched}
             pending={watchedState.isPending && watchedState.variables?.rel === entry.rel}
-            showMedia={showMedia}
-            seasonNumber={seasonNumber}
             transcode={transcode.episodes.get(entry.rel) ?? READY}
             canRename={canRename}
           />

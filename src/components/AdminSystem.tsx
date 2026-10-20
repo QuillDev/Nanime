@@ -93,7 +93,7 @@ export function AdminSystem(): React.JSX.Element {
         </ul>
         <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
           <RefreshCw aria-hidden="true" className="size-3" />
-          Metadata refreshes run slowly to stay inside AniList and TVmaze rate limits.
+          Metadata refreshes run slowly to stay inside the AniList rate limit.
         </p>
       </section>
     </AdminPage>

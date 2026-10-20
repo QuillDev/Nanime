@@ -10,7 +10,6 @@ import {
   isMovieMedia,
   primaryShowMetadata,
   seasonMetadata,
-  seasonNumber,
   showMetadataKey,
   type ShowGroup,
 } from "./library.ts";
@@ -73,11 +72,8 @@ function orderedEpisodes(show: ShowGroup, metadata: ShowMetadata): readonly Show
 function continueItem(options: ContinueItemOptions): ContinueWatchingItem {
   const { show, episode, metadata, saved, kind } = options;
   const dismissRel = options.dismissRel ?? episode.entry.rel;
-  const { entry, media, movie, season, showMedia } = episode;
-  const details = movie ? undefined : episodeMetadata(entry, media, {
-    showMedia,
-    season: seasonNumber(season, media),
-  });
+  const { entry, media, movie } = episode;
+  const details = movie ? undefined : episodeMetadata(entry, media);
   return {
     dismissRel,
     entry,

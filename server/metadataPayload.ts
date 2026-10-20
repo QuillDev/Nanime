@@ -53,27 +53,32 @@ function validMediaCollections(media: JsonObject): boolean {
     Array.isArray(media["streamingEpisodes"]);
 }
 
-/** Validates a stored provider payload, including ones older versions wrote. */
+/** Episode data older versions attached to show payloads. */
+interface LegacyTvmazeFields {
+  readonly tvmaze?: unknown;
+  readonly tvmazeCheckedAt?: unknown;
+}
+
+/**
+ * Validates a stored AniList payload, including ones older versions wrote.
+ * Payloads from removed providers (Jikan) are dropped, and the TVmaze episode
+ * data older versions attached is left out.
+ */
 export function mediaFromUnknown(value: unknown): AnimeMetadata | null {
   const media = jsonObject(value);
   const title = jsonObject(media?.["title"]);
   const coverImage = jsonObject(media?.["coverImage"]);
   if (media === null || !validMediaIdentity(media, title, coverImage) ||
-    !validMediaDetails(media) || !validMediaCollections(media)) {
+    !validMediaDetails(media) || !validMediaCollections(media) ||
+    (media["provider"] !== undefined && media["provider"] !== "anilist")) {
     return null;
   }
-  const provider = media["provider"] === "jikan" ? "jikan" : "anilist";
+  const { tvmaze: _tvmaze, tvmazeCheckedAt: _checkedAt, ...stored } = value as AnimeMetadata & LegacyTvmazeFields;
   const storedAniListId = media["anilistId"];
-  let anilistId: number | null = null;
-  if (typeof storedAniListId === "number") {
-    anilistId = storedAniListId;
-  } else if (provider === "anilist") {
-    anilistId = media["id"] as number;
-  }
   return {
-    ...(value as AnimeMetadata),
-    provider,
-    anilistId,
+    ...stored,
+    provider: "anilist",
+    anilistId: typeof storedAniListId === "number" ? storedAniListId : media["id"] as number,
     startDate: mediaDate(media["startDate"]),
   };
 }

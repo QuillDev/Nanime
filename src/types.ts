@@ -2,7 +2,6 @@ import type {
   AuthUser,
   PlaybackProgress,
   TranscodePreset,
-  TvmazeMatch,
 } from "../shared/types.ts";
 
 export type { PreferredAudioLanguage } from "../shared/audioLanguage.ts";
@@ -28,7 +27,6 @@ export type {
   TrickplayManifest,
   TorrentStatus,
   TranscodePreset,
-  TvmazeEpisode,
   UploadActivityState,
 } from "../shared/types.ts";
 
@@ -80,7 +78,7 @@ export interface MediaDate {
   readonly day: number | null;
 }
 
-export type MetadataProvider = "anilist" | "jikan";
+export type MetadataProvider = "anilist";
 
 export interface AniListMedia {
   readonly provider: MetadataProvider;
@@ -102,8 +100,6 @@ export interface AniListMedia {
   readonly averageScore: number | null;
   readonly siteUrl: string;
   readonly streamingEpisodes: readonly AniListEpisode[];
-  readonly tvmaze?: TvmazeMatch | null;
-  readonly tvmazeCheckedAt?: number;
 }
 
 export type ShowMetadata = Readonly<Record<string, AniListMedia>>;

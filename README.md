@@ -2,7 +2,7 @@
 
 Nanime is a self-hosted anime library and streaming PWA. It scans local media,
 tracks playback, serves subtitles and audio tracks, and uses ffmpeg for HLS
-playback and transcoding. Metadata comes from Jikan, AniList, and TVmaze.
+playback and transcoding. Metadata comes from AniList.
 AniList account sync and qBittorrent download management are optional.
 
 ![Nanime library home](docs/library.jpg)

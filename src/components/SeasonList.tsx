@@ -97,8 +97,6 @@ function SeasonSection({
             media={listMedia}
             progress={progress}
             onSelect={onEpisodeSelect}
-            showMedia={showMedia}
-            seasonNumber={number}
             transcode={transcode}
             canRename={canTranscode}
           />
