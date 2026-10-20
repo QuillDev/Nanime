@@ -15,6 +15,7 @@ export function utilityAnswer(name: string, args: readonly unknown[]): BridgeVal
     case "crypto_aes_decrypt": { return decryptAesCryptoJs(text(a), text(b)); }
     case "crypto_gcm": { return decryptAesGcm({ encrypted: text(a), keyHex: text(b), ivHex: text(c), tagHex: text(d) }); }
     case "unpack": { return unpackJs(text(a)); }
+    case "base64_decode": { return Buffer.from(text(a).replaceAll("-", "+").replaceAll("_", "/"), "base64").toString("utf8"); }
     case "parse_dates": { return JSON.stringify(parseDates(Array.isArray(a) ? a : [], text(b), text(c))); }
     default: { return undefined; }
   }

@@ -187,6 +187,8 @@ unpack helpers) and no file, process or private-network access
 `NANIME_SOURCE_ALLOW_PRIVATE_NETWORK=1`). A queued episode is resolved by its
 plugin when it starts, since video links expire: a magnet goes to qBittorrent,
 anything else downloads like a direct link, with subtitle tracks saved as
-`<episode>.<lang>.srt`. Plugins that need Mangayomi's in-app WebView or its
-native video extractors aren't supported. Route tests use the fictional
+`<episode>.<lang>.srt`. Mangayomi's video host extractors (sibnet, VOE,
+StreamWish, Filemoon, Mp4upload, ...) are JavaScript ports in
+`sourceExtractors.ts`; the Quark/UC drives and GogoCDN answer no videos.
+Plugins that need Mangayomi's in-app WebView aren't supported. Route tests use the fictional
 repository in `server/testSourcePlugins.ts`.
