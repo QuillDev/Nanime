@@ -2,13 +2,12 @@ import { Library, Settings } from "lucide-react";
 import type { AuthUser } from "../types.ts";
 import { navigateToAdmin, navigateToShows } from "../hooks/useMediaRoute.ts";
 import { preloadAdminApp, preloadMediaApp } from "../routeModules.ts";
-import { HeaderActivity } from "./HeaderActivity.tsx";
 import { UserMenu } from "./UserMenu.tsx";
 
-/** Library/Admin switch, live activity and the account menu; a bottom bar on touch screens. */
+/** Library/Admin/Profile tabs; a bottom bar on touch screens. */
 export function PrimaryNav({ user, view }: { readonly user: AuthUser; readonly view: "library" | "admin" | "profile" }): React.JSX.Element {
   return (
-    <nav className="mobile-account-controls ml-auto" aria-label="Primary navigation">
+    <nav className="mobile-account-controls" aria-label="Primary navigation">
       <button
         type="button"
         data-active={view === "library"}
@@ -37,7 +36,6 @@ export function PrimaryNav({ user, view }: { readonly user: AuthUser; readonly v
           <span className="mobile-nav-label">Admin</span>
         </button>
       )}
-      <HeaderActivity isAdmin={user.isAdmin} />
       <UserMenu active={view === "profile"} />
     </nav>
   );
