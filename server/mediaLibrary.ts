@@ -222,6 +222,12 @@ export function listMedia(options: LibraryOptions): Promise<readonly MediaEntry[
   return identifiedEntries(options);
 }
 
+/** The folders that hold videos, from the cached library (scanning first if it never ran). */
+export async function listVideoFolders(options: LibraryOptions): Promise<readonly string[]> {
+  const scanned = state.get() === null ? await refreshMediaLibrary(options) : cachedEntries();
+  return [...new Set(scanned.map((entry) => entry.folder))];
+}
+
 export function libraryStatusResponse(): Response {
   return Response.json(libraryStatus());
 }

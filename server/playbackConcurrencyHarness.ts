@@ -40,7 +40,6 @@ const options = {
 const context = {
   root: media, videoExtensions: new Set([".mkv"]),
   lockSources: { roots: [media], torrents: () => Promise.resolve({ state: "available" as const, payloads: [] }), uploads: () => [] },
-  metadataBusy: () => false,
   beginMutation: () => { onMutation?.(); return () => undefined; },
   afterCommit: () => Promise.resolve(undefined),
 };

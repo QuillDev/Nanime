@@ -82,7 +82,7 @@ async function renameEpisode() {
   const stats = await fs.lstat(join(media, rel));
   return performLibraryFileOperation({ actor, context: { root: media, videoExtensions: options.videoExtensions,
     lockSources: { roots: [media], torrents: () => Promise.resolve({ state: "unconfigured", payloads: [] }), uploads: () => [] },
-    metadataBusy: () => false, beginMutation: () => () => undefined, afterCommit: () => Promise.resolve(undefined),
+    beginMutation: () => () => undefined, afterCommit: () => Promise.resolve(undefined),
   }, request: { type: "rename", item: { path: rel, id: entryId(stats) }, name: "renamed.mkv" } });
 }
 async function blocked() {

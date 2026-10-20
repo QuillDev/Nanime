@@ -82,8 +82,8 @@ export function recordMappingActivity(options: {
   readonly next: AnimeMetadata;
   readonly write: () => void;
 }): void {
+  // The write goes last: if it throws, the activity entry rolls back with it.
   const commit = database.transaction(() => {
-    options.write();
     insertActivity.run(
       options.actor.id,
       options.actor.username,
@@ -93,6 +93,7 @@ export function recordMappingActivity(options: {
       storedState(mappingState(options.key, options.next)) as string,
       Date.now(),
     );
+    options.write();
   });
   commit();
 }

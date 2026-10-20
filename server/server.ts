@@ -3,6 +3,7 @@ import { extname, join, resolve, sep } from "node:path";
 import type { Server } from "bun";
 import {
   aniListErrorResponse,
+  configureMetadataLibrary,
   linkAniListResponse,
   linkJikanResponse,
   jikanErrorResponse,
@@ -38,6 +39,7 @@ import {
   libraryStatusResponse,
   libraryActivityResponse,
   listMedia,
+  listVideoFolders,
   mediaIdentityAt,
   refreshLibraryResponse,
 } from "./mediaLibrary.ts";
@@ -90,11 +92,10 @@ const OFFLINE_MEDIA_OPTIONS = {
   videoExtensions: VIDEO_EXTS,
   directPlayExtensions: DIRECT_PLAY,
 } as const;
-const ADMIN_LIBRARY = adminLibraryRoutes({
-  mediaDir: MEDIA_DIR,
-  mediaRoot: MEDIA_ROOT,
-  videoExtensions: VIDEO_EXTS,
-  directPlayExtensions: DIRECT_PLAY,
+const ADMIN_LIBRARY = adminLibraryRoutes(OFFLINE_MEDIA_OPTIONS);
+configureMetadataLibrary({
+  root: MEDIA_ROOT,
+  videoFolders: () => listVideoFolders(OFFLINE_MEDIA_OPTIONS),
 });
 await ADMIN_LIBRARY.recover();
 const TRANSCODE_OPTIONS = { mediaDir: MEDIA_DIR, mediaRoot: MEDIA_ROOT, videoExtensions: VIDEO_EXTS } as const;

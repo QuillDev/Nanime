@@ -1,6 +1,4 @@
-import type { LibraryMappingMovement } from "../shared/libraryFiles.ts";
 import { database } from "./database.ts";
-import { applyMappingMoves } from "./libraryMappings.ts";
 import { baseName, hasInternalSegment, LibraryFileError, parentPath } from "./libraryPaths.ts";
 import { recordPathMove } from "./mediaPathHistory.ts";
 
@@ -85,7 +83,6 @@ function moveLibraryRows(move: PathMove): void {
 export interface LibraryRemap {
   readonly operationId: string;
   readonly moves: readonly PathMove[];
-  readonly mappings: readonly LibraryMappingMovement[];
   readonly now: number;
 }
 
@@ -95,7 +92,7 @@ export interface LibraryRemap {
  * never rewritten; path history lets readers follow it instead.
  */
 export function remapLibraryState(remap: LibraryRemap): void {
-  const { operationId, moves, mappings, now } = remap;
+  const { operationId, moves, now } = remap;
   rejectStaleDestinations(moves);
   database.run("PRAGMA defer_foreign_keys = ON");
   for (const move of moves) {
@@ -106,5 +103,4 @@ export function remapLibraryState(remap: LibraryRemap): void {
     moveLibraryRows(move);
     recordPathMove({ operationId, from: move.from, to: move.to, createdAt: now });
   }
-  applyMappingMoves(mappings, now);
 }
