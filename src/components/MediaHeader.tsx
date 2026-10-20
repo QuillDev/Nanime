@@ -3,6 +3,7 @@ import type { AuthUser, ShowMetadata } from "../types.ts";
 import type { ShowGroup } from "../lib/library.ts";
 import { navigateToShows } from "../hooks/useMediaRoute.ts";
 import { BrandLogo } from "./BrandLogo.tsx";
+import { HeaderActivity } from "./HeaderActivity.tsx";
 import { LibrarySearch } from "./LibrarySearch.tsx";
 import { PrimaryNav } from "./PrimaryNav.tsx";
 import { useHeaderSurface } from "../hooks/useScrolled.ts";
@@ -48,6 +49,7 @@ export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
           onShowSelect={props.onShowSelect}
         />
       )}
+      <HeaderActivity isAdmin={user.isAdmin} />
       <PrimaryNav user={user} view={view} />
     </header>
   );
