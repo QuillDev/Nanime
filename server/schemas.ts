@@ -269,20 +269,6 @@ const trickplayReadySchema = object({
   sheetCount: integer({ minimum: 1 }),
 });
 export const trickplayManifestSchema = union([trickplayReadySchema, trickplayPendingSchema]);
-export const nyaaSearchResultSchema = object({
-  id: string(),
-  name: string(),
-  category: string(),
-  size: string(),
-  seeders: number(),
-  leechers: number(),
-  downloads: number(),
-  publishedAt: string(),
-  trusted: boolean(),
-  remake: boolean(),
-  detailsUrl: string(),
-  magnet: string(),
-});
 export const credentialsSchema = object({ username: string(), password: string() });
 
 export const schema = {

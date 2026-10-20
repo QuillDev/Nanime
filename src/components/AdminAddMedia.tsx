@@ -1,11 +1,10 @@
 import { useCallback, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
-import { Paperclip, Plus, Search } from "lucide-react";
+import { Paperclip, Plus } from "lucide-react";
 import { useAddTorrent } from "../hooks/useAddTorrent.ts";
 import { useUploadMedia } from "../hooks/useUploadMedia.ts";
 import { ADD_MEDIA_ACCEPT, isMagnetLink, sortAddedFiles } from "../lib/addMedia.ts";
 import { cn } from "../lib/utils.ts";
 import type { MediaUploadProgress } from "../mediaUpload.ts";
-import { AdminNyaaSearchDialog } from "./AdminNyaaSearch.tsx";
 import { AddMediaStatus } from "./AddMediaStatus.tsx";
 import { SearchableSelect } from "./ui/SearchableSelect.tsx";
 
@@ -51,21 +50,17 @@ function useDropZone(onFiles: (files: readonly File[]) => void) {
 
 function useAddBar(showFolders: readonly string[]) {
   const [text, setText] = useState("");
-  const [search, setSearch] = useState<string | null>(null);
   const destination = useDestination(showFolders);
   const intake = useFileIntake(destination.folder);
   const magnet = isMagnetLink(text);
   const handleText = useCallback((event: ChangeEvent<HTMLInputElement>) => setText(event.target.value), []);
-  const handleSearchOpen = useCallback((open: boolean) => setSearch(open ? search : null), [search]);
   const handleSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (magnet) {
       intake.addTorrent.mutate({ file: null, magnet: text.trim(), showFolder: destination.folder }, { onSuccess: () => setText("") });
-      return;
     }
-    setSearch(text.trim());
   }, [destination.folder, intake.addTorrent, magnet, text]);
-  return { text, search, destination, intake, magnet, handleText, handleSearchOpen, handleSubmit };
+  return { text, destination, intake, magnet, handleText, handleSubmit };
 }
 
 function useFilePicker(onFiles: (files: readonly File[]) => void) {
@@ -78,23 +73,23 @@ function useFilePicker(onFiles: (files: readonly File[]) => void) {
   return { fileInput, handleBrowse, handleFiles };
 }
 
-/** One bar for every way media arrives: magnet links, Nyaa searches, .torrent files and video uploads. */
+/** One bar for media you already have: magnet links, .torrent files and video uploads. Searching sources is under Find. */
 export function AdminAddMedia({ showFolders }: { readonly showFolders: readonly string[] }): React.JSX.Element {
-  const { text, search, destination, intake, magnet, handleText, handleSearchOpen, handleSubmit } = useAddBar(showFolders);
+  const { text, destination, intake, magnet, handleText, handleSubmit } = useAddBar(showFolders);
   const { fileInput, handleBrowse, handleFiles } = useFilePicker(intake.addFiles);
   const drop = useDropZone(intake.addFiles);
   const handleFolder = destination.setFolder;
   return (
     <div onDragOver={drop.handleDragOver} onDragLeave={drop.handleDragLeave} onDrop={drop.handleDrop}>
       <form onSubmit={handleSubmit} className={cn("flex flex-wrap items-center gap-2 rounded-xl transition-shadow", drop.dragging && "ring-2 ring-primary ring-offset-4 ring-offset-background")}>
-        <label htmlFor="admin-add-media" className="sr-only">Magnet link or Nyaa search</label>
+        <label htmlFor="admin-add-media" className="sr-only">Magnet link</label>
         <div className="flex min-w-60 flex-1 items-center rounded-lg border border-input bg-secondary focus-within:ring-2 focus-within:ring-ring">
           <input
             id="admin-add-media"
             value={text}
             onChange={handleText}
             autoComplete="off"
-            placeholder="Paste a magnet link, search Nyaa, or drop files"
+            placeholder="Paste a magnet link or drop files"
             className="h-10 min-w-0 flex-1 bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground"
           />
           <button type="button" onClick={handleBrowse} aria-label="Choose .torrent or video files" title="Choose .torrent or video files" className="mr-1 flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground">
@@ -105,13 +100,12 @@ export function AdminAddMedia({ showFolders }: { readonly showFolders: readonly 
         <div className="w-48">
           <SearchableSelect value={destination.folder} options={destination.options} onValueChange={handleFolder} placeholder="Destination" searchPlaceholder="Search library folders…" ariaLabel="Destination" />
         </div>
-        <button type="submit" disabled={text.trim().length < 2 || intake.addTorrent.isPending} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-foreground px-4 text-sm font-semibold text-background hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground">
-          {magnet ? <Plus className="size-4" /> : <Search className="size-4" />}
-          {magnet ? "Add" : "Search"}
+        <button type="submit" disabled={!magnet || intake.addTorrent.isPending} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-foreground px-4 text-sm font-semibold text-background hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground">
+          <Plus className="size-4" />
+          Add
         </button>
       </form>
       <AddMediaStatus addError={intake.addTorrent.error} added={intake.addTorrent.isSuccess} uploadError={intake.upload.error} uploaded={intake.upload.isSuccess} progress={intake.progress} />
-      <AdminNyaaSearchDialog open={search !== null} onOpenChange={handleSearchOpen} search={search ?? ""} showFolder={destination.folder} />
     </div>
   );
 }

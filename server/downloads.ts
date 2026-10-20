@@ -226,8 +226,8 @@ export interface DownloadRoutes {
 }
 
 /**
- * `/api/downloads` (list, add, and pause/resume/cancel per id) plus the torrent
- * file upload and Nyaa search under `/api/torrents`. Admin-only, checked by the
+ * `/api/downloads` (list, add, and pause/resume/cancel per id) plus adding a
+ * magnet or torrent file under `/api/torrents`. Admin-only, checked by the
  * caller.
  */
 export function downloadRoutes(configuration: DownloadsConfiguration): DownloadRoutes {

@@ -26,7 +26,7 @@ const settingSchema = schema.object({
   options: schema.array(optionSchema),
   value: settingValueSchema,
 });
-const resultSchema = schema.object({ name: schema.string(), imageUrl: nullableString, link: schema.string() });
+const resultSchema = schema.object({ name: schema.string(), imageUrl: nullableString, description: nullableString, link: schema.string() });
 const episodeSchema = schema.object({ name: schema.string(), url: schema.string(), number: schema.number() });
 const detailSchema = schema.object({
   name: schema.string(), imageUrl: nullableString, description: nullableString, genres: schema.array(schema.string()), episodes: schema.array(episodeSchema),
