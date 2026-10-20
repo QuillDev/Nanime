@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 const SETUP_TOKEN = "library-files-test-setup-token-000001";
-const ADMIN_PASSWORD = "library-files-test-admin-password";
+export const ADMIN_PASSWORD = "library-files-test-admin-password";
 export const VIEWER_PASSWORD = "library-files-viewer-password";
 
 export interface FakeTorrent {

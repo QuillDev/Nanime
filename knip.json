@@ -1,1 +1,1 @@
-{ "$schema": "https://unpkg.com/knip@5/schema.json", "entry": ["src/main.tsx", "server/app.ts", "src/preview/main.tsx", "server/capturePreviewSnapshot.ts"] }
+{ "$schema": "https://unpkg.com/knip@5/schema.json", "entry": ["src/main.tsx", "server/app.ts", "src/preview/main.tsx", "server/capturePreviewSnapshot.ts", "server/mcp.ts"] }
