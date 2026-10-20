@@ -30,7 +30,7 @@
     "@tanstack/react-query": "^5.102.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "elysia": "^1.4.29",
+    "elysia": "^1.4.30",
     "hls.js": "^1.7.1",
     "lucide-react": "^1.33.0",
     "react": "^19.2.0",
