@@ -76,7 +76,7 @@ const container = document.querySelector("#root");
 if (container === null) {
   throw new Error("Root container #root is missing");
 }
-const adminRequest = { "admin-find-results": "admin-find", "admin-find-torrents": "admin-find", "admin-find-show": "admin-find", "admin-find-sources": "admin-find", "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-agents-new": "admin-agents", "admin-agents-created": "admin-agents", "admin-notifications": "admin-downloads", "admin-notifications-match": "admin-downloads", "admin-account": "admin-downloads" }[requested] ?? requested;
+const adminRequest = { "admin-find-results": "admin-find", "admin-find-torrents": "admin-find", "admin-find-show": "admin-find", "admin-find-sources": "admin-find", "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-agents-new": "admin-agents", "admin-agents-created": "admin-agents", "admin-agents-created-codex": "admin-agents", "admin-agents-created-claude": "admin-agents", "admin-notifications": "admin-downloads", "admin-notifications-match": "admin-downloads", "admin-account": "admin-downloads" }[requested] ?? requested;
 const adminTab = adminRequest.startsWith("admin-") && isAdminTab(adminRequest.slice(6)) ? adminRequest.slice(6) as AdminTab : null;
 // "admin-users-invite" opens the invite dialog; "admin-agents-new" the new agent key dialog.
 if (requested === "admin-users-invite" || requested === "admin-agents-new") {
@@ -112,6 +112,14 @@ if (requested.startsWith("admin-find-")) {
     }
   }, 400);
 }
+// "admin-agents-created-codex|claude" picks that agent's setup prompt.
+if (requested.startsWith("admin-agents-created-")) {
+  setTimeout(() => {
+    const choice = document.querySelector<HTMLInputElement>(`input[name=agent-kind][value=${requested.slice("admin-agents-created-".length)}]`);
+    choice?.click();
+    choice?.focus();
+  }, 400);
+}
 // "admin-account" opens the avatar menu.
 if (requested === "admin-account") {
   setTimeout(() => {
@@ -132,7 +140,7 @@ function PreviewPage(): React.JSX.Element {
     return <SkeletonPreview page={requested.slice("skeleton-".length)} />;
   }
   if (adminTab !== null) {
-    return <AdminPreview tab={adminTab} createdKey={requested === "admin-agents-created"} />;
+    return <AdminPreview tab={adminTab} createdKey={requested.startsWith("admin-agents-created")} />;
   }
   if (profileState) {
     return <ProfilePreview />;

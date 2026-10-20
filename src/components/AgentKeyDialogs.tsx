@@ -3,7 +3,7 @@ import { Check, Copy } from "lucide-react";
 import type { AgentKey } from "../../shared/types.ts";
 import type { CreatedAgentKey, McpCommand } from "../agentKeysApi.ts";
 import { useCreateAgentKey, useRevokeAgentKey } from "../hooks/useAgentKeys.ts";
-import { hermesConfig } from "../lib/agentConfig.ts";
+import { AGENT_KINDS, agentSetupPrompt, type AgentKind } from "../lib/agentConfig.ts";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog.tsx";
 import { Input } from "./ui/input.tsx";
 
@@ -17,31 +17,58 @@ interface CreatedProps {
   readonly onDone: () => void;
 }
 
-/** The new key inside a ready-to-paste Hermes config, shown once. */
-export function AgentKeyCreated({ created, mcp, origin, onDone }: CreatedProps): React.JSX.Element {
-  const config = hermesConfig(mcp, origin, created.key);
+function AgentPicker({ value, onSelect }: { readonly value: AgentKind; readonly onSelect: (event: ChangeEvent<HTMLInputElement>) => void }): React.JSX.Element {
+  return (
+    <fieldset aria-label="Agent" className="inline-flex w-fit rounded-lg bg-secondary p-0.5">
+      {AGENT_KINDS.map((option) => (
+        <label key={option.kind} className="cursor-pointer">
+          <input type="radio" name="agent-kind" value={option.kind} checked={value === option.kind} onChange={onSelect} className="peer sr-only" />
+          <span className="block rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground peer-checked:bg-accent peer-checked:text-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring">
+            {option.label}
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+function useCopy(text: string) {
   const [copy, setCopy] = useState<"copied" | "failed" | "idle">("idle");
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(config);
+      await navigator.clipboard.writeText(text);
       setCopy("copied");
     } catch {
       setCopy("failed");
     }
-  }, [config]);
+  }, [text]);
+  return { copy, setCopy, handleCopy };
+}
+
+/** The new key inside a setup prompt to paste into the chosen agent, shown once. */
+export function AgentKeyCreated({ created, mcp, origin, onDone }: CreatedProps): React.JSX.Element {
+  const [kind, setKind] = useState<AgentKind>("hermes");
+  const prompt = agentSetupPrompt(kind, { mcp, origin, key: created.key });
+  const { copy, setCopy, handleCopy } = useCopy(prompt);
+  const handleKind = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const chosen = AGENT_KINDS.find((option) => option.kind === event.target.value);
+    setKind(chosen?.kind ?? "hermes");
+    setCopy("idle");
+  }, [setCopy]);
   return (
     <>
       <DialogHeader>
         <DialogTitle>Key for {created.agentKey.name}</DialogTitle>
-        <DialogDescription>Add this to Hermes’s config.yaml. The key can’t be shown again after you close this.</DialogDescription>
+        <DialogDescription>Paste this into your agent and it sets itself up. The key can’t be shown again after you close this.</DialogDescription>
       </DialogHeader>
-      <pre aria-label="Hermes MCP config" className="max-h-72 select-all overflow-auto whitespace-pre rounded-lg bg-secondary p-3 font-mono text-xs leading-relaxed text-foreground">{config}</pre>
-      {copy === "failed" && <p className="text-sm text-destructive">Copy failed. Select the config and copy it manually.</p>}
+      <AgentPicker value={kind} onSelect={handleKind} />
+      <pre aria-label="Setup prompt" className="max-h-72 select-all overflow-auto whitespace-pre-wrap rounded-lg [overflow-wrap:anywhere] bg-secondary p-3 font-mono text-xs leading-relaxed text-foreground">{prompt}</pre>
+      {copy === "failed" && <p className="text-sm text-destructive">Copy failed. Select the prompt and copy it manually.</p>}
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onDone} className={quietButton}>Done</button>
         <button type="button" onClick={handleCopy} className={primaryButton}>
           {copy === "copied" ? <Check className="size-4" /> : <Copy className="size-4" />}
-          {copy === "copied" ? "Copied" : "Copy config"}
+          {copy === "copied" ? "Copied" : "Copy prompt"}
         </button>
       </div>
     </>
