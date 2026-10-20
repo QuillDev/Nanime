@@ -201,17 +201,19 @@ export const aniListMediaSchema = object({
   siteUrl: string(),
   streamingEpisodes: array(streamingEpisodeSchema),
 });
-export const torrentStatusSchema = object({
-  hash: string(),
+export const downloadStatusSchema = object({
+  id: string(),
+  kind: union([literal("torrent"), literal("file")]),
   name: string(),
   showFolder: nullableString,
+  state: union([literal("queued"), literal("downloading"), literal("paused"), literal("stalled"), literal("failed")]),
   progress: number(),
   downloadSpeed: number(),
   eta: number(),
   completed: number(),
   size: number(),
-  state: string(),
   addedOn: number(),
+  error: nullableString,
 });
 export const storageStatusSchema = object({
   totalBytes: number(),

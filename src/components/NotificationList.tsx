@@ -67,7 +67,7 @@ export function NotificationList({ notifications, onMatch, onNavigate }: Notific
       )}
       {downloads.length > 0 && (
         <Section title="Downloads">
-          {downloads.map((torrent) => <DownloadRow key={torrent.hash} torrent={torrent} metadata={metadata} onNavigate={onNavigate} />)}
+          {downloads.map((download) => <DownloadRow key={download.id} download={download} metadata={metadata} onNavigate={onNavigate} />)}
         </Section>
       )}
       {transcodes.length > 0 && (

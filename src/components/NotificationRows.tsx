@@ -1,10 +1,10 @@
 import { useCallback } from "react";
 import { Film } from "lucide-react";
 import { navigateToAdminTab } from "../hooks/useMediaRoute.ts";
-import { torrentDisplay } from "../lib/torrentDisplay.ts";
+import { downloadDisplay } from "../lib/downloadDisplay.ts";
 import { jobStatus } from "../lib/transcodeDisplay.ts";
 import { episodeShortLabel, profileEpisode, type ProfileEpisodes } from "../lib/profileMedia.ts";
-import type { ShowMetadata, TorrentStatus, TranscodeJob } from "../types.ts";
+import type { DownloadStatus, ShowMetadata, TranscodeJob } from "../types.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
 
 const ROW = "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -13,11 +13,11 @@ interface RowProps {
   readonly onNavigate: () => void;
 }
 
-export function DownloadRow({ torrent, metadata, onNavigate }: RowProps & {
-  readonly torrent: TorrentStatus;
+export function DownloadRow({ download, metadata, onNavigate }: RowProps & {
+  readonly download: DownloadStatus;
   readonly metadata: ShowMetadata;
 }): React.JSX.Element {
-  const display = torrentDisplay(torrent, metadata);
+  const display = downloadDisplay(download, metadata);
   const problem = display.tone === "problem";
   const handleOpen = useCallback(() => {
     onNavigate();
@@ -33,9 +33,9 @@ export function DownloadRow({ torrent, metadata, onNavigate }: RowProps & {
           <span className="block truncate font-medium">{display.title}</span>
           <span className="mt-0.5 block truncate text-xs text-muted-foreground">
             <span className={problem ? "font-semibold text-warning" : undefined}>{display.status}</span>
-            {` · ${String(Math.round(torrent.progress * 100))}%`}
+            {` · ${String(Math.round(download.progress * 100))}%`}
           </span>
-          <progress aria-label={`${display.title} download progress`} max={1} value={torrent.progress} className={`${problem ? "warning-progress" : "playback-progress"} mt-1.5 block h-0.75 w-full`} />
+          <progress aria-label={`${display.title} download progress`} max={1} value={download.progress} className={`${problem ? "warning-progress" : "playback-progress"} mt-1.5 block h-0.75 w-full`} />
         </span>
       </button>
     </li>

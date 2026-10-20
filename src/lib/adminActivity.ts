@@ -1,4 +1,4 @@
-import type { TorrentStatus, TranscodeJob } from "../types.ts";
+import type { DownloadStatus, TranscodeJob } from "../types.ts";
 
 export interface ActivitySummary {
   /** Short live value for the sidebar (count or percent); empty when idle. */
@@ -9,19 +9,14 @@ export interface ActivitySummary {
 
 const IDLE: ActivitySummary = { label: "", progress: null };
 
-export function isActiveTorrent(torrent: TorrentStatus): boolean {
-  return torrent.progress < 1;
-}
-
 /** Number of unfinished downloads and their combined byte progress. */
-export function downloadsSummary(torrents: readonly TorrentStatus[]): ActivitySummary {
-  const active = torrents.filter((torrent) => isActiveTorrent(torrent));
-  if (active.length === 0) {
+export function downloadsSummary(downloads: readonly DownloadStatus[]): ActivitySummary {
+  if (downloads.length === 0) {
     return IDLE;
   }
-  const size = active.reduce((total, torrent) => total + torrent.size, 0);
-  const done = active.reduce((total, torrent) => total + torrent.completed, 0);
-  return { label: String(active.length), progress: size > 0 ? done / size : 0 };
+  const size = downloads.reduce((total, download) => total + download.size, 0);
+  const done = downloads.reduce((total, download) => total + download.completed, 0);
+  return { label: String(downloads.length), progress: size > 0 ? done / size : 0 };
 }
 
 /** Percent of the running transcode, else the queued count. */

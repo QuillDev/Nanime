@@ -65,3 +65,16 @@ export function runScript(script: string, env: ChildEnvironment): Promise<ChildR
 export function runHarness(file: string, args: readonly string[], env: ChildEnvironment): Promise<ChildResult> {
   return runBun([join(REPOSITORY, "server", file), ...args], env);
 }
+
+/** Polls `probe` until it returns a value, failing with `what` after `timeoutMs`. */
+export async function waitUntil<T>(what: string, probe: () => Promise<T | undefined>, timeoutMs = 30_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await probe();
+    if (value !== undefined) {
+      return value;
+    }
+    await Bun.sleep(50);
+  }
+  throw new Error(`Timed out waiting for ${what}`);
+}

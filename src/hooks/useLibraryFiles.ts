@@ -50,7 +50,7 @@ export function useEpisodeNames() {
     mutationFn: (body: EpisodeNamesBody) => sendEpisodeNames(body),
     onSettled: async () => {
       await refreshLibraryCache(client);
-      await Promise.all([refreshAfterFileOperation(client), client.invalidateQueries({ queryKey: ["torrents"] })]);
+      await Promise.all([refreshAfterFileOperation(client), client.invalidateQueries({ queryKey: ["downloads"] })]);
     },
   });
 }
