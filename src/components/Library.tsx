@@ -7,6 +7,7 @@ import type {
   TorrentStatus,
 } from "../types.ts";
 import {
+  seasonDisplayName,
   seasonMetadataKey,
   isMovieMedia,
   primaryShowMetadata,
@@ -164,7 +165,7 @@ function selectedDisplayName(show: ShowGroup | null, media: AniListMedia | undef
 
 function suggestedMetadataSearch(target: LinkTarget | null, displayName: string): string {
   if (target?.type === "season" && target.season.name !== "Episodes") {
-    return `${displayName} ${target.season.name}`;
+    return `${displayName} ${seasonDisplayName(target.season)}`;
   }
   return displayName;
 }

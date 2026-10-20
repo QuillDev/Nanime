@@ -2,7 +2,7 @@ import { Elysia } from "elysia";
 import { jsonRequest } from "./requestBody.ts";
 import { handle } from "./server.ts";
 import {
-  createFolderBodySchema, fileOperationResultSchema, librarySnapshotSchema, moveBodySchema, renameBodySchema, trashBodySchema,
+  createFolderBodySchema, episodeNamesBodySchema, episodeNamesResultSchema, fileOperationResultSchema, librarySnapshotSchema, moveBodySchema, renameBodySchema, trashBodySchema,
 } from "./libraryFilesSchemas.ts";
 
 // Schemas give Eden end-to-end types; `handle` still applies origin checks,
@@ -22,6 +22,9 @@ export const libraryFilesApp = new Elysia({ name: "library-files" })
   })
   .post("/api/library/files/trash", ({ request, server, body }) => handle(jsonRequest(request, body), server), {
     body: trashBodySchema, response: fileOperationResultSchema,
+  })
+  .post("/api/library/files/episode-names", ({ request, server, body }) => handle(jsonRequest(request, body), server), {
+    body: episodeNamesBodySchema, response: episodeNamesResultSchema,
   })
   .post("/api/library/files/operations/:id/revert", ({ request, server }) => handle(request, server), {
     response: fileOperationResultSchema,

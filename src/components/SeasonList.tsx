@@ -6,6 +6,7 @@ import type {
 } from "../types.ts";
 import {
   isMovieMedia,
+  seasonDisplayName,
   seasonMetadata,
   seasonNumber,
   type SeasonGroup,
@@ -56,7 +57,7 @@ function SeasonSection({
   canTranscode,
 }: SeasonSectionProps): React.JSX.Element {
   const transcode = useSeasonTranscode(season);
-  const title = media === undefined ? season.name : mediaTitle(media);
+  const title = media === undefined ? seasonDisplayName(season) : mediaTitle(media);
   const number = seasonNumber(season, media);
 
   return (
@@ -81,6 +82,9 @@ function SeasonSection({
           season={season}
           title={title}
           onLink={onLink}
+          canRename={canTranscode}
+          showMedia={showMedia}
+          seasonNumber={number}
         />
       </div>
       <CollapsibleContent>
@@ -96,6 +100,7 @@ function SeasonSection({
             showMedia={showMedia}
             seasonNumber={number}
             transcode={transcode}
+            canRename={canTranscode}
           />
         </div>
       </CollapsibleContent>

@@ -1,4 +1,5 @@
 import type { AniListMedia, MediaEntry, TvmazeEpisode } from "../types.ts";
+import { parseNumberedName, type NumberedName } from "../../shared/numberedName.ts";
 
 interface EpisodeMetadata {
   readonly title: string;
@@ -16,7 +17,16 @@ export function mediaTitle(media: AniListMedia): string {
   return media.title.english ?? media.title.romaji;
 }
 
+/** An organized file's `NNN. Title`, read from its name without the extension. */
+export function numberedEpisode(entry: MediaEntry): NumberedName | null {
+  return parseNumberedName(entry.name.replace(/\.[^.]+$/u, ""));
+}
+
 export function episodeNumber(entry: MediaEntry): number | null {
+  const numbered = numberedEpisode(entry);
+  if (numbered !== null) {
+    return numbered.number;
+  }
   const match = /S\d+E(?<number>\d+)/iu.exec(entry.name)
     ?? /\b(?:Episode|Ep|E)\s*0*(?<number>\d+)/iu.exec(entry.name)
     ?? /\s-\s0*(?<number>\d+)(?:\s|[._-])/u.exec(entry.name);
@@ -82,15 +92,12 @@ function findTvmazeEpisode(
   return episodes.find((candidate) => candidate.id === id);
 }
 
-export function episodeMetadata(
+function providerEpisodeMetadata(
   entry: MediaEntry,
   media: AniListMedia | undefined,
-  context?: EpisodeMetadataContext,
+  context: EpisodeMetadataContext | undefined,
 ): EpisodeMetadata | null {
-  const number = episodeNumber(entry);
-  if (number === null) {
-    return null;
-  }
+  const number = episodeNumber(entry) ?? Number.NaN;
   const aniListEpisode = media?.streamingEpisodes.find(
     (candidate) => streamingEpisodeNumber(candidate.title) === number,
   );
@@ -104,4 +111,22 @@ export function episodeMetadata(
     summary: tvmazeEpisode?.summary ?? null,
     airDate: tvmazeEpisode?.airDate ?? null,
   };
+}
+
+export function episodeMetadata(
+  entry: MediaEntry,
+  media: AniListMedia | undefined,
+  context?: EpisodeMetadataContext,
+): EpisodeMetadata | null {
+  const number = episodeNumber(entry);
+  if (number === null) {
+    return null;
+  }
+  const fetched = providerEpisodeMetadata(entry, media, context);
+  // An organized file's name is its title; fetched metadata only adds art and details.
+  const named = numberedEpisode(entry)?.title;
+  if (named === undefined) {
+    return fetched;
+  }
+  return fetched === null ? { title: named, thumbnail: null, summary: null, airDate: null } : { ...fetched, title: named };
 }

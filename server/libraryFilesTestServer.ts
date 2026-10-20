@@ -57,6 +57,12 @@ export async function writeLibraryFixture(media: string): Promise<void> {
 export function startFakeQbittorrent(): FakeQbittorrent {
   let torrents: readonly FakeTorrent[] = [];
   let reachable = true;
+  const removeTorrents = async (request: Request): Promise<Response> => {
+    const form = await request.formData();
+    const hashes = new Set(form.get("hashes")?.toString().split("|"));
+    torrents = torrents.filter((torrent) => !hashes.has(torrent.hash));
+    return new Response("");
+  };
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -64,6 +70,9 @@ export function startFakeQbittorrent(): FakeQbittorrent {
       const { pathname } = new URL(request.url);
       if (!reachable) {
         return new Response("unavailable", { status: 503 });
+      }
+      if (pathname === "/api/v2/torrents/delete") {
+        return removeTorrents(request);
       }
       if (pathname !== "/api/v2/torrents/info") {
         return new Response("Not found", { status: 404 });

@@ -1,6 +1,7 @@
 import { extname } from "node:path";
 import type { AuthUser } from "../shared/types.ts";
 import { recoverLibraryFileOperations, type LibraryFileContext } from "./libraryFileOperations.ts";
+import { episodeNamesResponse } from "./episodeNames.ts";
 import { libraryFilesResponse } from "./libraryFilesRoutes.ts";
 import { absolutePath } from "./libraryPaths.ts";
 import { beginLibraryMutation, noteLibraryMutation, refreshInBackground } from "./mediaLibrary.ts";
@@ -54,6 +55,9 @@ export function adminLibraryRoutes(configuration: AdminLibraryConfiguration): Ad
   const context = libraryFileContext(configuration);
   return {
     respond: ({ req, pathname, url, user }) => {
+      if (pathname === "/api/library/files/episode-names" && req.method === "POST") {
+        return user.isAdmin ? episodeNamesResponse(req, { context, actor: user }) : forbidden();
+      }
       if (pathname === "/api/library/files" || pathname.startsWith("/api/library/files/")) {
         return user.isAdmin ? libraryFilesResponse({ req, pathname, context, actor: user }) : forbidden();
       }

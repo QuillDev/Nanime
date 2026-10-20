@@ -14,6 +14,17 @@ export async function fetchLibraryFiles(signal: AbortSignal): Promise<LibraryFil
 
 const { files } = api.api.library;
 
+export interface EpisodeNamesBody {
+  readonly folder: string;
+  readonly showFolder: string | null;
+  readonly seasonFolder: string | null;
+  readonly episodes: readonly { readonly rel: string; readonly name: string }[];
+}
+
+export async function sendEpisodeNames(body: EpisodeNamesBody): Promise<{ readonly folder: string; readonly stoppedSeeding: boolean }> {
+  return unwrap(await files["episode-names"].post({ ...body, episodes: [...body.episodes] }), "Renaming episodes");
+}
+
 export async function sendLibraryFileRequest(request: LibraryFileRequest): Promise<LibraryFileOperationResult> {
   switch (request.type) {
     case "create-folder": {

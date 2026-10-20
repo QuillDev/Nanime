@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { ChevronRight } from "lucide-react";
 import { useProfileEpisodes } from "../hooks/useProfileEpisodes.ts";
 import { useShowMetadata } from "../hooks/useShowMetadata.ts";
-import type { ShowGroup } from "../lib/library.ts";
+import { seasonDisplayName, type ShowGroup } from "../lib/library.ts";
 import type { Notifications } from "../lib/notifications.ts";
 import type { ShowMetadata } from "../types.ts";
 import { DownloadRow, TranscodeRow } from "./NotificationRows.tsx";
@@ -14,7 +14,7 @@ function seasonLabel(show: ShowGroup): string {
   if (show.seasons.length !== 1 || season === undefined) {
     return `${String(show.seasons.length)} seasons`;
   }
-  return season.name === "Episodes" ? "" : season.name;
+  return season.name === "Episodes" ? "" : seasonDisplayName(season);
 }
 
 function UnmappedRow({ show, onMatch }: { readonly show: ShowGroup; readonly onMatch: (show: ShowGroup) => void }): React.JSX.Element {

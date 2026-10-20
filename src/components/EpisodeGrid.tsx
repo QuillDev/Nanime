@@ -20,6 +20,7 @@ interface EpisodeGridProps {
   readonly showMedia: AniListMedia | undefined;
   readonly seasonNumber: number;
   readonly transcode: SeasonTranscodeSummary;
+  readonly canRename: boolean;
 }
 
 export function EpisodeGrid({
@@ -30,6 +31,7 @@ export function EpisodeGrid({
   showMedia,
   seasonNumber,
   transcode,
+  canRename,
 }: EpisodeGridProps): React.JSX.Element {
   const watchedState = useSetPlaybackWatched();
   const promptForScore = useSeriesCompletionPrompt();
@@ -77,6 +79,7 @@ export function EpisodeGrid({
             showMedia={showMedia}
             seasonNumber={seasonNumber}
             transcode={transcode.episodes.get(entry.rel) ?? READY}
+            canRename={canRename}
           />
         ))}
       </ul>

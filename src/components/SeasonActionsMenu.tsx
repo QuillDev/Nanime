@@ -4,6 +4,7 @@ import {
   ExternalLink,
   EyeOff,
   Link,
+  PenLine,
 } from "lucide-react";
 import { useCallback, useRef } from "react";
 import type { AniListMedia, PlaybackProgressMap } from "../types.ts";
@@ -11,6 +12,8 @@ import type { SeasonGroup } from "../lib/library.ts";
 import { isSeasonWatched, seasonWatchedUpdates } from "../lib/seasonWatched.ts";
 import { useSetSeasonWatched } from "../hooks/usePlaybackProgress.ts";
 import { useSeriesCompletionPrompt } from "./SeriesCompletionPrompt.tsx";
+import { useSeasonRename } from "../hooks/useRenameDialogs.ts";
+import { RenameEpisodesDialog } from "./RenameEpisodesDialog.tsx";
 
 interface SeasonActionsMenuProps {
   readonly media: AniListMedia | undefined;
@@ -19,7 +22,13 @@ interface SeasonActionsMenuProps {
   readonly season: SeasonGroup;
   readonly title: string;
   readonly onLink?: ((season: SeasonGroup) => void) | undefined;
+  /** Admins can organize the season's names. */
+  readonly canRename: boolean;
+  readonly showMedia: AniListMedia | undefined;
+  readonly seasonNumber: number;
 }
+
+const MENU_ITEM = "flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none";
 
 export function SeasonActionsMenu({
   media,
@@ -28,6 +37,9 @@ export function SeasonActionsMenu({
   season,
   title,
   onLink,
+  canRename,
+  showMedia,
+  seasonNumber,
 }: SeasonActionsMenuProps): React.JSX.Element {
   const menuRef = useRef<HTMLDetailsElement | null>(null);
   const watchedState = useSetSeasonWatched();
@@ -59,6 +71,7 @@ export function SeasonActionsMenu({
     onLink?.(season);
     closeMenu();
   }, [closeMenu, onLink, season]);
+  const rename = useSeasonRename({ enabled: canRename, season, media: playbackMedia, showMedia, seasonNumber }, closeMenu);
   const providerName = media?.provider === "jikan" ? "MyAnimeList" : "AniList";
 
   return (
@@ -91,6 +104,12 @@ export function SeasonActionsMenu({
             {media === undefined ? "Match metadata" : "Change metadata match"}
           </button>
         )}
+        {rename.plan !== null && (
+          <button type="button" role="menuitem" onClick={rename.handleOpen} className={MENU_ITEM}>
+            <PenLine className="size-4" />
+            Rename episodes
+          </button>
+        )}
         {media !== undefined && (
           <a
             href={media.siteUrl}
@@ -110,6 +129,7 @@ export function SeasonActionsMenu({
           </output>
         )}
       </div>
+      {rename.open && rename.plan !== null && <RenameEpisodesDialog plan={rename.plan} onClose={rename.handleClose} />}
     </details>
   );
 }
