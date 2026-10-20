@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { fetchLibraryFiles, sendLibraryFileRequest, type LibraryFileRequest } from "../libraryFilesApi.ts";
+import { fetchLibraryFiles, sendEpisodeNames, sendLibraryFileRequest, type EpisodeNamesBody, type LibraryFileRequest } from "../libraryFilesApi.ts";
+import { refreshLibraryCache } from "./refreshLibraryCache.ts";
 
 export const libraryFilesKey = ["library-files"] as const;
 
@@ -39,5 +40,17 @@ export function useLibraryFileOperation() {
     // Settle after the refetch so the file manager receives the new listing in
     // the same turn it reports success, including after a rejected request.
     onSettled: () => refreshAfterFileOperation(client),
+  });
+}
+
+/** Organizes episode and season names; waits for the rescan so the show page reads the new names at once. */
+export function useEpisodeNames() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: EpisodeNamesBody) => sendEpisodeNames(body),
+    onSettled: async () => {
+      await refreshLibraryCache(client);
+      await Promise.all([refreshAfterFileOperation(client), client.invalidateQueries({ queryKey: ["torrents"] })]);
+    },
   });
 }

@@ -65,3 +65,13 @@ export const createFolderBodySchema = object({ parent: nullableReferenceSchema, 
 export const renameBodySchema = object({ item: referenceSchema, name: nameSchema });
 export const moveBodySchema = object({ items: referencesSchema, target: nullableReferenceSchema });
 export const trashBodySchema = object({ items: referencesSchema });
+
+const pathSchema = string({ minLength: 1, maxLength: 4096 });
+const nullableNameSchema = union([nameSchema, nullValue()]);
+export const episodeNamesBodySchema = object({
+  folder: pathSchema,
+  showFolder: nullableNameSchema,
+  seasonFolder: nullableNameSchema,
+  episodes: array(object({ rel: pathSchema, name: nameSchema }), { maxItems: 500 }),
+});
+export const episodeNamesResultSchema = object({ folder: string(), stoppedSeeding: boolean() });

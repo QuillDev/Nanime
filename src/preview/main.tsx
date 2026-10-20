@@ -1,15 +1,15 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MediaHeader } from "../components/MediaHeader.tsx";
-import { ShowPage } from "../components/ShowPage.tsx";
+import { ShowPreview } from "./ShowPreview.tsx";
 import { SessionProviders } from "../components/SessionProviders.tsx";
 import { HomePreview, type HomeState } from "./homePreview.tsx";
 import { AdminPreview, ProfilePreview, SkeletonPreview } from "./AppPreviews.tsx";
 import { isAdminTab, type AdminTab } from "../hooks/useMediaRoute.ts";
+import { readyReadiness, renameStateShow } from "./renameFixtures.ts";
 import "../styles.css";
 import {
-  previewJobs, previewMedia, previewMetadata, previewProgress, previewReadiness, previewShow, previewUser,
+  previewJobs, previewProgress, previewReadiness, previewShow, previewUser,
   type PreviewState,
 } from "./fixtures.ts";
 
@@ -18,6 +18,7 @@ import {
  * Open /preview/?state=loading|needs|partial|transcoding|ready (show page)
  * ?state=home-watching|home-fresh (library home)
  * ?state=profile|profile-open (profile page)
+ * ?state=rename-episodes|rename-episode (rename dialogs over a release folder), organized (renamed season)
  * or ?state=skeleton-home|show|results|profile|admin (loading placeholders) under `bun run dev`.
  */
 const STATES = new Set<PreviewState>(["loading", "needs", "partial", "transcoding", "ready"]);
@@ -39,6 +40,21 @@ globalThis.fetch = Object.assign(
 );
 
 const client = new QueryClient({ defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY, retry: false } } });
+const renameState = requested === "rename-episodes" || requested === "rename-episode";
+const shownShow = renameStateShow(requested) ?? previewShow;
+if (shownShow !== previewShow) {
+  client.setQueryData(["playback-readiness", ...shownShow.entries.map((entry) => entry.rel)], readyReadiness(shownShow));
+}
+// "rename-episodes" opens the season menu's Rename episodes; "rename-episode" the first episode's Rename.
+if (renameState) {
+  setTimeout(() => {
+    const menu = requested === "rename-episodes" ? "summary[aria-label^='More actions']" : "summary[aria-label='Episode actions']";
+    document.querySelector<HTMLElement>(menu)?.click();
+    setTimeout(() => {
+      [...document.querySelectorAll<HTMLButtonElement>("details[open] [role=menuitem]")].find((item) => item.textContent.startsWith("Rename"))?.click();
+    }, 100);
+  }, 400);
+}
 const streamed = previewShow.entries.map((entry) => entry.rel);
 // "loading" leaves readiness unanswered, the moment before the server replies.
 if (state !== "loading") {
@@ -56,30 +72,10 @@ if (requested === "profile-open") {
   }, 300);
 }
 
-const noop = (): void => undefined;
 const container = document.querySelector("#root");
 if (container === null) {
   throw new Error("Root container #root is missing");
 }
-function ShowPreview(): React.JSX.Element {
-  return (
-    <>
-      <MediaHeader user={previewUser} view="admin" />
-      <main className="mx-auto max-w-7xl px-6 py-6">
-        <ShowPage
-          show={previewShow}
-          media={previewMedia}
-          metadata={previewMetadata}
-          progress={previewProgress(state)}
-          canTranscode
-          onBack={noop}
-          onEpisodeSelect={noop}
-        />
-      </main>
-    </>
-  );
-}
-
 const adminRequest = { "admin-videos-selected": "admin-videos", "admin-users-invite": "admin-users", "admin-notifications": "admin-downloads", "admin-notifications-match": "admin-downloads", "admin-account": "admin-downloads" }[requested] ?? requested;
 const adminTab = adminRequest.startsWith("admin-") && isAdminTab(adminRequest.slice(6)) ? adminRequest.slice(6) as AdminTab : null;
 // "admin-users-invite" opens the invite dialog.
@@ -122,7 +118,7 @@ function PreviewPage(): React.JSX.Element {
   if (profileState) {
     return <ProfilePreview />;
   }
-  return homeState === null ? <ShowPreview /> : <HomePreview home={homeState} />;
+  return homeState === null ? <ShowPreview show={shownShow} progress={previewProgress(state)} /> : <HomePreview home={homeState} />;
 }
 
 createRoot(container).render(

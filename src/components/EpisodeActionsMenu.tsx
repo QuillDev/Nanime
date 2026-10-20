@@ -12,6 +12,7 @@ import { useCallback, useRef } from "react";
 import type { AniListPlaybackTarget, MediaEntry } from "../types.ts";
 import { useOfflineDownloads } from "../hooks/useOfflineDownloads.ts";
 import type { OfflineDownload } from "../offline/index.ts";
+import { RenameEpisodeAction } from "./RenameEpisodeDialog.tsx";
 
 export type EpisodeWatchedHandler = (
   rel: string,
@@ -25,6 +26,8 @@ interface EpisodeActionsMenuProps {
   readonly watched: boolean;
   readonly onSetWatched: EpisodeWatchedHandler;
   readonly target: AniListPlaybackTarget | null;
+  /** Admins only: the episode's number and shown title, to rename it. */
+  readonly rename?: { readonly number: number; readonly title: string } | undefined;
 }
 
 interface OfflineAction {
@@ -54,6 +57,7 @@ export function EpisodeActionsMenu({
   watched,
   onSetWatched,
   target,
+  rename,
 }: EpisodeActionsMenuProps): React.JSX.Element {
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
   const offline = useOfflineDownloads();
@@ -89,6 +93,7 @@ export function EpisodeActionsMenu({
           <OfflineIcon className="size-4" />
           {action.label}
         </button>
+        {rename !== undefined && <RenameEpisodeAction entry={entry} number={rename.number} title={rename.title} menuRef={detailsRef} />}
         {offline.download.error !== null && (
           <p className="max-w-64 px-2 py-1 text-xs text-destructive" role="alert">
             {offline.download.error.message}

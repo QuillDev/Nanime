@@ -10,6 +10,7 @@ import {
   showMetadataKey,
   type FolderIdentity,
 } from "../../shared/folderIdentity.ts";
+import { parseNumberedName } from "../../shared/numberedName.ts";
 
 export { seasonMetadataKey, showMetadataKey } from "../../shared/folderIdentity.ts";
 
@@ -94,13 +95,24 @@ export function seasonMetadata(
   return metadata[seasonMetadataKey(show, season)] ?? metadata[`${show} / ${season}`];
 }
 
+/** An organized season folder (`003. Title`) states its own number. */
+function numberedSeason(season: SeasonGroup): number | undefined {
+  return parseNumberedName(season.name)?.number;
+}
+
 export function seasonNumber(
   season: SeasonGroup,
   media: AniListMedia | undefined,
 ): number {
-  return linkedSeasonNumber(media)
+  return numberedSeason(season)
+    ?? linkedSeasonNumber(media)
     ?? seasonNumberFromTitles(season.name, season.sourceShow)
     ?? 1;
+}
+
+/** The season's folder name as shown: an organized folder drops its number. */
+export function seasonDisplayName(season: SeasonGroup): string {
+  return parseNumberedName(season.name)?.title ?? season.name;
 }
 
 function seasonNumberFromTitles(
@@ -196,7 +208,8 @@ function mergeSeasons(
 
 function seasonOrder(season: SeasonGroup, metadata: ShowMetadata): number {
   const linked = seasonMetadata(metadata, season.sourceShow, season.name);
-  return linkedSeasonNumber(linked)
+  return numberedSeason(season)
+    ?? linkedSeasonNumber(linked)
     ?? seasonNumberFromTitles(season.name, season.sourceShow)
     ?? Number.POSITIVE_INFINITY;
 }

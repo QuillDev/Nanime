@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type { AniListMedia, MediaEntry, PlaybackProgressMap } from "../types.ts";
 import { episodeMetadata, episodeNumber, mediaTitle } from "../lib/anilist.ts";
 import { isMovieMedia } from "../lib/library.ts";
@@ -19,6 +19,8 @@ export interface EpisodeTileProps {
   readonly showMedia: AniListMedia | undefined;
   readonly seasonNumber: number;
   readonly transcode: EpisodeTranscodeState;
+  /** Admins can set the episode's title (its file name). */
+  readonly canRename: boolean;
 }
 
 interface WatchView {
@@ -82,13 +84,21 @@ function captionDetail(state: EpisodeTranscodeState, media: AniListMedia | undef
   return media?.duration === null || media?.duration === undefined ? null : `${String(media.duration)} min`;
 }
 
+function renameTarget(
+  canRename: boolean,
+  number: number | null,
+  details: { readonly title: string } | null,
+): { readonly number: number; readonly title: string } | undefined {
+  return canRename && number !== null ? { number, title: details?.title ?? "" } : undefined;
+}
+
 /** Loading counts as playable-looking, so tiles never flash a warning they may not need. */
 function blocksPlayback(state: EpisodeTranscodeState): boolean {
   return state.kind !== "ready" && state.kind !== "loading";
 }
 
 export function EpisodeTile({
-  entry, media, progress, onSelect, onSetWatched, pending, showMedia, seasonNumber, transcode,
+  entry, media, progress, onSelect, onSetWatched, pending, showMedia, seasonNumber, transcode, canRename,
 }: EpisodeTileProps): React.JSX.Element {
   const handleClick = useCallback(() => {
     onSelect(entry);
@@ -100,6 +110,7 @@ export function EpisodeTile({
   const watch = watchView(entry, progress);
   const unavailable = blocksPlayback(transcode);
   const detail = captionDetail(transcode, media);
+  const rename = useMemo(() => renameTarget(canRename, number, details), [canRename, details, number]);
   return (
     <li className="min-w-0">
       <button
@@ -135,6 +146,7 @@ export function EpisodeTile({
           watched={watch.watched}
           onSetWatched={onSetWatched}
           target={episodePlaybackTarget(entry, media)}
+          rename={rename}
         />
       </div>
     </li>
