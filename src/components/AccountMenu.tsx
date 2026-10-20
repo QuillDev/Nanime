@@ -3,7 +3,7 @@ import { LogOut, Settings, UserRound } from "lucide-react";
 import type { AuthUser } from "../types.ts";
 import { useLogout } from "../hooks/useAuth.ts";
 import { navigateToAdmin, navigateToProfile } from "../hooks/useMediaRoute.ts";
-import { usePartyPopover } from "../hooks/usePartyPopover.ts";
+import { useHeaderPopover } from "../hooks/useHeaderPopover.ts";
 import { preloadAdminApp, preloadProfileApp } from "../routeModules.ts";
 import { AccountAvatar } from "./AccountAvatar.tsx";
 
@@ -40,7 +40,7 @@ function SignOutItem(): React.JSX.Element {
 
 /** Avatar button; its menu holds Profile, Admin (admins) and Sign out. The logo goes to the library. */
 export function AccountMenu({ user, view }: { readonly user: AuthUser; readonly view: "library" | "admin" | "profile" }): React.JSX.Element {
-  const { id, triggerRef, panelRef, open, handleToggle, handleClose } = usePartyPopover();
+  const { id, triggerRef, panelRef, open, handleBeforeToggle, handleToggle, handleClose } = useHeaderPopover();
   const handleProfile = useCallback(() => {
     handleClose();
     navigateToProfile();
@@ -54,7 +54,7 @@ export function AccountMenu({ user, view }: { readonly user: AuthUser; readonly 
       <button ref={triggerRef} type="button" aria-label="Account" aria-expanded={open} aria-controls={id} popoverTarget={id} onPointerEnter={preloadProfileApp} data-active={open || view !== "library"} className="shrink-0 rounded-full p-0.5 ring-primary focus-visible:outline-none focus-visible:ring-2 data-[active=true]:ring-2">
         <AccountAvatar username={user.username} />
       </button>
-      <div ref={panelRef} id={id} popover="auto" onToggle={handleToggle} aria-label="Account" className="fixed m-0 w-56 max-w-[calc(100vw-1rem)] rounded-lg border border-border bg-black p-1.5 text-sm text-foreground shadow-lg">
+      <div ref={panelRef} id={id} popover="auto" onBeforeToggle={handleBeforeToggle} onToggle={handleToggle} aria-label="Account" className="fixed inset-auto m-0 w-56 max-w-[calc(100vw-1rem)] rounded-lg border border-border bg-black p-1.5 text-sm text-foreground shadow-lg">
         <div className="mb-1.5 border-b border-border px-2.5 pb-2.5 pt-1.5">
           <p className="truncate font-semibold">{user.username}</p>
           {user.isAdmin && <p className="text-xs text-muted-foreground">Admin</p>}

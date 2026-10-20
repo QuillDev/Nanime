@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { Bell } from "lucide-react";
 import { useNotifications } from "../hooks/useNotifications.ts";
-import { usePartyPopover } from "../hooks/usePartyPopover.ts";
+import { useHeaderPopover } from "../hooks/useHeaderPopover.ts";
 import { showMetadataKey, type ShowGroup } from "../lib/library.ts";
 import type { BellTone } from "../lib/notifications.ts";
 import { AniListLinkDialog } from "./AniListLinkDialog.tsx";
@@ -15,7 +15,7 @@ const DOT_CLASS = {
 /** Admin bell: shows to match, downloads and transcodes to keep an eye on. */
 export function NotificationBell(): React.JSX.Element {
   const notifications = useNotifications();
-  const { id, triggerRef, panelRef, open, handleToggle, handleClose } = usePartyPopover();
+  const { id, triggerRef, panelRef, open, handleBeforeToggle, handleToggle, handleClose } = useHeaderPopover();
   const [matching, setMatching] = useState<ShowGroup | null>(null);
   const handleMatch = useCallback((show: ShowGroup) => {
     handleClose();
@@ -31,7 +31,7 @@ export function NotificationBell(): React.JSX.Element {
         <Bell className="size-4" />
         {tone !== "idle" && <span aria-hidden="true" className={`absolute right-1.5 top-1.5 size-2 rounded-full ring-2 ring-background ${DOT_CLASS[tone]}`} />}
       </button>
-      <div ref={panelRef} id={id} popover="auto" onToggle={handleToggle} aria-label="Notifications" className="fixed m-0 max-h-[75dvh] w-96 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-border bg-black p-2 text-sm text-foreground shadow-lg">
+      <div ref={panelRef} id={id} popover="auto" onBeforeToggle={handleBeforeToggle} onToggle={handleToggle} aria-label="Notifications" className="fixed inset-auto m-0 max-h-[75dvh] w-96 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-border bg-black p-2 text-sm text-foreground shadow-lg">
         <NotificationList notifications={notifications} onMatch={handleMatch} onNavigate={handleClose} />
       </div>
       {matching !== null && (

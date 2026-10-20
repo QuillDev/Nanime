@@ -2,7 +2,7 @@ import { UsersRound } from "lucide-react";
 import { useCallback, useState, type ChangeEvent, type FormEvent } from "react";
 import { useWatchTogetherContext } from "../hooks/watchTogetherContext.ts";
 import { partyInviteLink, partyIdFromInvite } from "../lib/partyInvite.ts";
-import { usePartyPopover } from "../hooks/usePartyPopover.ts";
+import { useHeaderPopover } from "../hooks/useHeaderPopover.ts";
 import { PartyMembers } from "./PartyMembers.tsx";
 
 function JoinParty({ onJoined }: { readonly onJoined: () => void }): React.JSX.Element {
@@ -53,14 +53,14 @@ function ActiveParty({ id }: { readonly id: string }): React.JSX.Element {
 }
 export function PartyMenu(): React.JSX.Element {
   const session = useWatchTogetherContext();
-  const { id: popupId, triggerRef, panelRef, open, handleToggle, handleClose } = usePartyPopover();
+  const { id: popupId, triggerRef, panelRef, open, handleBeforeToggle, handleToggle, handleClose } = useHeaderPopover();
   const id = session.host?.id ?? session.guestId;
   const handleCreate = useCallback(() => session.start.mutate(), [session.start]);
   return <>
     <button ref={triggerRef} type="button" aria-label="Party" title="Party" aria-expanded={open} aria-controls={popupId} popoverTarget={popupId} data-active={id !== null} className="header-icon-button">
       <UsersRound className="size-4" />
     </button>
-    <div ref={panelRef} id={popupId} popover="auto" onToggle={handleToggle} aria-label="Party" className="fixed m-0 max-h-[75dvh] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-border bg-black p-4 text-sm text-foreground shadow-lg">
+    <div ref={panelRef} id={popupId} popover="auto" onBeforeToggle={handleBeforeToggle} onToggle={handleToggle} aria-label="Party" className="fixed inset-auto m-0 max-h-[75dvh] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-border bg-black p-4 text-sm text-foreground shadow-lg">
       <div className="grid gap-3">
         <div className="flex items-center justify-between"><h2 className="font-semibold">Party</h2><button type="button" onClick={handleClose} aria-label="Close party" className="rounded px-2 py-1 focus-visible:ring-2 focus-visible:ring-primary">Close</button></div>
         <p className="text-muted-foreground">Watch together across episodes and shows.</p>
