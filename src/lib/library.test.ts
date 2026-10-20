@@ -120,3 +120,20 @@ test("a single-season show takes its cover and title from the season match over 
   expect(primaryShowMetadata(show, { [showKey]: franchise, [seasonMetadataKey(season.sourceShow, season.name)]: seasonThree }))
     .toBe(seasonThree);
 });
+
+test("reads the show and season from common release folder season tags", () => {
+  const folders = [
+    "[Judas] Mushoku Tensei (Jobless Reincarnation) (Season 03) [1080p][HEVC x265 10bit]",
+    "[Judas] Enen no Shouboutai (Fire Force) (Season 03 pt.2) [1080p][HEVC x265 10bit]",
+    "[Trix] Hyakkano S03 v2 [WEBRip 1080p AV1] (Dual Audio, Multi Subs)",
+    "Plain Show",
+  ];
+  const identities = groupShows(folders.map((folder) => entry(folder)))
+    .map((show) => `${show.name} | ${show.seasons.map((season) => season.name).join(",")}`);
+  expect(identities).toEqual([
+    "Fire Force | Season 3 Part 2",
+    "Hyakkano | Season 3",
+    "Jobless Reincarnation | Season 3",
+    "Plain Show | Episodes",
+  ]);
+});
