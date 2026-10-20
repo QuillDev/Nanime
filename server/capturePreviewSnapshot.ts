@@ -1,5 +1,5 @@
 /**
- * Snapshot one real show into the design preview: stored metadata, the season's
+ * Snapshot one real show into the design preview: its cached metadata, the season's
  * episode list, a frame per episode and the banner. Output goes to the
  * gitignored `src/preview/snapshot/`; library media must never be committed.
  *
@@ -9,6 +9,8 @@
 import { Database } from "bun:sqlite";
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { pathParts } from "../shared/folderIdentity.ts";
+import { canonicalMetadataKey, matchRef, readFolderMetadata } from "./folderMetadata.ts";
 
 const [databasePath, mediaDir, key, folder] = process.argv.slice(2);
 if (databasePath === undefined || mediaDir === undefined || key === undefined || folder === undefined) {
@@ -20,11 +22,17 @@ const FRAME_SECONDS = 420;
 const VIDEO = /\.(?:mkv|mp4|webm|m4v|mov)$/iu;
 const EPISODE = /S\d+E(?<number>\d+)/iu;
 
+// The key picks the match: a show key reads the top-level folder's nanime.json, a season key the season folder's.
+const role = canonicalMetadataKey(key).startsWith("show:") ? "show" : "season";
+const match = readFolderMetadata(mediaDir, role === "show" ? pathParts(folder)[0] ?? folder : folder)[role];
+if (match === undefined) {
+  throw new Error(`No ${role} match in ${folder}'s nanime.json`);
+}
 const database = new Database(databasePath, { readonly: true });
-const row = database.query<{ readonly payload: string }, [string]>("SELECT payload FROM media_metadata WHERE key = ?").get(key);
+const row = database.query<{ readonly payload: string }, [string]>("SELECT payload FROM metadata_cache WHERE ref = ?").get(matchRef(role, match));
 database.close();
 if (row === null) {
-  throw new Error(`No stored metadata for ${key}`);
+  throw new Error(`No cached metadata for ${key}; load the library once so the server fetches it`);
 }
 interface StoredMedia {
   readonly bannerImage: string | null;

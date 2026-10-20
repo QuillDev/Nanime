@@ -98,7 +98,7 @@ async function renameEpisode() {
     context: {
       root: media, videoExtensions: options.videoExtensions,
       lockSources: { roots: [media], torrents: () => Promise.resolve({ state: "available", payloads: [] }), uploads: () => [] },
-      metadataBusy: () => false, beginMutation: () => () => undefined, afterCommit: () => Promise.resolve(undefined),
+      beginMutation: () => () => undefined, afterCommit: () => Promise.resolve(undefined),
     },
     request: { type: "rename", item: { path: rel, id: entryId(stats) }, name: "renamed.mkv" },
   });
@@ -310,7 +310,7 @@ async function torrentOutageRegression(): Promise<void> {
   const result = await performLibraryFileOperation({ actor, context: {
     root: media, videoExtensions: options.videoExtensions,
     lockSources: { roots: [media], torrents: torrentOwnership, uploads: () => [] },
-    metadataBusy: () => false, beginMutation: () => () => undefined, afterCommit: () => Promise.resolve(undefined),
+    beginMutation: () => () => undefined, afterCommit: () => Promise.resolve(undefined),
   }, request: { type: "create-folder", parent: { path: "Show", id: entryId(stats) }, name: "Harmless folder" } });
   assert.equal(result.kind, "create-folder");
   assert.equal(database.query<{ readonly n: number }, []>("SELECT count(*) AS n FROM library_torrent_additions").get()?.n, 0);
@@ -332,7 +332,7 @@ async function uploadRegression(): Promise<void> {
   const renameShow = () => performLibraryFileOperation({ actor, context: {
     root: media, videoExtensions: options.videoExtensions,
     lockSources: { roots: [media], torrents: () => Promise.resolve({ state: "available", payloads: [] }), uploads: () => [] },
-    metadataBusy: () => false, beginMutation: () => () => undefined, afterCommit: () => Promise.resolve(undefined),
+    beginMutation: () => () => undefined, afterCommit: () => Promise.resolve(undefined),
   }, request: { type: "rename", item: { path: "Show", id: entryId(folderStats) }, name: "Renamed Show" } });
   await assert.rejects(renameShow(), (error: unknown) => (error as { status: number }).status === 423);
   const rewriting = await writers.subtitle(rel);
@@ -382,7 +382,7 @@ async function visibleTorrentRegression(): Promise<void> {
   const result = await performLibraryFileOperation({ actor, context: {
     root: media, videoExtensions: options.videoExtensions,
     lockSources: { roots: [media], torrents: torrentOwnership, uploads: () => [] },
-    metadataBusy: () => false, beginMutation: () => () => undefined, afterCommit: () => Promise.resolve(undefined),
+    beginMutation: () => () => undefined, afterCommit: () => Promise.resolve(undefined),
   }, request: { type: "create-folder", parent: { path: "Show", id: entryId(stats) }, name: "New folder" } });
   assert.equal(result.kind, "create-folder", "observed payload ownership releases the broader save-folder reservation");
   qbPayloads.length = 0;

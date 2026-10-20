@@ -1,6 +1,5 @@
 import { extname } from "node:path";
 import type { AuthUser } from "../shared/types.ts";
-import { forgetCachedMetadata, metadataRefreshRunning } from "./anilist.ts";
 import { recoverLibraryFileOperations, type LibraryFileContext } from "./libraryFileOperations.ts";
 import { libraryFilesResponse } from "./libraryFilesRoutes.ts";
 import { absolutePath } from "./libraryPaths.ts";
@@ -36,13 +35,9 @@ function libraryFileContext(configuration: AdminLibraryConfiguration): LibraryFi
     root: mediaRoot,
     videoExtensions,
     lockSources: { roots: [...new Set([mediaRoot, mediaDir])], torrents: torrentOwnership, uploads: activeUploadPaths },
-    metadataBusy: metadataRefreshRunning,
     beginMutation: beginLibraryMutation,
-    afterCommit: async (plan, mappings) => {
+    afterCommit: async (plan) => {
       noteLibraryMutation();
-      if (mappings.length > 0) {
-        forgetCachedMetadata();
-      }
       void refreshInBackground({ mediaDir, videoExtensions, directPlayExtensions });
       const videos = plan.files.filter((file) => videoExtensions.has(extname(file.from).toLowerCase()));
       await Promise.all(videos.map((file) => moveTrickplayCache(absolutePath(mediaRoot, file.from), absolutePath(mediaRoot, file.to))));

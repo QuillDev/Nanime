@@ -1,25 +1,16 @@
-import { resolve } from "node:path";
 import type { MetadataRefreshStatus } from "../shared/types.ts";
-import { database } from "./database.ts";
 import { aniListGraphQl } from "./anilistClient.ts";
-import { jsonObject, type JsonObject } from "./json.ts";
+import { jsonObject } from "./json.ts";
 import type { AnimeMetadata, MetadataStore } from "./metadataTypes.ts";
 import { fetchJikanMedia, searchJikan } from "./jikan.ts";
 import { matchTvmaze, plainText } from "./tvmaze.ts";
 import { recordMappingActivity, type ActivityActor } from "./libraryActivity.ts";
 import { manualAniListMetadata } from "./manualMetadata.ts";
+import { canonicalMetadataKey, matchRef, metadataSlots, readFolderMetadata, slotsForKey, writeFolderMatches, type FolderMatch, type FolderMetadata, type MetadataRole, type MetadataSlot } from "./folderMetadata.ts";
+import { cachedMetadata, migrateLegacyMetadata, storeCachedMetadata } from "./metadataCache.ts";
 
 export { aniListErrorResponse } from "./anilistClient.ts";
 export { jikanErrorResponse } from "./jikan.ts";
-
-const METADATA_FILE = resolve(
-  process.env["MEDIA_METADATA_FILE"] ?? resolve(import.meta.dir, "..", ".media-metadata.json"),
-);
-
-interface MetadataRow {
-  readonly key: string;
-  readonly payload: string;
-}
 
 interface SearchData {
   readonly Page: { readonly media: readonly AnimeMetadata[] };
@@ -39,8 +30,10 @@ const MEDIA_FIELDS = `
   streamingEpisodes { title thumbnail site }
 `;
 
-let metadataPromise: Promise<MetadataStore> | undefined = undefined;
 const METADATA_REFRESH_INTERVAL_MS = 2500;
+// A match whose payload couldn't be fetched (a hand-written file, a fresh
+// database) isn't retried on every library load.
+const FAILED_RESOLVE_RETRY_MS = 10 * 60_000;
 let refreshStatus: MetadataRefreshStatus = {
   state: "idle",
   total: 0,
@@ -50,140 +43,120 @@ let refreshStatus: MetadataRefreshStatus = {
   completedAt: null,
   error: null,
 };
-const listMetadata = database.query<MetadataRow, []>(
-  "SELECT key, payload FROM media_metadata",
-);
-const upsertMetadata = database.query<void, [string, string, number]>(`
-  INSERT INTO media_metadata (key, payload, updated_at)
-  VALUES (?, ?, ?)
-  ON CONFLICT(key) DO UPDATE SET
-    payload = excluded.payload,
-    updated_at = excluded.updated_at
-`);
-// A refresh only updates mappings that still exist: if a library file
-// operation re-keyed one mid-refresh, writing the old key back would orphan it.
-const refreshStoredMetadata = database.query<void, [string, number, string]>(
-  "UPDATE media_metadata SET payload = ?, updated_at = ? WHERE key = ?",
-);
-const writeMetadataTransaction = database.transaction((store: MetadataStore) => {
-  const updatedAt = Date.now();
-  for (const [key, media] of Object.entries(store)) {
-    upsertMetadata.run(key, JSON.stringify(media), updatedAt);
+
+/** Where matches live: the library root and the folders that currently hold videos. */
+export interface MetadataLibrary {
+  readonly root: string;
+  readonly videoFolders: () => Promise<readonly string[]>;
+}
+
+let library: MetadataLibrary | undefined = undefined;
+const resolving = new Map<string, Promise<AnimeMetadata | undefined>>();
+const failedUntil = new Map<string, number>();
+
+export function configureMetadataLibrary(configured: MetadataLibrary): void {
+  library = configured;
+}
+
+function metadataLibrary(): MetadataLibrary {
+  if (library === undefined) {
+    throw new Error("Metadata library is not configured");
   }
-});
-
-function nullableString(value: unknown): boolean {
-  return typeof value === "string" || value === null;
+  return library;
 }
 
-function nullableNumber(value: unknown): boolean {
-  return typeof value === "number" || value === null;
+interface PlacedMatch {
+  readonly slot: MetadataSlot;
+  readonly match: FolderMatch;
 }
 
-function mediaDate(value: unknown): AnimeMetadata["startDate"] {
-  const date = jsonObject(value);
-  if (
-    date === null ||
-    !nullableNumber(date["year"]) ||
-    !nullableNumber(date["month"]) ||
-    !nullableNumber(date["day"])
-  ) {
-    return null;
+async function librarySlots(): Promise<readonly MetadataSlot[]> {
+  const { root, videoFolders } = metadataLibrary();
+  const slots = metadataSlots(await videoFolders());
+  await migrateLegacyMetadata(root, slots);
+  return slots;
+}
+
+/** Every slot whose folder file holds a match for it, in slot order. */
+function placedMatches(slots: readonly MetadataSlot[]): readonly PlacedMatch[] {
+  const { root } = metadataLibrary();
+  const files = new Map<string, FolderMetadata>();
+  return slots.flatMap((slot) => {
+    const file = files.get(slot.folder) ?? readFolderMetadata(root, slot.folder);
+    files.set(slot.folder, file);
+    const match = file[slot.role];
+    return match === undefined ? [] : [{ slot, match }];
+  });
+}
+
+/** The provider's own payload for a match. Manual matches are always AniList. */
+function fetchProvider(match: FolderMatch): Promise<AnimeMetadata> {
+  return match.provider === "jikan" ? fetchJikanMedia(match.id) : fetchMedia(match.id);
+}
+
+type BaseFetcher = (match: FolderMatch) => Promise<AnimeMetadata | undefined>;
+
+/** Fetches non-manual matches. A manual match keeps `previous`: its AniList entry may not exist. */
+function linkBase(previous: AnimeMetadata | undefined): BaseFetcher {
+  return (match) => (match.title === undefined ? fetchProvider(match) : Promise.resolve(previous));
+}
+
+/** A match's payload: the provider's, with the match's AniList ID, manual title, and (for shows) TVmaze episodes. */
+async function resolveMatch(role: MetadataRole, match: FolderMatch, options: { readonly previous?: AnimeMetadata | undefined; readonly base: BaseFetcher }): Promise<AnimeMetadata> {
+  const base = await options.base(match);
+  if (match.title !== undefined) {
+    return manualAniListMetadata(match.id, match.title, base);
   }
-  return {
-    year: date["year"] as number | null,
-    month: date["month"] as number | null,
-    day: date["day"] as number | null,
-  };
-}
-
-function validMediaIdentity(
-  media: JsonObject,
-  title: JsonObject | null,
-  coverImage: JsonObject | null,
-): boolean {
-  return typeof media["id"] === "number" &&
-    nullableNumber(media["idMal"]) &&
-    nullableString(title?.["english"]) && typeof title?.["romaji"] === "string" &&
-    nullableString(title["native"]) &&
-    nullableString(coverImage?.["extraLarge"]) && nullableString(coverImage?.["large"]) &&
-    nullableString(coverImage?.["color"]);
-}
-
-function validMediaDetails(media: JsonObject): boolean {
-  return nullableString(media["description"]) && nullableString(media["bannerImage"]) &&
-    typeof media["siteUrl"] === "string" && nullableNumber(media["episodes"]) &&
-    nullableNumber(media["duration"]) && nullableString(media["season"]) &&
-    nullableNumber(media["seasonYear"]) && nullableString(media["format"]) &&
-    nullableString(media["status"]) && nullableNumber(media["averageScore"]);
-}
-
-function validMediaCollections(media: JsonObject): boolean {
-  return Array.isArray(media["genres"]) &&
-    media["genres"].every((genre) => typeof genre === "string") &&
-    Array.isArray(media["streamingEpisodes"]);
-}
-
-function mediaFromUnknown(value: unknown): AnimeMetadata | null {
-  const media = jsonObject(value);
-  const title = jsonObject(media?.["title"]);
-  const coverImage = jsonObject(media?.["coverImage"]);
-  if (media === null || !validMediaIdentity(media, title, coverImage) ||
-    !validMediaDetails(media) || !validMediaCollections(media)) {
-    return null;
+  if (base === undefined) {
+    throw new Error(`No ${match.provider} payload for ${String(match.id)}`);
   }
-  const provider = media["provider"] === "jikan" ? "jikan" : "anilist";
-  const storedAniListId = media["anilistId"];
-  let anilistId: number | null = null;
-  if (typeof storedAniListId === "number") {
-    anilistId = storedAniListId;
-  } else if (provider === "anilist") {
-    anilistId = media["id"] as number;
-  }
-  return {
-    ...(value as AnimeMetadata),
-    provider,
-    anilistId,
-    startDate: mediaDate(media["startDate"]),
-  };
+  const media = match.provider === "jikan" ? { ...base, anilistId: match.anilistId ?? null } : base;
+  return role === "show" ? await tvmazeEnrichment(media, options.previous) : media;
 }
 
-function metadataStore(value: unknown): MetadataStore {
-  const object = jsonObject(value);
-  if (object === null) {
-    return {};
+async function resolveUncached(role: MetadataRole, match: FolderMatch, ref: string): Promise<AnimeMetadata | undefined> {
+  try {
+    const media = await resolveMatch(role, match, { base: linkBase(undefined) });
+    storeCachedMetadata(ref, media);
+    return media;
+  } catch (error) {
+    failedUntil.set(ref, Date.now() + FAILED_RESOLVE_RETRY_MS);
+    console.warn(`Could not fetch metadata for ${ref}: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  } finally {
+    resolving.delete(ref);
   }
-  return Object.fromEntries(Object.entries(object).flatMap(([key, media]) => {
-    const parsed = mediaFromUnknown(media);
-    return parsed === null ? [] : [[key, parsed]];
-  }));
 }
 
-async function loadMetadata(): Promise<MetadataStore> {
-  const rows = listMetadata.all();
-  if (rows.length > 0) {
-    return Object.fromEntries(rows.flatMap((row) => {
-      const media = mediaFromUnknown(JSON.parse(row.payload));
-      return media === null ? [] : [[row.key, media]];
-    }));
+async function mediaFor(role: MetadataRole, match: FolderMatch): Promise<AnimeMetadata | undefined> {
+  const ref = matchRef(role, match);
+  const cached = cachedMetadata(ref);
+  if (cached !== undefined) {
+    return cached;
   }
-  const file = Bun.file(METADATA_FILE);
-  if (!(await file.exists())) {
-    return {};
+  if ((failedUntil.get(ref) ?? 0) > Date.now()) {
+    return undefined;
   }
-  const value: unknown = await file.json().catch((): null => null);
-  const store = metadataStore(value);
-  writeMetadata(store);
+  const pending = resolving.get(ref) ?? resolveUncached(role, match, ref);
+  resolving.set(ref, pending);
+  return await pending;
+}
+
+/**
+ * Built from the folders' nanime.json files on every call, so renames, moves
+ * and hand edits show up without any re-keying. Folders that share a key
+ * resolve to the first one's match.
+ */
+async function metadata(): Promise<MetadataStore> {
+  const placed = placedMatches(await librarySlots());
+  const resolved = await Promise.all(placed.map(async ({ slot, match }) => ({ key: slot.key, media: await mediaFor(slot.role, match) })));
+  const store: Record<string, AnimeMetadata> = {};
+  for (const { key, media } of resolved) {
+    if (store[key] === undefined && media !== undefined) {
+      store[key] = media;
+    }
+  }
   return store;
-}
-
-function metadata(): Promise<MetadataStore> {
-  metadataPromise ??= loadMetadata();
-  return metadataPromise;
-}
-
-function writeMetadata(store: MetadataStore): void {
-  writeMetadataTransaction(store);
 }
 
 async function tvmazeEnrichment(
@@ -235,10 +208,32 @@ function updateRefreshStatus(update: Partial<MetadataRefreshStatus>): void {
   refreshStatus = { ...refreshStatus, ...update };
 }
 
+/** Each distinct match the library's files point at, once. */
+function distinctMatches(placed: readonly PlacedMatch[]): readonly { readonly role: MetadataRole; readonly match: FolderMatch; readonly ref: string }[] {
+  const byRef = new Map(placed.map(({ slot, match }) => [matchRef(slot.role, match), { role: slot.role, match }] as const));
+  return [...byRef].map(([ref, entry]) => ({ role: entry.role, match: entry.match, ref }));
+}
+
+async function pacedFetch(match: FolderMatch): Promise<AnimeMetadata> {
+  const media = await fetchProvider(match);
+  await Bun.sleep(METADATA_REFRESH_INTERVAL_MS);
+  return media;
+}
+
+/** Fetches each provider entry once per refresh, pacing requests to stay under rate limits. */
+function refreshBase(): BaseFetcher {
+  const fetched = new Map<string, Promise<AnimeMetadata>>();
+  return (match) => {
+    const key = `${match.provider}:${String(match.id)}`;
+    const pending = fetched.get(key) ?? pacedFetch(match);
+    fetched.set(key, pending);
+    return pending;
+  };
+}
+
 async function refreshMetadata(): Promise<void> {
-  const store = await metadata();
-  const entries = Object.entries(store);
-  const refreshed = new Map<string, AnimeMetadata>();
+  const entries = distinctMatches(placedMatches(await librarySlots()));
+  const base = refreshBase();
   updateRefreshStatus({
     state: "running",
     total: entries.length,
@@ -248,25 +243,13 @@ async function refreshMetadata(): Promise<void> {
     completedAt: null,
     error: null,
   });
-  for (const [key, previous] of entries) {
+  for (const entry of entries) {
     try {
-      const refreshKey = `${previous.provider}:${String(previous.id)}`;
-      let media = refreshed.get(refreshKey);
-      if (media === undefined) {
-        media = previous.provider === "jikan"
-          ? await fetchJikanMedia(previous.id)
-          : await fetchMedia(previous.id);
-        refreshed.set(refreshKey, media);
-        await Bun.sleep(METADATA_REFRESH_INTERVAL_MS);
-      }
-      const mappedMedia = previous.provider === "jikan"
-        ? { ...media, anilistId: previous.anilistId }
-        : media;
-      const updated = key.startsWith("show:")
-        ? await tvmazeEnrichment(mappedMedia, previous)
-        : mappedMedia;
-      store[key] = updated;
-      refreshStoredMetadata.run(JSON.stringify(updated), Date.now(), key);
+      // One match at a time: the providers rate-limit, and refreshBase paces each fetch.
+      // eslint-disable-next-line no-await-in-loop, react-doctor/async-await-in-loop
+      const media = await resolveMatch(entry.role, entry.match, { previous: cachedMetadata(entry.ref), base });
+      storeCachedMetadata(entry.ref, media);
+      failedUntil.delete(entry.ref);
       updateRefreshStatus({ completed: refreshStatus.completed + 1 });
     } catch (error) {
       updateRefreshStatus({
@@ -277,15 +260,6 @@ async function refreshMetadata(): Promise<void> {
     }
   }
   updateRefreshStatus({ state: "complete", completedAt: Date.now() });
-}
-
-export function metadataRefreshRunning(): boolean {
-  return refreshStatus.state === "running";
-}
-
-/** Drops the in-memory store after metadata keys were changed directly in SQLite. */
-export function forgetCachedMetadata(): void {
-  metadataPromise = undefined;
 }
 
 export function metadataRefreshStatusResponse(): Response {
@@ -376,24 +350,51 @@ function linkBody(value: unknown): LinkBody | null {
     : null;
 }
 
+interface SaveMatch {
+  readonly key: string;
+  readonly match: FolderMatch;
+  readonly actor: ActivityActor;
+  /** Already resolved; fetched from the provider otherwise. */
+  readonly media?: AnimeMetadata;
+}
+
+/**
+ * Points a show or season at a match: writes it into the nanime.json of every
+ * folder the key covers and records the change, together.
+ */
+async function saveMatch(save: SaveMatch): Promise<Response> {
+  const slots = slotsForKey(await librarySlots(), save.key);
+  const [first] = slots;
+  if (first === undefined) {
+    return new Response("No library folder holds that show or season", { status: 404 });
+  }
+  const store = await metadata();
+  const previous = store[canonicalMetadataKey(save.key)];
+  const media = save.media ?? await resolveMatch(first.role, save.match, { previous, base: linkBase(previous) });
+  const ref = matchRef(first.role, save.match);
+  recordMappingActivity({
+    actor: save.actor,
+    key: save.key,
+    previous,
+    next: media,
+    write: () => {
+      storeCachedMetadata(ref, media);
+      writeFolderMatches(metadataLibrary().root, slots.map((slot) => ({ folder: slot.folder, role: slot.role, match: save.match })));
+    },
+  });
+  failedUntil.delete(ref);
+  return Response.json(media);
+}
+
 export async function linkAniListResponse(req: Request, actor: ActivityActor): Promise<Response> {
   const body = linkBody(await req.json().catch((): null => null));
   if (body === null) {
     return new Response("Invalid link request", { status: 400 });
   }
-  const store = await metadata();
-  const clean = body.manualTitle === undefined ? await fetchMedia(body.id)
-    : manualAniListMetadata(body.id, body.manualTitle, store[body.key]);
-  const media = body.manualTitle === undefined && body.key.startsWith("show:") ? await tvmazeEnrichment(clean) : clean;
-  recordMappingActivity({
-    actor,
-    key: body.key,
-    previous: store[body.key],
-    next: media,
-    write: () => upsertMetadata.run(body.key, JSON.stringify(media), Date.now()),
-  });
-  store[body.key] = media;
-  return Response.json(media);
+  const match: FolderMatch = body.manualTitle === undefined
+    ? { provider: "anilist", id: body.id }
+    : { provider: "anilist", id: body.id, title: body.manualTitle };
+  return await saveMatch({ key: body.key, match, actor });
 }
 
 export async function linkJikanResponse(req: Request, actor: ActivityActor): Promise<Response> {
@@ -401,18 +402,7 @@ export async function linkJikanResponse(req: Request, actor: ActivityActor): Pro
   if (body === null) {
     return new Response("Invalid link request", { status: 400 });
   }
-  const clean = { ...await fetchJikanMedia(body.id), anilistId: body.anilistId };
-  const media = body.key.startsWith("show:") ? await tvmazeEnrichment(clean) : clean;
-  const store = await metadata();
-  recordMappingActivity({
-    actor,
-    key: body.key,
-    previous: store[body.key],
-    next: media,
-    write: () => upsertMetadata.run(body.key, JSON.stringify(media), Date.now()),
-  });
-  store[body.key] = media;
-  return Response.json(media);
+  return await saveMatch({ key: body.key, match: { provider: "jikan", id: body.id, anilistId: body.anilistId }, actor });
 }
 
 interface AniListIdBody {
@@ -438,21 +428,13 @@ export async function updateMetadataAniListIdResponse(
     return new Response("Invalid AniList ID request", { status: 400 });
   }
   const store = await metadata();
-  const current = store[body.key];
+  const current = store[canonicalMetadataKey(body.key)];
   if (current === undefined) {
     return new Response("Metadata mapping not found", { status: 404 });
   }
   if (current.provider !== "jikan") {
     return new Response("AniList mappings already use their matched media ID", { status: 409 });
   }
-  const updated = { ...current, anilistId: body.anilistId };
-  recordMappingActivity({
-    actor,
-    key: body.key,
-    previous: current,
-    next: updated,
-    write: () => upsertMetadata.run(body.key, JSON.stringify(updated), Date.now()),
-  });
-  store[body.key] = updated;
-  return Response.json(updated);
+  const match: FolderMatch = { provider: "jikan", id: current.id, anilistId: body.anilistId };
+  return await saveMatch({ key: body.key, match, actor, media: { ...current, anilistId: body.anilistId } });
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { LibraryFileOperationResult, LibraryFilesSnapshot, LibraryMappingMovement } from "../shared/libraryFiles.ts";
+import type { LibraryFileOperationResult, LibraryFilesSnapshot } from "../shared/libraryFiles.ts";
 import type { ActivityActor } from "./libraryActivity.ts";
-import { commitOperation, validateCommit, type OperationCommit } from "./libraryCommit.ts";
+import { commitOperation, type OperationCommit } from "./libraryCommit.ts";
 import {
   markOperation, recordPending, recoverInterruptedOperations, runSteps, StepFailureError, undoSteps, type JournalStep,
 } from "./libraryJournal.ts";
@@ -17,12 +17,10 @@ export interface LibraryFileContext {
   readonly root: string;
   readonly videoExtensions: ReadonlySet<string>;
   readonly lockSources: LockSources;
-  /** Show/season mappings can't move while a metadata refresh rewrites them. */
-  readonly metadataBusy: () => boolean;
   /** Marks the start of disk changes; the returned function marks their end. */
   readonly beginMutation: () => () => void;
   /** Cache migration and library refresh once an operation is durable. */
-  readonly afterCommit: (plan: OperationPlan, mappings: readonly LibraryMappingMovement[]) => Promise<void>;
+  readonly afterCommit: (plan: OperationPlan) => Promise<void>;
 }
 
 let tail: Promise<unknown> = Promise.resolve();
@@ -76,13 +74,13 @@ function settleFailure(operationId: string, error: unknown, rolledBack: boolean)
   return new LibraryFileError(rolledBack ? 500 : 503, failureMessage(error, rolledBack));
 }
 
-async function execute(context: LibraryFileContext, commit: OperationCommit): Promise<readonly LibraryMappingMovement[]> {
+async function execute(context: LibraryFileContext, commit: OperationCommit): Promise<void> {
   const completed = await runSteps(context.root, commit.operationId, commit.plan.steps).catch((error: unknown) => {
     const failure = error instanceof StepFailureError ? error : new StepFailureError(error, false);
     throw settleFailure(commit.operationId, failure.failure, failure.rolledBack);
   });
   try {
-    return commitOperation(commit);
+    commitOperation(commit);
   } catch (error) {
     throw settleFailure(commit.operationId, error, await undoSteps(context.root, completed));
   }
@@ -110,14 +108,12 @@ function rejectLockedSteps(steps: readonly JournalStep[], locks: LockState): voi
 }
 
 /**
- * Validates everything that doesn't need the disk to change (mappings, stale
- * per-path state, locks re-read after planning) and claims the operation's
- * paths. Nanime's own jobs and uploads are re-read and the paths claimed in
- * one synchronous step, so no other writer can claim a path in between and
+ * Re-reads locks after planning and claims the operation's paths. Nanime's
+ * own jobs and uploads are re-read and the paths claimed in one synchronous
+ * step, so no other writer can claim a path in between and
  * every later writer sees these paths as busy. Returns the claim's release.
  */
 async function claimPaths(context: LibraryFileContext, commit: OperationCommit): Promise<() => void> {
-  validateCommit(commit);
   const torrents = await currentLocks({ ...context.lockSources, uploads: () => [] });
   const { steps } = commit.plan;
   rejectLockedSteps(steps, { ...torrents, paths: [...torrents.paths, ...localLocks(context.lockSources)] });
@@ -125,12 +121,12 @@ async function claimPaths(context: LibraryFileContext, commit: OperationCommit):
 }
 
 /** Journals and runs a claimed operation, releasing its claim however it ends. */
-async function executeClaimed(context: LibraryFileContext, commit: OperationCommit, release: () => void): Promise<readonly LibraryMappingMovement[]> {
+async function executeClaimed(context: LibraryFileContext, commit: OperationCommit, release: () => void): Promise<void> {
   const endMutation = context.beginMutation();
   try {
     const { operationId, plan, actor } = commit;
     recordPending({ id: operationId, kind: plan.kind, actor, steps: plan.steps, revertsOperationId: plan.revertsOperationId });
-    return await execute(context, commit);
+    await execute(context, commit);
   } finally {
     endMutation();
     release();
@@ -141,10 +137,10 @@ async function performExclusive(context: LibraryFileContext, request: LibraryFil
   const locks = await currentLocks(context.lockSources);
   const operationId = randomUUID();
   const plan = await planRequest({ root: context.root, videoExtensions: context.videoExtensions, locks }, request, operationId);
-  const commit: OperationCommit = { operationId, plan, actor, videoExtensions: context.videoExtensions, metadataBusy: context.metadataBusy };
-  const mappings = await executeClaimed(context, commit, await claimPaths(context, commit));
+  const commit: OperationCommit = { operationId, plan, actor };
+  await executeClaimed(context, commit, await claimPaths(context, commit));
   try {
-    await context.afterCommit(plan, mappings);
+    await context.afterCommit(plan);
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error("Library file operation committed; follow-up cache work failed", error);

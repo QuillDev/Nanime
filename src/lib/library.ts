@@ -3,6 +3,15 @@ import type {
   MediaEntry,
   ShowMetadata,
 } from "../types.ts";
+import {
+  folderIdentity,
+  pathParts,
+  seasonMetadataKey,
+  showMetadataKey,
+  type FolderIdentity,
+} from "../../shared/folderIdentity.ts";
+
+export { seasonMetadataKey, showMetadataKey } from "../../shared/folderIdentity.ts";
 
 export interface SeasonGroup {
   readonly name: string;
@@ -77,14 +86,6 @@ const nameCollator = new Intl.Collator(undefined, {
   sensitivity: "base",
 });
 
-export function showMetadataKey(show: string): string {
-  return `show:${show}`;
-}
-
-export function seasonMetadataKey(show: string, season: string): string {
-  return `season:${show} / ${season}`;
-}
-
 export function seasonMetadata(
   metadata: ShowMetadata,
   show: string,
@@ -127,58 +128,21 @@ function linkedSeasonNumber(media: AniListMedia | undefined): number | undefined
   );
 }
 
-function pathParts(folder: string): readonly string[] {
-  return folder.split("/").filter((part) => part !== "");
-}
-
 export function sourceShowFolders(entries: readonly MediaEntry[]): readonly string[] {
   return [...new Set(entries.flatMap((entry) => pathParts(entry.folder).slice(0, 1)))]
     .toSorted((a, b) => nameCollator.compare(a, b));
 }
 
-interface FolderIdentity {
-  readonly show: string;
-  readonly season: string;
-}
-
-/** Season tags in release folder names: `(Season 03)`, `(Season 03 pt.2)`, `(Season 3 Part 2)`, or a bare ` S03 `. */
-const SEASON_TAGS = [
-  /\(Season\s+0*(?<number>\d+)(?:\s*(?:pt\.?|part)\s*0*(?<part>\d+))?\)/iu,
-  /\sS0*(?<number>\d{1,2})(?![\dE])/u,
-] as const;
-
-function releaseTitle(folder: string, seasonIndex: number): string {
-  const beforeSeason = folder.slice(0, seasonIndex).trim();
-  const alias = /\((?<title>[^()]*)\)$/u.exec(beforeSeason)?.groups?.["title"];
-  return alias?.trim() || beforeSeason.replace(/^\[[^\]]+\]\s*/u, "");
-}
-
-function releaseIdentity(top: string): FolderIdentity {
-  const match = SEASON_TAGS.map((pattern) => pattern.exec(top)).find((found) => found !== null);
-  const number = match?.groups?.["number"];
-  if (match === undefined || number === undefined) {
-    return { show: top, season: "Episodes" };
-  }
-  const part = match.groups?.["part"];
-  return {
-    show: releaseTitle(top, match.index),
-    season: `Season ${String(Number(number))}${part === undefined ? "" : ` Part ${String(Number(part))}`}`,
-  };
-}
-
-function folderIdentity(entry: MediaEntry): FolderIdentity {
-  const parts = pathParts(entry.folder);
-  const top = parts[0] ?? "Unsorted";
-  const nested = parts.slice(1).join(" / ");
-  return nested === "" ? releaseIdentity(top) : { show: top, season: nested };
+function folderIdentityOf(entry: MediaEntry): FolderIdentity {
+  return folderIdentity(entry.folder);
 }
 
 function showName(entry: MediaEntry): string {
-  return folderIdentity(entry).show;
+  return folderIdentityOf(entry).show;
 }
 
 function seasonName(entry: MediaEntry): string {
-  return folderIdentity(entry).season;
+  return folderIdentityOf(entry).season;
 }
 
 function groupSeasons(entries: readonly MediaEntry[]): readonly SeasonGroup[] {

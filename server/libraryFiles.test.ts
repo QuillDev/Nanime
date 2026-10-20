@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  fileOperation, fixtureMapping, getJson, idAt, listedItems, operationStatus, reference, startLibraryTestServer, type LibraryTestServer,
+  fileOperation, getJson, idAt, listedItems, operationStatus, reference, startLibraryTestServer, type LibraryTestServer,
 } from "./libraryFilesTestServer.ts";
 
 const EPISODE_ONE = "Example Show/Season 1/Example Show - 01.mkv";
@@ -129,13 +129,18 @@ test("renames a video together with its subtitle sidecar and keeps the extension
   expect(progressRels(target)).toEqual(["Example Show/Season 1/Pilot.mkv"]);
 });
 
-test("moving and renaming folders carries show and season mappings, scans, and transcode history", async () => {
+async function linkManually(target: LibraryTestServer, link: { readonly key: string; readonly id: number; readonly manualTitle: string }): Promise<void> {
+  const response = await target.request("/api/anilist/link", { method: "POST", body: JSON.stringify(link) });
+  expect(response.status).toBe(200);
+}
+
+test("moving and renaming folders carries their nanime.json matches, scans, and transcode history", async () => {
   const target = await start();
+  await linkManually(target, { key: "show:Example Show", id: 11, manualTitle: "Example Show" });
+  await linkManually(target, { key: "season:Example Show / Season 2", id: 12, manualTitle: "Example Show Season 2" });
   const database = target.database();
   try {
     const now = Date.now();
-    database.query("INSERT INTO media_metadata (key, payload, updated_at) VALUES (?, ?, ?)").run("show:Example Show", fixtureMapping("Example Show", 11), now);
-    database.query("INSERT INTO media_metadata (key, payload, updated_at) VALUES (?, ?, ?)").run("season:Example Show / Season 2", fixtureMapping("Example Show Season 2", 12), now);
     database.query("INSERT INTO media_scans (source_rel, status, file_size, modified_at, created_at, updated_at) VALUES (?, 'complete', 13, 1, ?, ?)").run("Example Show/Season 2/Example Show - 03.mkv", now, now);
     database.query("INSERT INTO media_scan_tracks (source_rel, stream_index, kind, size_bytes) VALUES (?, 1, 'audio', 5)").run("Example Show/Season 2/Example Show - 03.mkv");
     database.query("INSERT INTO transcode_jobs (id, source_rel, preset, output_rel, status, input_size, created_at, updated_at) VALUES ('job-1', ?, 'space-saver', '.nanime-transcodes/x.mkv', 'complete', 13, ?, ?)").run("Example Show/Season 2/Example Show - 03.mkv", now, now);
@@ -148,14 +153,17 @@ test("moving and renaming folders carries show and season mappings, scans, and t
   expect(metadata["show:Example Show Renamed"]?.id).toBe(11);
   expect(metadata["season:Other Show / Season 2"]?.id).toBe(12);
   expect(metadata["show:Example Show"]).toBeUndefined();
+  const seasonFile = await readFile(join(target.media, "Other Show", "Season 2", "nanime.json"), "utf8");
+  expect(JSON.parse(seasonFile)).toEqual({
+    version: 1,
+    season: { provider: "anilist", id: 12, title: "Example Show Season 2" },
+  });
   const check = target.database();
   try {
     const moved = "Other Show/Season 2/Example Show - 03.mkv";
     expect(check.query("SELECT source_rel FROM media_scans").all()).toEqual([{ source_rel: moved }]);
     expect(check.query("SELECT source_rel FROM media_scan_tracks").all()).toEqual([{ source_rel: moved }]);
     expect(check.query("SELECT source_rel FROM transcode_jobs").all()).toEqual([{ source_rel: moved }]);
-    const activity = check.query<{ readonly next_state: string }, []>("SELECT next_state FROM library_activity_log WHERE action = 'files-moved'").all();
-    expect(JSON.parse(activity[0]?.next_state ?? "{}")).toMatchObject({ mappings: [{ from: "season:Example Show / Season 2", to: "season:Other Show / Season 2" }] });
   } finally {
     check.close();
   }

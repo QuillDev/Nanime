@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manualAniListMetadata } from "./manualMetadata.ts";
@@ -12,13 +12,16 @@ test("manual linking preserves fetched details only for the same AniList entry",
 
 test("manual mapping works with all upstream requests disabled and records immutable history", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nanime-manual-metadata-"));
+  const media = join(directory, "media");
+  await mkdir(join(media, "Example Show"), { recursive: true });
   try {
     const child = Bun.spawn({
       cmd: [process.execPath, "--eval", `
         import { expect } from "bun:test";
         import { database } from "./server/database.ts";
-        import { linkAniListResponse, metadataResponse } from "./server/anilist.ts";
+        import { configureMetadataLibrary, linkAniListResponse, metadataResponse } from "./server/anilist.ts";
         globalThis.fetch = () => { throw new Error("Unexpected network request"); };
+        configureMetadataLibrary({ root: ${JSON.stringify(media)}, videoFolders: () => Promise.resolve(["Example Show"]) });
         const actor = database.query("SELECT id, username FROM users WHERE username = 'admin'").get();
         const request = body => new Request("http://localhost/api/anilist/link", { method: "POST", body: JSON.stringify(body) });
         const body = { key: "show:Example Show", id: 123, manualTitle: "Example Show" };
@@ -45,5 +48,10 @@ test("manual mapping works with all upstream requests disabled and records immut
     const [code, error] = await Promise.all([child.exited, new Response(child.stderr).text()]);
     expect(error).toBe("");
     expect(code).toBe(0);
+    const written = await readFile(join(media, "Example Show", "nanime.json"), "utf8");
+    expect(JSON.parse(written)).toEqual({
+      version: 1,
+      show: { provider: "anilist", id: 123, title: "Updated title" },
+    });
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

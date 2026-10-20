@@ -32,6 +32,10 @@ include AniList and qBittorrent; metadata also uses Jikan and TVmaze.
 - SQLite is the canonical server-side state. Put schema creation and compatible
   migrations in `server/database.ts`; existing installations must survive a
   normal process restart and upgrade without losing user state.
+- The exception is metadata matches: each library folder's `nanime.json`
+  (`server/folderMetadata.ts`) says which AniList/Jikan entry it is, so matches
+  travel with the folder. SQLite only caches the fetched payloads
+  (`metadata_cache`). Never key matches by folder name in the database again.
 - Route playback mutations through the centralized playback mutation/audit path.
   Playback audit entries are immutable and retain actor, origin, previous state,
   next state, session duration, AniList target, and reversion relationships.

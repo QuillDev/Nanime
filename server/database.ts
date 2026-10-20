@@ -211,6 +211,22 @@ database.run(`
     updated_at INTEGER NOT NULL
   )
 `);
+// Matches now live in each folder's nanime.json. media_metadata is the legacy
+// key-addressed store, read once to write those files and otherwise left as is;
+// metadata_cache holds the fetched provider payload for each distinct match.
+database.run(`
+  CREATE TABLE IF NOT EXISTS metadata_cache (
+    ref TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  )
+`);
+database.run(`
+  CREATE TABLE IF NOT EXISTS metadata_files_migration (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    migrated_at INTEGER NOT NULL
+  )
+`);
 database.run(`
   CREATE TABLE IF NOT EXISTS media_library (
     rel TEXT PRIMARY KEY,
