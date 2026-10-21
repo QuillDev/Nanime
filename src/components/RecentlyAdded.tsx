@@ -4,6 +4,7 @@ import { primaryShowMetadata, type ShowGroup } from "../lib/library.ts";
 import { mediaTitle } from "../lib/anilist.ts";
 import { showFacts } from "../lib/libraryHome.ts";
 import { thumbnailUrl } from "../api.ts";
+import { artSources } from "../lib/art.ts";
 
 function tileSource(show: ShowGroup, media: AniListMedia | undefined): string | null {
   const [first] = show.entries;
@@ -19,11 +20,12 @@ function RecentTile({ show, media, onSelect }: {
     onSelect(show);
   }, [onSelect, show]);
   const source = tileSource(show, media);
+  const image = source === null ? null : artSources(source, "tile");
   const facts = [showFacts(media), media?.genres.slice(0, 2).join(", ")].filter((part) => part !== null && part !== undefined && part !== "");
   return (
     <li>
       <button type="button" onClick={handleClick} className="group relative block aspect-[2/1] w-full overflow-hidden rounded-2xl bg-secondary text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        {source !== null && <img src={source} alt="" loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-[1.03] group-focus-visible:scale-[1.03]" />}
+        {image !== null && <img src={image.src} srcSet={image.srcSet} sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw" alt="" loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-[1.03] group-focus-visible:scale-[1.03]" />}
         <span aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(0deg,rgb(0_0_0/0.92)_0%,rgb(0_0_0/0.6)_40%,transparent_75%)]" />
         <span className="absolute inset-x-4 bottom-3.5">
           <span className="block font-display text-lg font-bold leading-tight tracking-tight">{media === undefined ? show.name : mediaTitle(media)}</span>

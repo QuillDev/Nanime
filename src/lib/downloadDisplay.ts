@@ -2,6 +2,7 @@ import { formatDuration, formatSize } from "../format.ts";
 import type { AniListMedia, DownloadState, DownloadStatus, ShowMetadata } from "../types.ts";
 import { mediaTitle } from "./anilist.ts";
 import { showMetadataKey } from "./library.ts";
+import { artSources } from "./art.ts";
 
 export type DownloadTone = "active" | "problem" | "waiting";
 
@@ -37,6 +38,11 @@ function sizeLabel(download: DownloadStatus): string {
   return download.size > 0 ? `${formatSize(download.completed)} of ${formatSize(download.size)}` : formatSize(download.completed);
 }
 
+function coverArt(media: AniListMedia | undefined): string | null {
+  const cover = media?.coverImage.large ?? media?.coverImage.extraLarge ?? null;
+  return cover === null ? null : artSources(cover, "cover").src;
+}
+
 /** Presents a download as its show: library title and cover when known, the release or file name as a tag. */
 export function downloadDisplay(download: DownloadStatus, metadata: ShowMetadata): DownloadDisplay {
   const media = downloadMedia(download, metadata);
@@ -45,7 +51,7 @@ export function downloadDisplay(download: DownloadStatus, metadata: ShowMetadata
   return {
     title,
     release: title === download.name ? null : download.name,
-    cover: media?.coverImage.large ?? media?.coverImage.extraLarge ?? null,
+    cover: coverArt(media),
     status,
     tone,
     size: sizeLabel(download),

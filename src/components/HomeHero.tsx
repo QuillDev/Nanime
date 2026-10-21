@@ -5,8 +5,7 @@ import type { ShowGroup } from "../lib/library.ts";
 import type { ContinueWatchingItem } from "../lib/continueWatching.ts";
 import { mediaTitle } from "../lib/anilist.ts";
 import { preloadPlayer } from "../lib/playback.ts";
-import { episodeLabel, percentWatched, showFacts, timeLeft, type HomeFeature } from "../lib/libraryHome.ts";
-import { thumbnailUrl } from "../api.ts";
+import { episodeLabel, heroBackdrop, percentWatched, showFacts, timeLeft, type HomeFeature } from "../lib/libraryHome.ts";
 import { HomeQueue } from "./HomeQueue.tsx";
 
 interface HomeHeroProps {
@@ -18,15 +17,11 @@ interface HomeHeroProps {
 }
 
 function HeroBackdrop({ feature }: { readonly feature: HomeFeature }): React.JSX.Element {
-  const banner = feature.media?.bannerImage ?? null;
-  const [first] = feature.show.entries;
-  const frame = feature.kind === "continue" ? feature.item.thumbnail ?? thumbnailUrl(feature.item.entry.rel) : null;
-  const fallback = frame ?? feature.media?.coverImage.extraLarge ?? (first === undefined ? null : thumbnailUrl(first.rel));
-  const source = banner ?? fallback;
+  const image = heroBackdrop(feature);
   return (
     <>
-      {source !== null && (
-        <img src={source} alt="" className={`absolute inset-0 size-full object-cover object-[50%_25%] ${banner === null && frame === null ? "scale-110 blur-md" : ""}`} />
+      {image !== null && (
+        <img src={image.src} srcSet={image.srcSet} sizes="100vw" alt="" fetchPriority="high" className={`absolute inset-0 size-full object-cover object-[50%_25%] ${image.blurred ? "scale-110 blur-md" : ""}`} />
       )}
       <span aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(90deg,rgb(0_0_0)_0%,rgb(0_0_0/0.85)_32%,rgb(0_0_0/0.3)_52%,rgb(0_0_0/0.75)_72%,rgb(0_0_0/0.9)_100%),linear-gradient(0deg,rgb(0_0_0)_0%,transparent_38%)]" />
     </>

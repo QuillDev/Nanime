@@ -48,7 +48,7 @@ function ContinueCard({ item, onSelect, onDismiss }: ContinueCardProps): React.J
         className="w-full overflow-hidden rounded-lg border border-border bg-card text-left transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="relative block">
-          <MediaThumbnail rel={item.entry.rel} source={item.thumbnail} className="w-full" />
+          <MediaThumbnail rel={item.entry.rel} source={item.thumbnail} sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw" className="w-full" />
           <span className="absolute inset-0 flex items-center justify-center">
             <span className="flex size-10 items-center justify-center rounded-full bg-black text-primary">
               <Play className="ml-0.5 size-5 fill-current" />

@@ -68,7 +68,7 @@ function EpisodeRow({ entry, context }: { readonly entry: MediaEntry; readonly c
   return (
     <li className="flex items-center gap-3.5 border-b border-border py-2 pl-14 last:border-b-0">
       <SelectBox entries={only} label={`Select ${entry.name}`} context={context} />
-      <span className="w-[4.5rem] shrink-0 overflow-hidden rounded"><MediaThumbnail rel={entry.rel} source={episode.thumbnail} className="w-full" /></span>
+      <span className="w-[4.5rem] shrink-0 overflow-hidden rounded"><MediaThumbnail rel={entry.rel} source={episode.thumbnail} sizes="72px" className="w-full" /></span>
       <span className="min-w-0 flex-1 truncate text-sm" title={entry.rel}>
         {label !== "" && <span className="font-medium">{label} </span>}
         <span className="text-muted-foreground">{episode.title}</span>
@@ -115,7 +115,7 @@ function ShowRow({ show, defaultOpen, context }: {
           <CollapsibleTrigger asChild>
             <button type="button" className="flex min-w-0 flex-1 items-center gap-3.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground transition-transform [[data-state=open]_&]:rotate-90" />
-              <MediaThumbnail rel={show.entries[0]?.rel ?? ""} source={media?.coverImage.large ?? media?.coverImage.extraLarge} className="aspect-[2/3] w-11 shrink-0 rounded-md" />
+              <MediaThumbnail rel={show.entries[0]?.rel ?? ""} source={media?.coverImage.large ?? media?.coverImage.extraLarge} art="cover" sizes="44px" className="aspect-[2/3] w-11 shrink-0 rounded-md" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-semibold">{title}</span>
                 <span className="block text-[13px] text-muted-foreground">{String(show.entries.length)} {show.entries.length === 1 ? "episode" : "episodes"} · {formatSize(totalSize(show.entries))}</span>

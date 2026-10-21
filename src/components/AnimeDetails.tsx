@@ -113,7 +113,7 @@ export function AnimeDetails({
 
   return (
     <aside>
-      <MediaThumbnail rel={previewRel} source={cover} className="aspect-[2/3] w-full" />
+      <MediaThumbnail rel={previewRel} source={cover} art="cover" sizes="240px" className="aspect-[2/3] w-full" />
       <Collapsible open={expanded} onOpenChange={setExpanded} asChild>
       <div className="pt-3">
         <div className="flex items-start gap-2">

@@ -29,7 +29,7 @@ function QueueRow({ item, onSelect, onDismiss }: QueueProps & { readonly item: C
         className="grid w-full grid-cols-[8rem_1fr] items-center gap-3 rounded-lg pr-8 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="relative block overflow-hidden rounded-md">
-          <MediaThumbnail rel={item.entry.rel} source={item.thumbnail} className="w-full" />
+          <MediaThumbnail rel={item.entry.rel} source={item.thumbnail} sizes="128px" className="w-full" />
           {percent > 0 && <progress aria-label="Playback progress" max={100} value={percent} className="playback-progress absolute inset-x-0 bottom-0 block h-1 w-full" />}
         </span>
         <span className="min-w-0">

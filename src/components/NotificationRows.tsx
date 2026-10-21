@@ -6,6 +6,7 @@ import { jobStatus } from "../lib/transcodeDisplay.ts";
 import { episodeShortLabel, profileEpisode, type ProfileEpisodes } from "../lib/profileMedia.ts";
 import type { DownloadStatus, ShowMetadata, TranscodeJob } from "../types.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
+import { artSources } from "../lib/art.ts";
 
 const ROW = "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -27,7 +28,7 @@ export function DownloadRow({ download, metadata, onNavigate }: RowProps & {
     <li>
       <button type="button" onClick={handleOpen} className={ROW}>
         <span className="flex aspect-[2/3] w-8 shrink-0 items-center justify-center overflow-hidden rounded bg-secondary">
-          {display.cover === null ? <Film aria-hidden="true" className="size-3.5 text-muted-foreground" /> : <img src={display.cover} alt="" className="size-full object-cover" />}
+          {display.cover === null ? <Film aria-hidden="true" className="size-3.5 text-muted-foreground" /> : <img src={artSources(display.cover, "cover").src} srcSet={artSources(display.cover, "cover").srcSet} sizes="40px" alt="" className="size-full object-cover" />}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium">{display.title}</span>
