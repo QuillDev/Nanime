@@ -203,6 +203,28 @@ export class PassthroughProducer implements HlsProducer {
     this.finish?.(0, "");
   }
 
+  /**
+   * The playlist response, the player parsing it and the segment request take
+   * a round trip or more; starting the run for the player's start position now
+   * overlaps ffmpeg's startup with that. A run that's never asked for is
+   * replaced by the first real request elsewhere, like any other run.
+   */
+  warm(time: number): void {
+    if (this.exitCode === null) {
+      void this.prepare(keyframeIndexAt(this.keyframes, time));
+    }
+  }
+
+  private async prepare(index: number): Promise<void> {
+    try {
+      if (await this.producedPath(index) === null) {
+        await this.chooseRun(index);
+      }
+    } catch {
+      // The segment request will choose (and report) its own run.
+    }
+  }
+
   /** Path of a finished segment (or the init segment), repackaging it first when needed. */
   async segmentPath(name: string): Promise<string | null> {
     if (this.exitCode !== null) {

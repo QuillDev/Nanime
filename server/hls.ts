@@ -340,6 +340,7 @@ export async function hlsPlaylistResponse(options: HlsPlaylistOptions): Promise<
     if (!bound) {
       return new Response("Playback lease has ended", { status: 410 });
     }
+    session.process.warm?.(options.requestedStart);
     const playlist = await waitForPlaylist(session);
     if (playlist === null) {
       return new Response("Stream could not start", { status: 503 });
