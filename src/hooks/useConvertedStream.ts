@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useStreamChoiceEnabled } from "../lib/streamChoicePreference.ts";
 import { convertedStreamPreferred, setConvertedStreamPreferred } from "../lib/streamPreference.ts";
 import { restartDirect, restartHls, seekTimeline, type MutableSourceState } from "../lib/videoSourceRestart.ts";
 import { useHlsBackgroundRecovery } from "./useHlsBackgroundRecovery.ts";
@@ -76,5 +77,11 @@ export function useSourceSwitching(options: ConvertedStreamOptions) {
   const handleTimelineSeek = useCallback((position: number): void => {
     seekTimeline({ direct, entry, position, setError, setOffset, source: sourceRef.current });
   }, [direct, entry, setError, setOffset, sourceRef]);
-  return { converted, direct, handleConverted, handleTimelineSeek };
+  // The choice shows only once turned on under Advanced in the profile, and never for offline copies.
+  const choiceEnabled = useStreamChoiceEnabled();
+  const stream = useMemo(
+    () => (choiceEnabled && entry.offlineUrl === undefined ? { converted, onConverted: handleConverted } : null),
+    [choiceEnabled, converted, entry.offlineUrl, handleConverted],
+  );
+  return { direct, handleTimelineSeek, stream };
 }

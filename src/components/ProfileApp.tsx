@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { AuthUser } from "../types.ts";
 import { LinkedAccounts } from "./LinkedAccounts.tsx";
 import { MediaHeader } from "./MediaHeader.tsx";
-import { PlaybackPreferences } from "./PlaybackPreferences.tsx";
+import { AdvancedPreferences, PlaybackPreferences } from "./PlaybackPreferences.tsx";
 import { PlaybackHistory } from "./PlaybackHistory.tsx";
 import { LibraryActivity } from "./LibraryActivity.tsx";
 import { OFFLINE_DOWNLOADS_ID, OfflineDownloads } from "./OfflineDownloads.tsx";
@@ -26,6 +26,7 @@ export function ProfileApp({ user }: { readonly user: AuthUser }): React.JSX.Ele
         <RecentlyWatched items={recent} />
         <div className="mt-10">
           <PlaybackPreferences user={user} />
+          <AdvancedPreferences />
           <LinkedAccounts />
           <OfflineDownloads defaultOpen={downloadsLinked} />
           <PlaybackHistory />

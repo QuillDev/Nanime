@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type SyntheticEvent } from "react";
-import type { MediaEntry, PreferredAudioLanguage } from "../types.ts";
+import type { MediaEntry, PlayerStreamChoice, PreferredAudioLanguage } from "../types.ts";
 import {
   absolutePlaybackPosition,
   hlsTimelineOffset,
@@ -27,9 +27,8 @@ interface VideoSourceState {
   readonly playbackPosition: (video: HTMLVideoElement) => number;
   readonly timelineOffset: number;
   readonly playbackMode: "direct" | "hls";
-  /** The viewer chose the converted stream over the original. */
-  readonly converted: boolean;
-  readonly handleConverted: (converted: boolean) => void;
+  /** Original or converted video; null when the choice is off or there's nothing to choose. */
+  readonly stream: PlayerStreamChoice | null;
 }
 function cleanupSource(
   source: MutableSourceState,
@@ -152,7 +151,7 @@ export function useVideoSource(
       sourceRef.current.pendingPosition,
     )
   ), [sourceRef]);
-  const { converted, direct, handleConverted, handleTimelineSeek } = useSourceSwitching({
+  const { direct, handleTimelineSeek, stream } = useSourceSwitching({
     entry, preferredAudioLanguage, playbackPosition, setError: setPlaybackError, setOffset: setTimelineOffset, sourceRef,
   });
   const handleSourceMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
@@ -191,7 +190,6 @@ export function useVideoSource(
     playbackPosition,
     timelineOffset,
     playbackMode: direct ? "direct" : "hls",
-    converted,
-    handleConverted,
+    stream,
   };
 }
