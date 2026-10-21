@@ -15,3 +15,10 @@ export function useProfileEpisodes(): ProfileEpisodes {
   const shows = metadata.data ?? NO_METADATA;
   return useMemo(() => buildProfileEpisodes(entries, shows), [entries, shows]);
 }
+
+/** Whether the library or its metadata is still loading, so profile lists aren't known yet. */
+export function useProfileEpisodesPending(): boolean {
+  const library = useLibrary();
+  const metadata = useShowMetadata();
+  return library.isPending || metadata.isPending;
+}
