@@ -1,4 +1,15 @@
-import Hls, { type ErrorData, type RetryConfig } from "hls.js";
+import Hls, {
+  type ErrorData,
+  type HlsConfig,
+  type Loader,
+  type LoaderCallbacks,
+  type LoaderConfiguration,
+  type LoaderContext,
+  type LoaderStats,
+  type PlaylistLoaderConstructor,
+  type PlaylistLoaderContext,
+  type RetryConfig,
+} from "hls.js";
 
 export interface HlsAttachment {
   readonly video: HTMLVideoElement;
@@ -8,6 +19,8 @@ export interface HlsAttachment {
   readonly resumeAt?: number;
   readonly shouldPlay?: boolean;
   readonly timelineOffset?: number;
+  /** The playlist body already fetched from `url`, so hls.js doesn't ask the server again. */
+  readonly playlist?: string;
 }
 
 export function hlsJsSupported(): boolean {
@@ -134,12 +147,66 @@ function bindPageLifecycle(hls: Hls, video: HTMLVideoElement): () => void {
   };
 }
 
+function servedStats(bytes: number): LoaderStats {
+  const now = performance.now();
+  return {
+    aborted: false, loaded: bytes, retry: 0, total: bytes, chunkCount: 0, bwEstimate: 0,
+    loading: { start: now, first: now, end: now },
+    parsing: { start: 0, end: 0 },
+    buffering: { start: 0, first: 0, end: 0 },
+  };
+}
+
+/**
+ * Playlist loader that answers the first request for `url` with the body the
+ * session opener already fetched (one round trip less before the first
+ * segment), and loads everything else normally.
+ */
+function prefetchedPlaylistLoader(url: string, playlist: string): PlaylistLoaderConstructor {
+  const target = new URL(url, globalThis.location.href).href;
+  let unused = true;
+  return class PrefetchedPlaylistLoader implements Loader<PlaylistLoaderContext> {
+    context: PlaylistLoaderContext | null = null;
+    stats: LoaderStats = servedStats(0);
+    private readonly network: Loader<LoaderContext>;
+    private timer: ReturnType<typeof setTimeout> | undefined = undefined;
+
+    constructor(config: HlsConfig) {
+      const NetworkLoader = config.loader;
+      this.network = new NetworkLoader(config);
+    }
+
+    load(context: PlaylistLoaderContext, config: LoaderConfiguration, callbacks: LoaderCallbacks<PlaylistLoaderContext>): void {
+      if (!unused || new URL(context.url, globalThis.location.href).href !== target) {
+        this.network.load(context, config, callbacks as LoaderCallbacks<LoaderContext>);
+        return;
+      }
+      unused = false;
+      this.context = context;
+      this.stats = servedStats(playlist.length);
+      this.timer = setTimeout(() => {
+        callbacks.onSuccess({ url: target, data: playlist, code: 200 }, this.stats, context, null);
+      }, 0);
+    }
+
+    abort(): void {
+      clearTimeout(this.timer);
+      this.network.abort();
+    }
+
+    destroy(): void {
+      clearTimeout(this.timer);
+      this.network.destroy();
+    }
+  };
+}
+
 export function attachHls(options: HlsAttachment): (() => void) | undefined {
   if (!hlsJsSupported()) {
     options.onError("This browser does not support HLS video playback.");
     return undefined;
   }
-  const hls = new Hls({
+  const config: Partial<HlsConfig> = {
     autoStartLoad: false,
     maxBufferLength: 30,
     maxMaxBufferLength: 30,
@@ -160,7 +227,11 @@ export function attachHls(options: HlsAttachment): (() => void) | undefined {
     startPosition: options.resumeAt === undefined
       ? -1
       : Math.max(0, options.resumeAt - (options.timelineOffset ?? 0)),
-  });
+  };
+  if (options.playlist !== undefined) {
+    config.pLoader = prefetchedPlaylistLoader(options.url, options.playlist);
+  }
+  const hls = new Hls(config);
   const unbindPageLifecycle = startHls(hls, options);
   return () => {
     unbindPageLifecycle();
