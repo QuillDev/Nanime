@@ -16,7 +16,7 @@ export async function fetchPlaybackProgress(
       await api.api.progress.get({ fetch: { signal } }),
       "Playback progress request",
     );
-    await rememberOfflineProgress(progress);
+    rememberOfflineProgress(progress);
     return progress;
   } catch (error: unknown) {
     if (canUseOfflineFallback(error)) {

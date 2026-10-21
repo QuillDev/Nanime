@@ -79,6 +79,8 @@ export interface OfflineDownloadStore {
   ) => Promise<readonly OfflineDownload[]>;
   readonly putDownload: (download: OfflineDownload) => Promise<void>;
   readonly putProfile: (profile: OfflineProfile) => Promise<void>;
+  /** Read-modify-write of one profile inside a single transaction, so concurrent updates can't overwrite each other. */
+  readonly mergeProfile: (userId: number, merge: (existing: OfflineProfile | null) => OfflineProfile | null) => Promise<void>;
   readonly getProfile: (userId: number) => Promise<OfflineProfile | null>;
   readonly getLatestProfile: () => Promise<OfflineProfile | null>;
   readonly setActiveProfile: (userId: number | null) => Promise<void>;

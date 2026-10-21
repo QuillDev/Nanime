@@ -50,22 +50,30 @@ export function clearOfflineIdentity(): void {
   void offlineStore()?.setActiveProfile(null);
 }
 
+type ProfileUpdate = Partial<Omit<OfflineProfile, "user" | "updatedAt">>;
+
+/**
+ * Library, metadata and progress responses arrive together and each updates
+ * its own field of the one profile record. Separate read and write
+ * transactions let the last writer put back stale copies of the others'
+ * fields (a profile could lose its metadata and progress), so the read and
+ * the write share one transaction.
+ */
 async function updateProfile(
   user: AuthUser,
-  update: Partial<Omit<OfflineProfile, "user" | "updatedAt">> = {},
+  update: ProfileUpdate | ((existing: OfflineProfile | null) => ProfileUpdate) = {},
 ): Promise<void> {
   const database = offlineStore();
   if (database === null) {
     return;
   }
-  const existing = await database.getProfile(user.id);
-  await database.putProfile({
+  await database.mergeProfile(user.id, (existing) => ({
     ...existing,
-    ...update,
+    ...(typeof update === "function" ? update(existing) : update),
     user,
     active: activeUserId() === user.id,
     updatedAt: Date.now(),
-  });
+  }));
 }
 
 export async function rememberOfflineUser(user: AuthUser): Promise<void> {
@@ -89,29 +97,42 @@ export function activeOfflineProfile(): Promise<OfflineProfile | null> {
   });
 }
 
-export async function rememberOfflineLibrary(
-  entries: readonly MediaEntry[],
-): Promise<void> {
-  const profile = await activeOfflineProfile();
-  if (profile !== null) {
-    await updateProfile(profile.user, { library: entries });
+/** Updates the signed-in user's saved profile, if one is being kept, in one transaction. */
+async function updateActiveProfile(update: ProfileUpdate): Promise<void> {
+  const database = offlineStore();
+  const userId = activeUserId();
+  if (database === null || userId === null) {
+    return;
   }
+  await database.mergeProfile(userId, (existing) => (
+    existing === null ? null : { ...existing, ...update, active: true, updatedAt: Date.now() }
+  ));
 }
 
-export async function rememberOfflineMetadata(metadata: ShowMetadata): Promise<void> {
-  const profile = await activeOfflineProfile();
-  if (profile !== null) {
-    await updateProfile(profile.user, { metadata });
-  }
+/**
+ * Saving the offline copy is best-effort and stays off the response's path:
+ * the page renders without waiting for IndexedDB (writes still land in order).
+ */
+function rememberInBackground(update: ProfileUpdate): void {
+  void (async (): Promise<void> => {
+    try {
+      await updateActiveProfile(update);
+    } catch {
+      // The next response saves it again; offline use keeps the previous copy.
+    }
+  })();
 }
 
-export async function rememberOfflineProgress(
-  playbackProgress: readonly PlaybackProgress[],
-): Promise<void> {
-  const profile = await activeOfflineProfile();
-  if (profile !== null) {
-    await updateProfile(profile.user, { playbackProgress });
-  }
+export function rememberOfflineLibrary(entries: readonly MediaEntry[]): void {
+  rememberInBackground({ library: entries });
+}
+
+export function rememberOfflineMetadata(metadata: ShowMetadata): void {
+  rememberInBackground({ metadata });
+}
+
+export function rememberOfflineProgress(playbackProgress: readonly PlaybackProgress[]): void {
+  rememberInBackground({ playbackProgress });
 }
 
 export function canUseOfflineFallback(error: unknown): boolean {
@@ -217,11 +238,12 @@ export async function saveOfflinePlayback(
     updatedAt: Date.now(),
     dismissedAt: null,
   };
-  const playbackProgress = [
-    ...(profile.playbackProgress ?? []).filter((item) => item.rel !== update.rel),
-    saved,
-  ];
-  await updateProfile(profile.user, { playbackProgress });
+  await updateProfile(profile.user, (existing) => ({
+    playbackProgress: [
+      ...(existing?.playbackProgress ?? []).filter((item) => item.rel !== update.rel),
+      saved,
+    ],
+  }));
   const queued = appendPlaybackUpdate(playbackOutbox(profile.user.id), {
     id: crypto.randomUUID(),
     update,
