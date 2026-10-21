@@ -9,7 +9,7 @@ import {
 } from "../hooks/usePlayerPresentation.ts";
 import { useAudioSelection, useSubtitleTracks } from "../hooks/useSubtitleTracks.ts";
 import type { VideoControls } from "../hooks/useVideoControls.ts";
-import type { EpisodeDisplay, MediaEntry, PreferredAudioLanguage, SubtitleTrack } from "../types.ts";
+import type { EpisodeDisplay, MediaEntry, PlayerStreamChoice, PreferredAudioLanguage, SubtitleTrack } from "../types.ts";
 import { PlayerControls } from "./PlayerControls.tsx";
 import {
   PlayerDiagnostics,
@@ -73,6 +73,7 @@ interface PlayerSurfaceProps {
   readonly onAudioTrack: (index: number) => void;
   readonly onTimelineSeek: (position: number) => void;
   readonly playbackPosition: (video: HTMLVideoElement) => number;
+  readonly stream: PlayerStreamChoice | null;
 }
 
 function usePlayerTracks(
@@ -93,7 +94,7 @@ export function PlayerSurface({
   episodeDisplay, timelineOffset, knownDuration, videoRef,
   setVideo, handleVideoError, handlePlaying, handleSourceMetadata, progress,
   previousAvailable, nextAvailable, onPrevious, onNext,
-  onAudioTrack, onTimelineSeek, playbackPosition, children,
+  onAudioTrack, onTimelineSeek, playbackPosition, children, stream,
 }: PlayerSurfaceProps): React.JSX.Element {
   const { audio, subtitles } = usePlayerTracks(entry, onAudioTrack, preferredAudioLanguage);
   const playerRef = useRef<HTMLDivElement | null>(null);
@@ -224,7 +225,7 @@ export function PlayerSurface({
             onToggleSettings={display.handleToggleSettings}
             onTrack={display.handleTrack}
             onAudioTrack={audio.handleTrack}
-            onAppearance={display.handleAppearance}
+            onAppearance={display.handleAppearance} stream={stream}
           />
         </div>
         {children}

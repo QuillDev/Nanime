@@ -5,6 +5,7 @@ const MEDIA_GET_PATHS = new Set([
   "/trickplay/frame",
   "/subtitle",
   "/hls/index",
+  "/hls/converted",
   "/hls/seg",
 ]);
 

@@ -1,5 +1,5 @@
 import { WatchTogether, useWatchTogether, useWatchTogetherPosition } from "./WatchTogether.tsx";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type {
   AniListPlaybackTarget,
   EpisodeDisplay,
@@ -69,7 +69,13 @@ export function Player({
     timelineOffset,
     playbackPosition,
     playbackMode,
+    converted,
+    handleConverted,
   } = useVideoSource(entry, resumeAt, preferredAudioLanguage);
+  const stream = useMemo(
+    () => (entry.offlineUrl === undefined ? { converted, onConverted: handleConverted } : null),
+    [converted, entry.offlineUrl, handleConverted],
+  );
   const together = useWatchTogether({ rel: entry.rel, videoRef, playbackPosition, onSeek: handleTimelineSeek });
   const progress = usePlayerProgress({
     anilistTarget,
@@ -123,6 +129,7 @@ export function Player({
             nextAvailable={nextAvailable && together.guestId === null}
             onPrevious={onPrevious}
             onNext={onNext}
+            stream={stream}
           >
             {entry.offlineUrl === undefined && <WatchTogether session={together} videoRef={videoRef} />}
           </PlayerSurface>

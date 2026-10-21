@@ -1,6 +1,8 @@
+import { streamUrl } from "../api.ts";
 import { hlsUrl } from "../hlsApi.ts";
+import { attachDirectVideoSource } from "./directVideoPlayback.ts";
 import type { MediaEntry } from "../types.ts";
-import { absolutePlaybackPosition, hlsTimelineOffset } from "./mediaTimeline.ts";
+import { absolutePlaybackPosition, hlsTimelineOffset, planHlsSeek } from "./mediaTimeline.ts";
 import { attachManagedHls } from "./managedHlsPlayback.ts";
 import { markCodecUnplayable } from "./hevcPlayback.ts";
 
@@ -50,6 +52,19 @@ export function playbackErrorHandler(options: Omit<RestartOptions, "audioTrack" 
   };
 }
 
+/** Back to the original file served as-is, at the same spot. */
+export function restartDirect(options: Omit<RestartOptions, "audioTrack">): void {
+  const { entry, position, setError, setOffset, source } = options;
+  const { video } = source;
+  if (video === null) {
+    return;
+  }
+  stopSource(source, setError);
+  Object.assign(source, { detach: undefined, passthroughCodec: null, pendingPosition: position, timelineOffset: 0 });
+  setOffset(0);
+  attachDirectVideoSource(video, streamUrl(entry.rel));
+}
+
 export function restartHls(options: RestartOptions): void {
   const { audioTrack, entry, position, setError, setOffset, source } = options;
   const { video } = source;
@@ -94,4 +109,43 @@ export function fallBackFromPassthrough(options: Omit<RestartOptions, "audioTrac
   // The failed decoder stopped playback the viewer had started; pick it back up.
   restartHls({ ...options, audioTrack: source.selectedAudio, play: true });
   return true;
+}
+
+export interface TimelineSeekOptions extends Omit<RestartOptions, "audioTrack"> {
+  readonly direct: boolean;
+}
+function tryLocalHlsSeek(
+  source: MutableSourceState,
+  video: HTMLVideoElement,
+  position: number,
+): boolean {
+  const plan = planHlsSeek(position, source.timelineOffset, video.seekable);
+  if (plan.kind === "restart") {
+    return false;
+  }
+  source.pendingPosition = null;
+  video.currentTime = plan.time;
+  return true;
+}
+export function seekTimeline(options: TimelineSeekOptions): void {
+  const { direct, entry, position, setError, setOffset, source } = options;
+  const { video } = source;
+  if (video === null) {
+    return;
+  }
+  if (direct && source.selectedAudio === null) {
+    video.currentTime = Math.max(0, position);
+    return;
+  }
+  if (tryLocalHlsSeek(source, video, position)) {
+    return;
+  }
+  restartHls({
+    audioTrack: source.selectedAudio,
+    entry,
+    position,
+    setError,
+    setOffset,
+    source,
+  });
 }

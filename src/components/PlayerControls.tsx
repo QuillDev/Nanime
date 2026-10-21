@@ -12,9 +12,12 @@ import {
 } from "lucide-react";
 import { useCallback, type ChangeEvent, type MouseEvent } from "react";
 import { formatDuration } from "../format.ts";
-import type { AudioTrack, SubtitleTrack } from "../types.ts";
+import type { AudioTrack, PlayerStreamChoice, SubtitleTrack } from "../types.ts";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible.tsx";
 import { PlaybackTimeline } from "./PlaybackTimeline.tsx";
+import { ConvertedRanges } from "./ConvertedRanges.tsx";
+import { PlayerStreamSetting } from "./PlayerStreamSetting.tsx";
+import { useConvertedProgress } from "../hooks/useConvertedProgress.ts";
 
 type SubtitleSize = "small" | "medium" | "large";
 
@@ -51,6 +54,8 @@ interface PlayerControlsProps {
   readonly onTrack: (track: number | null) => void;
   readonly onAudioTrack: (track: number) => void;
   readonly onAppearance: (appearance: SubtitleAppearance) => void;
+  /** Original or converted video; null when there's no choice (offline copies). */
+  readonly stream: PlayerStreamChoice | null;
 }
 
 const controlClass = "relative flex size-11 shrink-0 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-muted-foreground";
@@ -216,14 +221,20 @@ function VolumeControl({
   );
 }
 
+function useConvertedOverlay(props: PlayerControlsProps): React.ReactNode {
+  const progress = useConvertedProgress(props.mediaPath, props.selectedAudioTrack, props.stream?.converted === true);
+  return progress === undefined ? null : <ConvertedRanges progress={progress} />;
+}
+
 export function PlayerControls(props: PlayerControlsProps): React.JSX.Element {
+  const overlay = useConvertedOverlay(props);
   const safeDuration = Math.max(props.duration, 0);
   const safeTime = Math.min(Math.max(props.currentTime, 0), safeDuration);
   const bufferedAhead = Math.max(0, props.bufferedUntil - safeTime);
   return (
     <Collapsible open={props.settingsOpen} asChild>
     <div className="player-safe-controls relative px-2 pb-2 sm:px-3">
-      <PlaybackTimeline bufferedUntil={props.bufferedUntil} currentTime={safeTime} duration={safeDuration} mediaPath={props.mediaPath} onInteractionEnd={props.onTimelineInteractionEnd} onInteractionStart={props.onTimelineInteractionStart} onSeek={props.onSeek} />
+      <PlaybackTimeline bufferedUntil={props.bufferedUntil} currentTime={safeTime} duration={safeDuration} mediaPath={props.mediaPath} onInteractionEnd={props.onTimelineInteractionEnd} onInteractionStart={props.onTimelineInteractionStart} onSeek={props.onSeek} overlay={overlay} />
       <div className="flex items-center gap-1">
         <button type="button" className={controlClass} disabled={!props.previousAvailable} onClick={props.onPrevious} aria-label="Previous episode" title="Previous episode">
           <SkipBack className="size-5" />
@@ -249,6 +260,11 @@ export function PlayerControls(props: PlayerControlsProps): React.JSX.Element {
         </button>
       </div>
       <CollapsibleContent className="absolute bottom-16 right-2 z-20 max-h-[min(28rem,70vh)] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
+        {props.stream !== null && (
+          <div className="px-4 pt-4">
+            <PlayerStreamSetting choice={props.stream} />
+          </div>
+        )}
         <SubtitleMenu
           tracks={props.tracks}
           selectedTrack={props.selectedTrack}
