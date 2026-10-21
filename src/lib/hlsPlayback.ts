@@ -10,6 +10,10 @@ import Hls, {
   type PlaylistLoaderContext,
   type RetryConfig,
 } from "hls.js";
+// The ESM build can't inline its transmuxing worker, so without a worker path
+// hls.js demuxes and remuxes every MPEG-TS segment on the main thread, where
+// it competes with the player UI (and is heaviest on TVs and phones).
+import hlsWorkerUrl from "hls.js/dist/hls.worker.js?url";
 
 export interface HlsAttachment {
   readonly video: HTMLVideoElement;
@@ -211,6 +215,7 @@ export function attachHls(options: HlsAttachment): (() => void) | undefined {
     maxBufferLength: 30,
     maxMaxBufferLength: 30,
     enableWorker: true,
+    workerPath: hlsWorkerUrl,
     manifestLoadPolicy: {
       default: {
         maxTimeToFirstByteMs: 10_000,
