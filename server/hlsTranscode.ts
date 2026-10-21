@@ -201,6 +201,19 @@ const gridKeyframes = `expr:gte(t,n_forced*${String(HLS_SEGMENT_SECONDS)})`;
 /** Added to every cached segment's timestamps; players align on the first segment they load. */
 export const CACHED_TIMESTAMP_OFFSET = 10;
 
+/**
+ * Audio cut exactly on the run's grid boundaries. Copied audio would start at
+ * the packet the demuxer seeks to (seconds early, overlapping the previous
+ * run's segments), so it's always re-encoded and trimmed to the run.
+ */
+function cachedAudioArgs(run: CachedRunCommand): readonly string[] {
+  if (run.audioTrack === undefined) {
+    return [];
+  }
+  const end = run.start + run.length;
+  return ["-af", `atrim=start=${String(run.start)}:end=${String(end)}`, "-c:a", "aac", "-ac", "2", "-b:a", "192k"];
+}
+
 /** Threads per conversion run: at `faster`, 4 threads convert 1080p HEVC at 3-4x real time on the host. */
 const CACHED_RUN_THREADS = "4";
 
@@ -220,7 +233,7 @@ export function cachedRunArgs(run: CachedRunCommand): readonly string[] {
     "-c:v", "libx264", "-preset", "faster", "-tune", "animation", "-crf", "20",
     "-maxrate", "6M", "-bufsize", "12M", "-pix_fmt", "yuv420p", "-threads", CACHED_RUN_THREADS,
     "-sc_threshold", "0", "-flags", "+cgop", "-force_key_frames", gridKeyframes,
-    ...audioArgs(run.audioTrack),
+    ...cachedAudioArgs(run),
     // A constant shift keeps decode times positive for a run from 0 too, which the muxer would otherwise shift alone.
     "-output_ts_offset", String(CACHED_TIMESTAMP_OFFSET), "-muxdelay", "0",
     // Cut at every keyframe; keyframes only land on the grid.

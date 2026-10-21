@@ -1,52 +1,19 @@
 import { useCallback, useRef, useState, type SyntheticEvent } from "react";
-import { streamUrl } from "../api.ts";
-import { hlsUrl } from "../hlsApi.ts";
 import type { MediaEntry, PreferredAudioLanguage } from "../types.ts";
 import {
   absolutePlaybackPosition,
   hlsTimelineOffset,
-  planHlsSeek,
   sourceMetadataPosition,
 } from "../lib/mediaTimeline.ts";
 import { videoErrorDetail } from "../lib/videoError.ts";
-import { attachDirectVideoSource } from "../lib/directVideoPlayback.ts";
-import { attachManagedHls } from "../lib/managedHlsPlayback.ts";
 import {
   decoderFailed,
   playbackErrorHandler,
   restartHls,
   type MutableSourceState,
-  type RestartOptions,
 } from "../lib/videoSourceRestart.ts";
-import { useHlsBackgroundRecovery } from "./useHlsBackgroundRecovery.ts";
-
-interface SourceAttachment {
-  readonly onPassthroughCodec: (codec: string | null) => void;
-  readonly video: HTMLVideoElement;
-  readonly entry: MediaEntry;
-  readonly resumeAt: number;
-  readonly onError: (message: string) => void;
-  readonly playerId: string;
-  readonly direct: boolean;
-  readonly onTimelineOffset: (offset: number) => void;
-}
-function attachSource(options: SourceAttachment): (() => void) | undefined {
-  const { video, entry, resumeAt, onError, playerId, direct, onTimelineOffset, onPassthroughCodec } = options;
-  if (direct) {
-    attachDirectVideoSource(video, entry.offlineUrl ?? streamUrl(entry.rel));
-    return undefined;
-  }
-  const timelineOffset = hlsTimelineOffset(resumeAt);
-  return attachManagedHls({
-    video,
-    url: hlsUrl(entry.rel, null, resumeAt),
-    onError,
-    resumeAt,
-    timelineOffset,
-    onTimelineOffset,
-    onPassthroughCodec,
-  }, playerId);
-}
+import { initiallyDirect, useSourceSwitching } from "./useConvertedStream.ts";
+import { attachSource } from "../lib/videoSourceAttach.ts";
 
 interface VideoSourceState {
   readonly playbackError: string | null;
@@ -60,44 +27,9 @@ interface VideoSourceState {
   readonly playbackPosition: (video: HTMLVideoElement) => number;
   readonly timelineOffset: number;
   readonly playbackMode: "direct" | "hls";
-}
-interface TimelineSeekOptions extends Omit<RestartOptions, "audioTrack"> {
-  readonly direct: boolean;
-}
-function tryLocalHlsSeek(
-  source: MutableSourceState,
-  video: HTMLVideoElement,
-  position: number,
-): boolean {
-  const plan = planHlsSeek(position, source.timelineOffset, video.seekable);
-  if (plan.kind === "restart") {
-    return false;
-  }
-  source.pendingPosition = null;
-  video.currentTime = plan.time;
-  return true;
-}
-function seekTimeline(options: TimelineSeekOptions): void {
-  const { direct, entry, position, setError, setOffset, source } = options;
-  const { video } = source;
-  if (video === null) {
-    return;
-  }
-  if (direct && source.selectedAudio === null) {
-    video.currentTime = Math.max(0, position);
-    return;
-  }
-  if (tryLocalHlsSeek(source, video, position)) {
-    return;
-  }
-  restartHls({
-    audioTrack: source.selectedAudio,
-    entry,
-    position,
-    setError,
-    setOffset,
-    source,
-  });
+  /** The viewer chose the converted stream over the original. */
+  readonly converted: boolean;
+  readonly handleConverted: (converted: boolean) => void;
 }
 function cleanupSource(
   source: MutableSourceState,
@@ -158,7 +90,7 @@ function useInitialSourceState(
   resumeAt: number,
   preferredAudioLanguage: PreferredAudioLanguage | null,
 ) {
-  const direct = entry.offlineUrl !== undefined || entry.direct && preferredAudioLanguage === null;
+  const direct = initiallyDirect(entry, preferredAudioLanguage);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [timelineOffset, setTimelineOffset] = useState(
     direct ? 0 : hlsTimelineOffset(resumeAt),
@@ -166,39 +98,17 @@ function useInitialSourceState(
   return { direct, playbackError, setPlaybackError, timelineOffset, setTimelineOffset };
 }
 
-interface BackgroundRestartOptions {
-  readonly direct: boolean;
-  readonly entry: MediaEntry;
-  readonly playbackPosition: (video: HTMLVideoElement) => number;
-  readonly setError: (error: string | null) => void;
-  readonly setOffset: (offset: number) => void;
-  readonly sourceRef: React.RefObject<MutableSourceState>;
-}
-
-function useBackgroundRestart(options: BackgroundRestartOptions): void {
-  const { direct, entry, playbackPosition, setError, setOffset, sourceRef } = options;
-  const recover = useCallback((video: HTMLVideoElement) => {
-    restartHls({
-      audioTrack: sourceRef.current.selectedAudio, entry,
-      position: playbackPosition(video), setError, setOffset,
-      source: sourceRef.current,
-    });
-  }, [entry, playbackPosition, setError, setOffset, sourceRef]);
-  useHlsBackgroundRecovery({ enabled: !direct, onRecover: recover, sourceRef });
-}
-
 export function useVideoSource(
   entry: MediaEntry,
   resumeAt: number,
   preferredAudioLanguage: PreferredAudioLanguage | null,
 ): VideoSourceState {
-  const {
-    direct, playbackError, setPlaybackError, timelineOffset, setTimelineOffset,
-  } = useInitialSourceState(entry, resumeAt, preferredAudioLanguage);
+  const initial = useInitialSourceState(entry, resumeAt, preferredAudioLanguage);
+  const { playbackError, setPlaybackError, timelineOffset, setTimelineOffset } = initial;
   const { sourceRef, videoRef, initialSourceRef } = useSourceReferences({
     entry, resumeAt,
     timelineOffset,
-    direct,
+    direct: initial.direct,
   });
   const setVideo = useCallback(
     (video: HTMLVideoElement | null): (() => void) | undefined => {
@@ -242,9 +152,8 @@ export function useVideoSource(
       sourceRef.current.pendingPosition,
     )
   ), [sourceRef]);
-  useBackgroundRestart({
-    direct, entry, playbackPosition, setError: setPlaybackError,
-    setOffset: setTimelineOffset, sourceRef,
+  const { converted, direct, handleConverted, handleTimelineSeek } = useSourceSwitching({
+    entry, preferredAudioLanguage, playbackPosition, setError: setPlaybackError, setOffset: setTimelineOffset, sourceRef,
   });
   const handleSourceMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     const source = sourceRef.current;
@@ -270,16 +179,6 @@ export function useVideoSource(
       source: sourceRef.current,
     });
   }, [entry, playbackPosition, setPlaybackError, setTimelineOffset, sourceRef]);
-  const handleTimelineSeek = useCallback((position: number): void => {
-    seekTimeline({
-      direct,
-      entry,
-      position,
-      setError: setPlaybackError,
-      setOffset: setTimelineOffset,
-      source: sourceRef.current,
-    });
-  }, [direct, entry, setPlaybackError, setTimelineOffset, sourceRef]);
   return {
     playbackError,
     videoRef,
@@ -292,5 +191,7 @@ export function useVideoSource(
     playbackPosition,
     timelineOffset,
     playbackMode: direct ? "direct" : "hls",
+    converted,
+    handleConverted,
   };
 }

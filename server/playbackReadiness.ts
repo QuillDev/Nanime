@@ -108,6 +108,28 @@ export interface PlaybackPlanOptions extends MediaLibraryOptions {
   readonly hevcClient?: boolean;
   /** The client decodes AV1, so AV1 sources stream untouched the same way. */
   readonly av1Client?: boolean;
+  /** The viewer chose the converted stream over the original, whatever the client decodes. */
+  readonly convertClient?: boolean;
+}
+
+function convertedSource(abs: string, options: PlaybackPlanOptions): HlsStreamSource {
+  return { input: abs, videoMode: "cached", cacheRoot: join(options.mediaRoot, SEGMENT_CACHE_FOLDER) };
+}
+
+/** The converted stream when the viewer asked for it, or the untouched video when the client decodes it. */
+async function clientChosenSource(abs: string, options: PlaybackPlanOptions): Promise<HlsStreamSource | null> {
+  const codecs = passthroughCodecs(options);
+  if (options.convertClient !== true && codecs.size === 0) {
+    return null;
+  }
+  const probe = await cachedProbe(abs);
+  if (probe === null) {
+    return null;
+  }
+  if (options.convertClient === true) {
+    return convertedSource(abs, options);
+  }
+  return passthroughPlayable(probe, codecs) ? { input: abs, videoMode: "passthrough", codec: probe.codec } : null;
 }
 
 /**
@@ -117,12 +139,9 @@ export interface PlaybackPlanOptions extends MediaLibraryOptions {
  * kept, so each part of an episode is converted once.
  */
 export async function playbackPlan(abs: string, rel: string, options: PlaybackPlanOptions): Promise<PlaybackPlan> {
-  const codecs = passthroughCodecs(options);
-  if (codecs.size > 0) {
-    const source = await cachedProbe(abs);
-    if (source !== null && passthroughPlayable(source, codecs)) {
-      return { kind: "stream", source: { input: abs, videoMode: "passthrough", codec: source.codec } };
-    }
+  const chosen = await clientChosenSource(abs, options);
+  if (chosen !== null) {
+    return { kind: "stream", source: chosen };
   }
   const stored = await storedCompatibilityCopy(rel, options);
   const storedProbe = stored === null ? null : await cachedProbe(stored);
@@ -139,7 +158,7 @@ export async function playbackPlan(abs: string, rel: string, options: PlaybackPl
   // Converted as it's watched, and every converted segment is kept (hlsSegmentCache.ts).
   return probe === null
     ? { kind: "transcode-required", transcode: sourceTranscodeState(rel) }
-    : { kind: "stream", source: { input: abs, videoMode: "cached", cacheRoot: join(options.mediaRoot, SEGMENT_CACHE_FOLDER) } };
+    : { kind: "stream", source: convertedSource(abs, options) };
 }
 
 const MAX_READINESS_PATHS = 500;

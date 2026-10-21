@@ -16,6 +16,8 @@ interface PlaybackTimelineProps {
   readonly onInteractionEnd: () => void;
   readonly onInteractionStart: () => void;
   readonly onSeek: (time: number) => void;
+  /** Drawn along the bottom of the bar (e.g. converted parts). */
+  readonly overlay?: React.ReactNode;
 }
 
 interface PreviewPosition {
@@ -135,6 +137,7 @@ export function PlaybackTimeline({
   onInteractionEnd,
   onInteractionStart,
   onSeek,
+  overlay,
 }: PlaybackTimelineProps): React.JSX.Element {
   const values = timelineValues(duration, currentTime, bufferedUntil);
   const preview = usePreviewInteractions({
@@ -165,6 +168,7 @@ export function PlaybackTimeline({
         {preview.preview !== null && values.duration > 0 && (
           <TimelinePreview mediaPath={mediaPath} percent={preview.preview.percent} time={preview.preview.time} />
         )}
+        {overlay}
         <progress aria-hidden="true" max={values.maximum} value={values.bufferedUntil} className="player-buffered-range absolute inset-x-0 top-1/2 h-1 w-full -translate-y-1/2" />
         <progress aria-hidden="true" max={values.maximum} value={displayedTime} className="player-played-range absolute inset-x-0 top-1/2 h-1 w-full -translate-y-1/2" />
         <input id="player-playback-position" type="range" min={0} max={values.duration} step={0.1} value={displayedTime} onChange={preview.handleChange} className="player-seek-range absolute inset-0 z-10 h-3 w-full cursor-pointer" />

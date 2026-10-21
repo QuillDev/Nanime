@@ -13,6 +13,7 @@ import {
 import { playbackRoute } from "./playbackRoutes.ts";
 import {
   audioTracksResponse,
+  convertedProgressResponse,
   hlsPlaylistResponse,
   playbackPlan,
   playbackReadinessResponse,
@@ -247,6 +248,12 @@ async function timedMediaResponse(context: RouteContext, abs: string): Promise<R
       ? subtitleResponse(abs, index, offset)
       : new Response("Bad request", { status: 400 });
   }
+  if (pathname === "/hls/converted") {
+    const audioIndex = optionalAudioIndex(url);
+    return audioIndex === undefined
+      ? new Response("Bad request", { status: 400 })
+      : convertedProgressResponse({ abs, audioIndex, duration: await probeDuration(abs), mediaRoot: MEDIA_ROOT, preferredAudioLanguage: user.preferredAudioLanguage });
+  }
   if (pathname === "/hls/index") {
     const audioIndex = optionalAudioIndex(url);
     if (audioIndex === undefined) {
@@ -256,7 +263,10 @@ async function timedMediaResponse(context: RouteContext, abs: string): Promise<R
     if (!Number.isFinite(requestedStart) || requestedStart < 0) {
       return new Response("Bad request", { status: 400 });
     }
-    const plan = await playbackPlan(abs, url.searchParams.get("path") ?? "", { ...TRANSCODE_OPTIONS, hardwareAcceleration: HWACCEL, hevcClient: url.searchParams.get("hevc") === "1", av1Client: url.searchParams.get("av1") === "1" });
+    const plan = await playbackPlan(abs, url.searchParams.get("path") ?? "", {
+      ...TRANSCODE_OPTIONS, hardwareAcceleration: HWACCEL, convertClient: url.searchParams.get("convert") === "1",
+      hevcClient: url.searchParams.get("hevc") === "1", av1Client: url.searchParams.get("av1") === "1",
+    });
     if (plan.kind === "transcode-required") {
       return new Response("This video must be transcoded before it can play", { status: 409 });
     }

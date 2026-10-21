@@ -9,6 +9,8 @@ import { withTemporaryDirectory } from "./testProcess.ts";
 // 10-bit HEVC with keyframes off the 2 s grid, like a real release a browser can't play.
 const EPISODE = "Cache Show/Cache Show - 01.mkv";
 const SEGMENTS = 10;
+// Browser-safe H.264: plays as it is unless the viewer asks for the converted stream.
+const H264_EPISODE = "Cache Show/Cache Show - 02.mkv";
 let server: LibraryTestServer | null = null;
 let viewer = "";
 
@@ -18,6 +20,10 @@ beforeAll(async () => {
     await makeClip(join(media, EPISODE), {
       seconds: 20, rate: "24000/1001", audio: ["jpn"], channels: 2,
       video: ["-c:v", "libx265", "-preset", "ultrafast", "-pix_fmt", "yuv420p10le", "-x265-params", "log-level=error:scenecut=0", "-force_key_frames", "0,2.7,5.9,8.3,11.6,14.2,17.5", "-g", "1000"],
+    });
+    await makeClip(join(media, H264_EPISODE), {
+      seconds: 20, rate: "24000/1001", audio: ["jpn"], channels: 2,
+      video: ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", "48"],
     });
   });
   viewer = await viewerCookie(server);
@@ -67,9 +73,13 @@ async function waitForKept(count: number): Promise<readonly string[]> {
   return kept;
 }
 
-async function frameTimes(path: string): Promise<readonly number[]> {
-  const out = await runText(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "csv=p=0", path]);
+async function packetTimes(path: string, stream: string): Promise<readonly number[]> {
+  const out = await runText(["ffprobe", "-v", "error", "-select_streams", stream, "-show_entries", "packet=pts_time", "-of", "csv=p=0", path]);
   return out.trim().split("\n").map((line) => Number(line.replace(/,$/u, ""))).toSorted((left, right) => left - right);
+}
+
+function frameTimes(path: string): Promise<readonly number[]> {
+  return packetTimes(path, "v:0");
 }
 
 test("a converted episode keeps what's watched: a seek converts from there, and a later start fills in and reuses it", async () => {
@@ -105,6 +115,12 @@ test("a converted episode keeps what's watched: a seek converts from there, and 
     expect(played.length).toBe(source.length);
     const drift = played.map((time, index) => Math.abs(time - CACHED_TIMESTAMP_OFFSET - (source[index] ?? 0)));
     expect(Math.max(...drift)).toBeLessThan(0.01);
+    // Audio is cut on the same boundaries: none of it repeats across pieces from different runs.
+    const seekedAudio = await packetTimes(files[6] ?? "", "a:0");
+    expect(seekedAudio[0] ?? 0).toBeGreaterThanOrEqual(CACHED_TIMESTAMP_OFFSET + 12 - 0.05);
+    const audio = await packetTimes(joined, "a:0");
+    const repeats = audio.filter((time, index) => index > 0 && time <= (audio[index - 1] ?? 0));
+    expect(repeats).toEqual([]);
   });
   // What's on disk is what the first viewer got.
   const root = join(target().media, ".nanime-segments");
@@ -112,3 +128,44 @@ test("a converted episode keeps what's watched: a seek converts from there, and 
   const onDisk = await readFile(join(root, episode, "segment-000006.ts"));
   expect(onDisk.equals(seeked)).toBe(true);
 }, 120_000);
+
+interface ConvertedProgressBody {
+  readonly duration: number;
+  readonly kept: readonly (readonly [number, number])[];
+  readonly converting: readonly (readonly [number, number])[];
+}
+
+async function convertedProgress(path: string): Promise<ConvertedProgressBody> {
+  const response = await target().request(`/hls/converted?${new URLSearchParams({ path }).toString()}`, { cookie: viewer });
+  expect(response.status).toBe(200);
+  return await response.json() as ConvertedProgressBody;
+}
+
+test("a viewer can choose the converted stream over the original and see which parts are converted", async () => {
+  const before = await convertedProgress(H264_EPISODE);
+  expect(before.kept).toEqual([]);
+  // A client that decodes everything, asking for the converted stream anyway.
+  const response = await target().request(`/hls/index?${new URLSearchParams({ path: H264_EPISODE, hevc: "1", av1: "1", convert: "1" }).toString()}`, { cookie: viewer });
+  expect(response.status).toBe(200);
+  expect(response.headers.get("x-nanime-hls-passthrough")).toBeNull();
+  const playlist = await response.text();
+  const urls = playlist.split("\n").filter((line) => line.startsWith("/hls/seg?"));
+  expect(urls).toHaveLength(SEGMENTS);
+
+  const segment = await download(urls[3] ?? "");
+  await withTemporaryDirectory("nanime-converted-choice-", async (directory) => {
+    const file = join(directory, "3.ts");
+    await writeFile(file, segment);
+    const streams = await probeStreams(file);
+    expect(streams.map((stream) => stream.codec_name)).toEqual(["h264", "aac"]);
+  });
+  // The run converts from the requested spot to the end, and the progress shows it fill in.
+  const deadline = Date.now() + 30_000;
+  let progress = await convertedProgress(H264_EPISODE);
+  while (progress.kept[0]?.[1] !== progress.duration && Date.now() < deadline) {
+    await Bun.sleep(100);
+    progress = await convertedProgress(H264_EPISODE);
+  }
+  expect(progress.kept).toEqual([[6, progress.duration]]);
+  expect(progress.converting).toEqual([]);
+}, 60_000);

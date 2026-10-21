@@ -182,3 +182,10 @@ export interface MediaScan {
   readonly error: string | null;
   readonly updatedAt: number;
 }
+
+/** Original or converted video in the player. */
+export interface PlayerStreamChoice {
+  /** The viewer chose the converted stream over the original video. */
+  readonly converted: boolean;
+  readonly onConverted: (converted: boolean) => void;
+}

@@ -19,7 +19,7 @@ import type { HlsProducer } from "./hlsProcess.ts";
  */
 
 /** Bump when the encoder settings change, so old segments aren't mixed with new ones. */
-const CACHE_VERSION = "h264-faster-crf20-v1";
+const CACHE_VERSION = "h264-faster-crf20-aac192-v2";
 /** A run this far ahead of anything its viewer has asked for stops; a later request starts a new one. */
 const RUN_AHEAD_SEGMENTS = 45;
 /** Segments a running run is expected to reach soon; further requests start a new run. */
@@ -106,6 +106,67 @@ async function keep(run: CachedRun, cache: string, index: number): Promise<void>
     // A hard link: a viewer may be reading the run's copy right now.
     await link(join(run.directory, cachedSegmentName(index)), target).catch(() => undefined);
   }
+}
+
+/** Runs converting right now, by cache directory, for progress views. */
+const liveRuns = new Map<string, Set<CachedRun>>();
+
+function trackRun(cache: string, run: CachedRun): void {
+  const runs = liveRuns.get(cache) ?? new Set<CachedRun>();
+  runs.add(run);
+  liveRuns.set(cache, runs);
+  void (async (): Promise<void> => {
+    await run.process.exited.catch(() => -1);
+    runs.delete(run);
+    if (runs.size === 0 && liveRuns.get(cache) === runs) {
+      liveRuns.delete(cache);
+    }
+  })();
+}
+
+type Range = readonly [number, number];
+
+/** Consecutive segment indexes as `[start, end)` second ranges; the last segment runs to the very end. */
+function secondRanges(indexes: readonly number[], duration: number): Range[] {
+  const count = cachedSegmentCount(duration);
+  const ranges: [number, number][] = [];
+  for (const index of indexes) {
+    const last = ranges.at(-1);
+    if (last !== undefined && last[1] === index) {
+      last[1] = index + 1;
+    } else {
+      ranges.push([index, index + 1]);
+    }
+  }
+  return ranges.map(([start, end]) => [start * HLS_SEGMENT_SECONDS, end >= count ? duration : end * HLS_SEGMENT_SECONDS]);
+}
+
+export interface ConvertedProgress {
+  readonly duration: number;
+  /** Converted and kept: plays from disk. */
+  readonly kept: readonly Range[];
+  /** Where running conversions are headed: from what they've reached to where they'll stop. */
+  readonly converting: readonly Range[];
+}
+
+/** What's converted of one episode version and audio track, and what's converting now. */
+export async function convertedProgress(options: Pick<CachedTranscodeOptions, "input" | "audioTrack" | "cacheRoot" | "duration">): Promise<ConvertedProgress> {
+  const cache = await cacheDirectory(options);
+  const count = cachedSegmentCount(options.duration);
+  const onDisk = await writtenSegments(cache);
+  const kept = onDisk.filter((index) => index < count);
+  const live = [...(liveRuns.get(cache) ?? [])].filter((run) => !run.stopped);
+  const converting = await Promise.all(live.map(async (run): Promise<Range> => {
+    const written = await writtenSegments(run.directory);
+    const reached = run.first + written.length;
+    const stop = Math.min(run.end, run.wanted + RUN_AHEAD_SEGMENTS + 1, count);
+    return [reached * HLS_SEGMENT_SECONDS, Math.min(Math.max(reached, stop) * HLS_SEGMENT_SECONDS, options.duration)];
+  }));
+  return {
+    duration: options.duration,
+    kept: secondRanges(kept, options.duration),
+    converting: converting.filter(([start, end]) => end > start),
+  };
 }
 
 export class CachedTranscodeProducer implements HlsProducer {
@@ -224,6 +285,7 @@ export class CachedTranscodeProducer implements HlsProducer {
       directory, first: index, end, process, stderr: new Response(process.stderr).text(), wanted: index, stopped: false,
     };
     this.runs.push(run);
+    trackRun(this.cache, run);
     void this.watchRun(run);
     return run;
   }
