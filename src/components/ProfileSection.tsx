@@ -53,6 +53,27 @@ export function ProfileSetting({ children, label }: ProfileSettingProps): React.
   );
 }
 
+interface ProfileSwitchProps {
+  readonly checked: boolean;
+  readonly label: string;
+  readonly onToggle: () => void;
+}
+
+export function ProfileSwitch({ checked, label, onToggle }: ProfileSwitchProps): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={onToggle}
+      className="group relative block h-6 w-10 shrink-0 rounded-full bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-checked:bg-primary"
+    >
+      <span className="absolute left-0.75 top-0.75 size-4.5 rounded-full bg-white shadow-sm transition-transform group-aria-checked:translate-x-4" />
+    </button>
+  );
+}
+
 export function ProfileEmptyState({ children }: { readonly children: ReactNode }): React.JSX.Element {
   return <p className="py-2 text-sm text-muted-foreground">{children}</p>;
 }

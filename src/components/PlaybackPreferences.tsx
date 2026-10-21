@@ -3,9 +3,10 @@ import {
   setPlaybackDiagnosticsEnabled,
   usePlaybackDiagnosticsEnabled,
 } from "../lib/playbackDiagnosticsPreference.ts";
+import { setStreamChoiceEnabled, useStreamChoiceEnabled } from "../lib/streamChoicePreference.ts";
 import { usePlaybackPreferences } from "../hooks/useAuth.ts";
 import type { AuthUser, PreferredAudioLanguage } from "../types.ts";
-import { ProfileSection, ProfileSetting } from "./ProfileSection.tsx";
+import { ProfileSection, ProfileSetting, ProfileSwitch } from "./ProfileSection.tsx";
 
 const AUDIO_OPTIONS = [
   { value: "", label: "Auto", summary: "Auto audio" },
@@ -57,20 +58,26 @@ export function PlaybackPreferences({ user }: { readonly user: AuthUser }): Reac
         <AudioLanguagePicker value={language} disabled={preferences.isPending} onSelect={handleAudioLanguage} />
       </ProfileSetting>
       <ProfileSetting label="Player diagnostics">
-        <button
-          type="button"
-          role="switch"
-          aria-checked={diagnosticsEnabled}
-          aria-label="Playback diagnostics"
-          onClick={handleDiagnosticsToggle}
-          className="group relative block h-6 w-10 shrink-0 rounded-full bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-checked:bg-primary"
-        >
-          <span className="absolute left-0.75 top-0.75 size-4.5 rounded-full bg-white shadow-sm transition-transform group-aria-checked:translate-x-4" />
-        </button>
+        <ProfileSwitch checked={diagnosticsEnabled} label="Playback diagnostics" onToggle={handleDiagnosticsToggle} />
       </ProfileSetting>
       {preferences.isError && (
         <p className="select-text pt-2 text-sm text-destructive">{preferences.error.message}</p>
       )}
+    </ProfileSection>
+  );
+}
+
+/** Features most viewers don't need, off until turned on here. */
+export function AdvancedPreferences(): React.JSX.Element {
+  const streamChoice = useStreamChoiceEnabled();
+  const handleStreamChoice = useCallback(() => {
+    setStreamChoiceEnabled(!streamChoice);
+  }, [streamChoice]);
+  return (
+    <ProfileSection id="advanced-preferences" title="Advanced" summary={streamChoice ? "Stream choice on" : undefined}>
+      <ProfileSetting label="Original or converted stream in the player">
+        <ProfileSwitch checked={streamChoice} label="Stream choice in the player" onToggle={handleStreamChoice} />
+      </ProfileSetting>
     </ProfileSection>
   );
 }
