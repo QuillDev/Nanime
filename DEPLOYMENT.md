@@ -35,6 +35,29 @@ library/database, not production files or watch state. Native no-overwrite folde
 moves require Linux/glibc, `/proc`, and filesystem `renameat2` support; unsupported
 configurations fail closed instead of attempting ordinary overwriting renames.
 
+### Android app updates
+
+Web deploys update the Android app's UI immediately. Only the native shell needs
+an APK. To ship one, publish a release tagged `android-v<version>` from `main`
+(`gh release create android-v0.2.0 --target main --generate-notes`); CI builds,
+signs and attaches `nanime.apk` and `android-release.json` to it. CI signs release APKs with the key in the `NANIME_ANDROID_KEYSTORE_BASE64`
+and `NANIME_ANDROID_KEYSTORE_PASSWORD` repository secrets. Its private backup is
+`~/.config/nanime/android-release.jks`, with its password in
+`android-release.password` beside it (do not print it). Never replace the key, because installed
+apps reject updates signed by any other key.
+
+`NANIME_ANDROID_RELEASE_DIR` in the host environment points to a private
+directory holding `nanime.apk` and `android-release.json`. To publish a release
+once CI has attached its APK, run:
+
+```sh
+gh release download android-v0.2.0 --repo QuillDev/Nanime --pattern nanime.apk \
+  --pattern android-release.json --dir "$NANIME_ANDROID_RELEASE_DIR" --clobber
+```
+
+The server reads the directory on each request, so publishing needs no restart.
+Signed-in clients see it through `GET /api/android/release`.
+
 ## Historical NixOS deployment reference
 
 The paths and `mediaserver.service` commands below were verified on 2026-09-05

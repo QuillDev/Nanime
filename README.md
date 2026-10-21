@@ -76,6 +76,23 @@ qBittorrent is configured but unreachable, renames, moves, and deletes pause unt
 it responds. Active transcodes, offline-copy preparation, and uploads lock their
 files as well.
 
+## Android app
+
+`android/` is a thin native shell around this web client: a WebView that loads
+your server, so the app always shows the UI the server is running, including
+offline downloads. The first launch asks for the server address; sign-in is the
+normal web sign-in. Server-side links stay in the app, and other links open in a
+browser tab.
+
+APKs are only built for releases. Publish a GitHub release tagged
+`android-v<version>` (e.g. `gh release create android-v0.2.0 --generate-notes`)
+and CI attaches the signed `nanime.apk` to it. PRs that touch `android/` run
+its tests and lint only. When the server publishes that APK (see
+[DEPLOYMENT.md](DEPLOYMENT.md)), installed apps download and install it
+themselves after the user allows Nanime to install updates once. Build locally
+with `cd android && ./gradlew testDebugUnitTest assembleDebug` (JDK 21 and the
+Android SDK required).
+
 ## Metadata outages
 
 If metadata providers are unavailable, open **Match metadata → Link manually

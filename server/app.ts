@@ -2,14 +2,11 @@ import { jsonRequest, requestWithBody } from "./requestBody.ts";
 import { watchTogetherApp } from "./watchTogetherApp.ts";
 import { libraryFilesApp } from "./libraryFilesApp.ts";
 import { adminApps } from "./adminApps.ts";
+import { androidReleaseApp } from "./androidReleaseApp.ts";
+import { hlsApp } from "./hlsApp.ts";
 import { Elysia } from "elysia";
 import { handle, serverOptions } from "./server.ts";
 import { securityHeaders } from "./security.ts";
-import {
-  hlsQuerySchema,
-  hlsReleaseQuerySchema,
-  hlsSegmentQuerySchema,
-} from "./hlsSchemas.ts";
 import {
   aniListMediaSchema,
   aniListAccountSchema,
@@ -176,6 +173,8 @@ export const app = new Elysia({ name: "nanime" })
   .use(watchTogetherApp)
   .use(libraryFilesApp)
   .use(adminApps)
+  .use(androidReleaseApp)
+  .use(hlsApp)
   .get("/api/auth/me", ({ request, server }) => handle(request, server), {
     response: schema.union([authUserSchema, schema.nullValue()]),
   })
@@ -424,15 +423,6 @@ export const app = new Elysia({ name: "nanime" })
   })
   .get("/subtitle", ({ request, server }) => handle(request, server), {
     query: indexedPathQuerySchema,
-  })
-  .get("/hls/index", ({ request, server }) => handle(request, server), {
-    query: hlsQuerySchema,
-  })
-  .get("/hls/seg", ({ request, server }) => handle(request, server), {
-    query: hlsSegmentQuerySchema,
-  })
-  .post("/api/hls/release", ({ request, server }) => handle(request, server), {
-    query: hlsReleaseQuerySchema,
   })
   .all("*", ({ request, server }) => handle(request, server));
 

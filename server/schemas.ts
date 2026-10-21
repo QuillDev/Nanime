@@ -65,6 +65,9 @@ export const offlineMediaArtifactSchema = object({
   createdAt: number(),
   updatedAt: number(),
 });
+export const androidReleaseSchema = object({
+  versionCode: integer(), versionName: string(), sha256: string(), sizeBytes: integer(), apkUrl: string(),
+});
 export const libraryStatusSchema = object({
   entryCount: number(), lastScannedAt: nullableNumber, scanning: boolean(),
 });
