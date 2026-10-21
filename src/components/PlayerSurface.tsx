@@ -125,7 +125,7 @@ export function PlayerSurface({
   const display = useSubtitleDisplay(subtitles.data);
   const controlsVisible = visibility.visible || display.settingsOpen;
   const interaction = usePlayerSurfaceInteraction({
-    controlsVisible,
+    playerRef, controlsVisible,
     onTogglePlayback: controls.handleTogglePlayback,
     onShowControls: visibility.handleActivity,
     onHideControls: visibility.handleHide,
@@ -195,7 +195,7 @@ export function PlayerSurface({
             </div>
           )}
         </div>
-        <div className={controlsVisible ? "absolute inset-x-0 bottom-0 z-30 visible" : "invisible absolute inset-x-0 bottom-0 z-30"}>
+        <div data-player-controls className={controlsVisible ? "absolute inset-x-0 bottom-0 z-30 visible" : "invisible absolute inset-x-0 bottom-0 z-30"}>
           <PlayerControls
             mediaPath={entry.rel}
             bufferedUntil={controls.bufferedUntil}

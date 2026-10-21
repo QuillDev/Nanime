@@ -204,7 +204,7 @@ function VolumeControl({
     onVolume(event.currentTarget.valueAsNumber);
   }, [onVolume]);
   return (
-    <div className="hidden items-center sm:flex">
+    <div data-player-volume className="hidden items-center sm:flex">
       <button type="button" className={controlClass} onClick={onToggleMuted} aria-label={muted ? "Unmute" : "Mute"} title={muted ? "Unmute" : "Mute"}>
         {muted ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
       </button>

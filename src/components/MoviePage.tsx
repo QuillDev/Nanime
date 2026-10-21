@@ -51,6 +51,7 @@ function MoviePlayButton({
   return (
     <button
       type="button"
+      data-tv-primary
       onClick={handlePlay}
       onFocus={preloadPlayer}
       onPointerDown={preloadPlayer}

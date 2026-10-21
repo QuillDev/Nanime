@@ -18,9 +18,9 @@ function ResultTile({ result, onPick }: { readonly result: SourceResult; readonl
         <span className="relative flex aspect-[2/3] items-center justify-center overflow-hidden rounded-md bg-secondary group-focus-visible:ring-2 group-focus-visible:ring-ring">
           {result.imageUrl === null
             ? <Film aria-hidden="true" className="size-6 text-muted-foreground" />
-            : <img src={result.imageUrl} alt="" loading="lazy" className="absolute inset-0 size-full object-cover transition-transform group-hover:scale-[1.03]" />}
+            : <img src={result.imageUrl} alt="" loading="lazy" className="absolute inset-0 size-full object-cover transition-transform group-hover:scale-[1.03] group-focus-visible:scale-[1.03]" />}
         </span>
-        <span className="mt-2 line-clamp-2 text-sm font-medium group-hover:text-primary">{result.name}</span>
+        <span className="mt-2 line-clamp-2 text-sm font-medium group-hover:text-primary group-focus-visible:text-primary">{result.name}</span>
       </button>
     </li>
   );
@@ -32,7 +32,7 @@ function ResultRow({ result, onPick }: { readonly result: SourceResult; readonly
   return (
     <li>
       <button type="button" onClick={handleClick} className="group w-full py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span className="block break-words text-sm font-medium group-hover:text-primary">{result.name}</span>
+        <span className="block break-words text-sm font-medium group-hover:text-primary group-focus-visible:text-primary">{result.name}</span>
         {result.description !== null && <span className="mt-0.5 block text-xs text-muted-foreground">{result.description}</span>}
       </button>
     </li>

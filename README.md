@@ -93,6 +93,11 @@ themselves after the user allows Nanime to install updates once. Build locally
 with `cd android && ./gradlew testDebugUnitTest assembleDebug` (JDK 21 and the
 Android SDK required).
 
+The same APK runs on Android TV, where it shows up in the launcher row and is
+driven by the remote: arrows move between items, OK opens them, and Back closes
+menus, dialogs and the player before going back a page. In the player, Left and
+Right skip 10 seconds, OK plays or pauses, and Up or Down brings up the controls.
+
 ## Metadata outages
 
 If metadata providers are unavailable, open **Match metadata → Link manually

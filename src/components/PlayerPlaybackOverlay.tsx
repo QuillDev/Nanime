@@ -141,6 +141,7 @@ export function PlayerPlaybackOverlay({
     <>
       <button
         type="button"
+        tabIndex={-1}
         className="player-surface-interaction absolute inset-0 z-10 touch-manipulation"
         onPointerUp={onSurfacePointerUp}
         onClick={onSurfaceClick}
@@ -158,6 +159,7 @@ export function PlayerPlaybackOverlay({
         : (
           <button
             type="button"
+            data-player-primary
             className={cn(
               "absolute left-1/2 top-1/2 z-20 flex size-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               !paused && !controlsVisible && "invisible",

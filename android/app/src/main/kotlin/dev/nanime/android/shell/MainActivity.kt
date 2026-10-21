@@ -1,8 +1,10 @@
 package dev.nanime.android.shell
 
 import android.annotation.SuppressLint
+import android.app.UiModeManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
@@ -23,6 +25,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
@@ -47,6 +50,11 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val preferences by lazy { getSharedPreferences("shell", Context.MODE_PRIVATE) }
     private val updater by lazy { AppUpdater(this) }
+
+    /** Android TV: the web client turns on remote navigation when the user agent says so. */
+    private val television by lazy {
+        getSystemService(UiModeManager::class.java)?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+    }
     private lateinit var root: FrameLayout
     private var webView: WebView? = null
     private var fullscreenView: View? = null
@@ -116,13 +124,22 @@ class MainActivity : ComponentActivity() {
             val web = webView
             when {
                 fullscreenView != null -> fullscreenCallback?.onCustomViewHidden()
-                web != null && web.canGoBack() -> web.goBack()
-                else -> {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
-                    isEnabled = true
+                // The page closes its own dialogs, menus and player first (src/lib/tvRemote.ts).
+                web != null -> web.evaluateJavascript("globalThis.nanimeTv?.back() === true") { handled ->
+                    if (handled != "true") navigateBack(web)
                 }
+                else -> leave()
             }
+        }
+
+        private fun navigateBack(web: WebView) {
+            if (web === webView && web.canGoBack()) web.goBack() else leave()
+        }
+
+        private fun leave() {
+            isEnabled = false
+            onBackPressedDispatcher.onBackPressed()
+            isEnabled = true
         }
     }
 
@@ -136,13 +153,17 @@ class MainActivity : ComponentActivity() {
             settings.mediaPlaybackRequiresUserGesture = false
             settings.allowFileAccess = false
             settings.allowContentAccess = false
-            settings.userAgentString = "${settings.userAgentString} NanimeAndroid/${updater.installedVersionName}"
+            val version = updater.installedVersionName
+            val tvToken = if (television) " NanimeTV/$version" else ""
+            settings.userAgentString = "${settings.userAgentString} NanimeAndroid/$version$tvToken"
             webViewClient = ShellWebViewClient(server)
             webChromeClient = ShellChromeClient()
         }
         CookieManager.getInstance().setAcceptCookie(true)
         webView = web
         root.addView(web, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // A remote's keys go to the focused view; nothing else on screen can take them.
+        web.requestFocus()
         if (savedInstanceState == null || web.restoreState(savedInstanceState) == null) {
             web.loadUrl(server.url)
         }
@@ -218,7 +239,9 @@ class MainActivity : ComponentActivity() {
 
     private fun openExternally(uri: Uri) {
         runCatching { CustomTabsIntent.Builder().build().launchUrl(this, uri) }
-            .onFailure { runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) } }
+            .recoverCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+            // Most TVs have no browser.
+            .onFailure { Toast.makeText(this, "No app here can open ${uri.host}", Toast.LENGTH_LONG).show() }
     }
 
     private fun showServerPrompt(error: String?) {
@@ -252,6 +275,7 @@ class MainActivity : ComponentActivity() {
             true
         }
         root.addView(column(label("Nanime", ACCENT, 34f), message, input, connect))
+        input.requestFocus()
     }
 
     private fun showUnreachable(server: ServerOrigin, detail: String?) {
@@ -278,8 +302,11 @@ class MainActivity : ComponentActivity() {
     private fun column(vararg views: View) = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        val pad = (24 * resources.displayMetrics.density).toInt()
-        setPadding(pad, pad, pad, pad)
+        val metrics = resources.displayMetrics
+        val pad = (24 * metrics.density).toInt()
+        // Keep the form a readable width on a TV instead of stretching across it.
+        val side = maxOf(pad, (metrics.widthPixels - (560 * metrics.density).toInt()) / 2)
+        setPadding(side, pad, side, pad)
         views.forEach { addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
         layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }

@@ -2,6 +2,9 @@ import type { AniListMedia, AuthUser, MediaEntry, PlaybackProgressMap, Transcode
 import type { ShowGroup } from "../lib/library.ts";
 import type { PlaybackReadiness, PlaybackReadinessBatch } from "../libraryApi.ts";
 
+// The preview turns on TV behavior the same way the app does (`NanimeTV/` in the user agent).
+export { installTvRemote } from "../lib/tvRemote.ts";
+
 // Fictional fixtures by default. A real-show snapshot from
 // server/capturePreviewSnapshot.ts (gitignored src/preview/snapshot/) replaces them when present.
 const fictionalThumbnails = import.meta.glob<string>("./assets/ep*.jpg", { eager: true, query: "?url", import: "default" });
