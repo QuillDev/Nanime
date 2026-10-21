@@ -1,4 +1,5 @@
 import {
+  queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
@@ -40,11 +41,13 @@ function toProgressMap(progress: readonly PlaybackProgress[]): PlaybackProgressM
   return Object.fromEntries(progress.map((item) => [item.rel, item]));
 }
 
+export const playbackProgressQuery = queryOptions({
+  queryKey: playbackProgressKey,
+  queryFn: async ({ signal }) => toProgressMap(await fetchPlaybackProgress(signal)),
+});
+
 export function usePlaybackProgress(): UseQueryResult<PlaybackProgressMap, Error> {
-  return useQuery({
-    queryKey: playbackProgressKey,
-    queryFn: async ({ signal }) => toProgressMap(await fetchPlaybackProgress(signal)),
-  });
+  return useQuery(playbackProgressQuery);
 }
 
 export function useSavePlaybackProgress(): UseMutationResult<

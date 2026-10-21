@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, type ChangeEvent } from "react";
+import { Suspense, useCallback, useEffect, type ChangeEvent } from "react";
 import type { AuthUser, MediaEntry } from "../types.ts";
 import type { ShowGroup } from "../lib/library.ts";
 import { useLibrary, useMediaDuration } from "../hooks/useLibrary.ts";
@@ -13,17 +13,11 @@ import {
 } from "../hooks/useMediaRoute.ts";
 import { Library, RouteLibrarySkeleton } from "./Library.tsx";
 import { MediaHeader } from "./MediaHeader.tsx";
-import { loadPlaybackGate, loadPlayer, preloadPlayer } from "../routeModules.ts";
+import { PlaybackGateChunk, PlayerChunk, preloadPlayerWhenIdle } from "../routeModules.ts";
 import { useLibraryIndex, type LibraryIndex } from "../hooks/useLibraryIndex.ts";
 
-const Player = lazy(async () => {
-  const module = await loadPlayer();
-  return { default: module.Player };
-});
-const PlaybackGate = lazy(async () => {
-  const module = await loadPlaybackGate();
-  return { default: module.PlaybackGate };
-});
+const Player = PlayerChunk.Component;
+const PlaybackGate = PlaybackGateChunk.Component;
 
 const PLAYER_LOADING = (
   <output
@@ -66,8 +60,9 @@ function useEpisodeNavigation(index: LibraryIndex, rel: string | null) {
   };
 }
 
-function usePreparedEpisode(index: LibraryIndex, rel: string | null) {
-  useEffect(() => preloadPlayer(), []);
+function usePreparedEpisode(index: LibraryIndex, rel: string | null, libraryShown: boolean) {
+  // Warm the player only after the page's own data has arrived.
+  useEffect(() => (libraryShown ? preloadPlayerWhenIdle() : undefined), [libraryShown]);
   const navigation = useEpisodeNavigation(index, rel);
   const mediaDuration = useMediaDuration(navigation.selected?.rel ?? null);
   return { navigation, mediaDuration };
@@ -140,7 +135,8 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
   const playbackProgress = usePlaybackProgress();
   const route = useMediaRoute();
   const index = useLibraryIndex(library.data ?? EMPTY_ENTRIES);
-  const { navigation, mediaDuration } = usePreparedEpisode(index, route.episodeRel);
+  const libraryShown = library.status === "success" && !index.metadataPending;
+  const { navigation, mediaDuration } = usePreparedEpisode(index, route.episodeRel, libraryShown);
   const handleQueryChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     updateSearch(event.target.value);
   }, []);
