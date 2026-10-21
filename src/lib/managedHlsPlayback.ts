@@ -39,6 +39,7 @@ export interface ManagedHlsAttachment extends HlsAttachment {
 interface SessionDetails {
   readonly offset: number | null;
   readonly passthroughCodec: string | null;
+  readonly playlist: string | null;
 }
 
 /**
@@ -51,24 +52,26 @@ interface SessionDetails {
 async function sessionDetails(url: string): Promise<SessionDetails> {
   const response = await fetch(url, { credentials: "same-origin" });
   if (!response.ok) {
-    return { offset: null, passthroughCodec: null };
+    return { offset: null, passthroughCodec: null, playlist: null };
   }
-  await response.text();
+  const playlist = await response.text();
   const start = Number(response.headers.get("x-nanime-hls-start") ?? Number.NaN);
   return {
     offset: Number.isFinite(start) ? start : null,
     passthroughCodec: response.headers.get("x-nanime-hls-passthrough"),
+    playlist,
   };
 }
 
 async function resolvedAttachment(options: ManagedHlsAttachment): Promise<HlsAttachment> {
-  const { offset, passthroughCodec } = await sessionDetails(options.url);
+  const { offset, passthroughCodec, playlist } = await sessionDetails(options.url);
   options.onPassthroughCodec?.(passthroughCodec);
+  const fetched = playlist === null ? options : { ...options, playlist };
   if (offset === null) {
-    return options;
+    return fetched;
   }
   options.onTimelineOffset?.(offset);
-  return { ...options, timelineOffset: offset };
+  return { ...fetched, timelineOffset: offset };
 }
 
 async function releaseSafely(lease: HlsPlaybackLease): Promise<void> {
