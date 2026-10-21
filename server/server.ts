@@ -28,6 +28,7 @@ import {
   hlsReleaseRouteResponse,
   mediaRequest,
   rangedFileResponse,
+  thumbnailResponse,
 } from "./mediaRouting.ts";
 import { adminLibraryRoutes } from "./adminLibraryRoutes.ts";
 import { mediaAdminResponse } from "./mediaAdmin.ts";
@@ -59,7 +60,6 @@ const PORT = Number(process.env["PORT"] ?? "8096");
 const HOST = process.env["HOST"] ?? "127.0.0.1";
 const HWACCEL = process.env["HWACCEL"] ?? "";
 const VAAPI_DEVICE = process.env["VAAPI_DEVICE"] ?? "/dev/dri/renderD128";
-const MAX_THUMBNAIL_JOBS = 1;
 const MAX_REQUEST_BODY_BYTES = 11 * 1024 * 1024;
 // MEDIA_DIR is trusted process configuration. This canonical root is used to validate
 // every request-derived media path before it reaches the filesystem.
@@ -76,8 +76,6 @@ const MIME = new Map(Object.entries({
   ".flv": "video/x-flv", ".mpg": "video/mpeg", ".mpeg": "video/mpeg",
   ".ogv": "video/ogg", ".3gp": "video/3gpp",
 } as const));
-const thumbnailCache = new Map<string, Promise<ArrayBuffer | null>>();
-let activeThumbnailJobs = 0;
 const RELEASE_SENSITIVE_HEADERS = {
   "cache-control": "no-store",
   "cdn-cache-control": "no-store",
@@ -131,57 +129,6 @@ async function streamFile(abs: string, req: Request): Promise<Response> {
   });
 }
 
-async function renderThumbnail(abs: string): Promise<ArrayBuffer | null> {
-  const proc = Bun.spawn(
-    [
-      "ffmpeg", "-hide_banner", "-loglevel", "error",
-      "-ss", "10", "-i", abs,
-      "-frames:v", "1", "-an", "-sn",
-      "-vf", "scale=640:-2",
-      "-c:v", "mjpeg", "-q:v", "4",
-      "-f", "image2pipe", "pipe:1",
-    ],
-    { stdout: "pipe", stderr: "ignore" },
-  );
-  const bytes = await new Response(proc.stdout).arrayBuffer();
-  const exitCode = await proc.exited;
-  return exitCode === 0 && bytes.byteLength > 0 ? bytes : null;
-}
-
-async function waitForThumbnailSlot(): Promise<void> {
-  if (activeThumbnailJobs < MAX_THUMBNAIL_JOBS) {
-    return;
-  }
-  await Bun.sleep(25);
-  return waitForThumbnailSlot();
-}
-
-async function generateThumbnail(abs: string): Promise<ArrayBuffer | null> {
-  await waitForThumbnailSlot();
-  activeThumbnailJobs += 1;
-  try {
-    return await renderThumbnail(abs);
-  } finally {
-    activeThumbnailJobs -= 1;
-  }
-}
-
-async function thumbnailResponse(abs: string): Promise<Response> {
-  const pending = thumbnailCache.get(abs) ?? generateThumbnail(abs);
-  thumbnailCache.set(abs, pending);
-  const bytes = await pending;
-  if (bytes === null) {
-    thumbnailCache.delete(abs);
-    return new Response("Thumbnail unavailable", { status: 404 });
-  }
-  return new Response(bytes, {
-    headers: {
-      "content-type": "image/jpeg",
-      "cache-control": "private, max-age=604800",
-    },
-  });
-}
-
 async function serveStatic(pathname: string): Promise<Response> {
   const rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/u, "");
   const candidate = resolve(DIST_DIR, rel);
@@ -224,7 +171,7 @@ async function resolvedMediaResponse(context: RouteContext, abs: string): Promis
     return streamFile(abs, req);
   }
   if (pathname === "/thumbnail") {
-    return thumbnailResponse(abs);
+    return thumbnailResponse(abs, req);
   }
   const trickplay = await trickplayMediaResponse({ abs, pathname, url, duration: () => probeDuration(abs) });
   if (trickplay !== null) {

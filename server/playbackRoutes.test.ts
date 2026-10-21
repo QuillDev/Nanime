@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { startLibraryTestServer, statusOf, viewerCookie, type LibraryTestServer } from "./libraryFilesTestServer.ts";
 import { firstVideoPacket, makeClip, probeStreams } from "./testMedia.ts";
@@ -271,4 +271,32 @@ test("scrubbing previews: a single frame right away, then a 5x5 sheet of 240x136
   const thumbnail = await get(`/thumbnail?${query({ path: H264 })}`);
   expect(thumbnail.status).toBe(200);
   expect(await inspect(thumbnail, "thumbnail.jpg", probeStreams)).toMatchObject([{ codec_name: "mjpeg", width: 640 }]);
+}, 60_000);
+
+test("episode thumbnails are rendered once and kept across restarts, and revalidate with 304", async () => {
+  const episode = "Thumb Show/Thumb Show - 01.mkv";
+  const file = join(target().media, episode);
+  await mkdir(join(target().media, "Thumb Show"));
+  await copyFile(join(target().media, H264), file);
+  const first = await get(`/thumbnail?${query({ path: episode })}`);
+  expect(first.status).toBe(200);
+  const etag = first.headers.get("etag") ?? "";
+  expect(await inspect(first, "first.jpg", probeStreams)).toMatchObject([{ codec_name: "mjpeg", width: 640 }]);
+  const revalidated = await get(`/thumbnail?${query({ path: episode })}`, { "if-none-match": etag });
+  expect(revalidated.status).toBe(304);
+
+  // Same size and mtime but undecodable: only the stored frame can answer now.
+  const { size, atime, mtime } = await stat(file);
+  await writeFile(file, new Uint8Array(size));
+  await utimes(file, atime, mtime);
+  await target().restart();
+  const afterRestart = await get(`/thumbnail?${query({ path: episode })}`);
+  expect(afterRestart.status).toBe(200);
+  expect(afterRestart.headers.get("etag")).toBe(etag);
+  expect(await inspect(afterRestart, "after.jpg", probeStreams)).toMatchObject([{ codec_name: "mjpeg", width: 640 }]);
+
+  // A replaced file (new mtime) gets a new frame, and this one can't be decoded.
+  await utimes(file, atime, new Date(mtime.getTime() + 60_000));
+  expect(await statusAt(`/thumbnail?${query({ path: episode })}`)).toBe(404);
+  await rm(join(target().media, "Thumb Show"), { recursive: true });
 }, 60_000);

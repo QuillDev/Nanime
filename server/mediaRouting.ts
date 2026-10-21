@@ -2,6 +2,7 @@ export { playbackPlan, playbackReadinessResponse, resumeTranscodeQueue } from ".
 export { hlsReleaseRouteResponse } from "./hlsReleaseRoute.ts";
 export { mediaRequest } from "./mediaRequest.ts";
 export { rangedFileResponse } from "./httpRange.ts";
+export { thumbnailResponse } from "./thumbnails.ts";
 export { convertedProgressResponse } from "./convertedProgressRoute.ts";
 export {
   audioTracksResponse,
