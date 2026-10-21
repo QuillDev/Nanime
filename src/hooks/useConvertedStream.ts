@@ -77,7 +77,7 @@ export function useSourceSwitching(options: ConvertedStreamOptions) {
   const handleTimelineSeek = useCallback((position: number): void => {
     seekTimeline({ direct, entry, position, setError, setOffset, source: sourceRef.current });
   }, [direct, entry, setError, setOffset, sourceRef]);
-  // The choice shows only once turned on under Advanced in the profile, and never for offline copies.
+  // The choice shows only once turned on under Playback in the profile, and never for offline copies.
   const choiceEnabled = useStreamChoiceEnabled();
   const stream = useMemo(
     () => (choiceEnabled && entry.offlineUrl === undefined ? { converted, onConverted: handleConverted } : null),
