@@ -13,6 +13,8 @@ export interface HlsProducer extends HlsProcess {
   readonly segmentPath?: (name: string) => Promise<string | null>;
   /** The codec streamed untouched, so a client whose decoder fails on it can ask for a converted stream. */
   readonly codec?: string | undefined;
+  /** Starts making the segment that holds episode time `time` before the player asks for it. */
+  readonly warm?: (time: number) => void;
 }
 
 type GraceWait = (milliseconds: number) => Promise<void>;
