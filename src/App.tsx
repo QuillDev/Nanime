@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { useCurrentUser } from "./hooks/useAuth.ts";
 import { LinkDevicePage, SignInScreen } from "./components/DeviceSignIn.tsx";
 import {
@@ -7,27 +7,14 @@ import {
   type MediaRoute,
 } from "./hooks/useMediaRoute.ts";
 import type { AuthUser } from "./types.ts";
-import {
-  loadAdminApp,
-  loadMediaApp,
-  loadProfileApp,
-} from "./routeModules.ts";
+import { AdminAppRoute, MediaAppRoute, ProfileAppRoute } from "./routeModules.ts";
 import { PageSkeleton } from "./components/PageSkeleton.tsx";
 import { skeletonPage } from "./lib/skeletonPage.ts";
 import { SessionProviders } from "./components/SessionProviders.tsx";
 
-const AdminApp = lazy(async () => {
-  const module = await loadAdminApp();
-  return { default: module.AdminApp };
-});
-const MediaApp = lazy(async () => {
-  const module = await loadMediaApp();
-  return { default: module.MediaApp };
-});
-const ProfileApp = lazy(async () => {
-  const module = await loadProfileApp();
-  return { default: module.ProfileApp };
-});
+const AdminApp = AdminAppRoute.Component;
+const MediaApp = MediaAppRoute.Component;
+const ProfileApp = ProfileAppRoute.Component;
 // Placeholders shaped like the page the URL opens, shown before the session check and page code finish.
 const PAGE_LOADING = {
   home: <PageSkeleton page="home" />,

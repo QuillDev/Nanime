@@ -40,6 +40,11 @@ function activeUserId(): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
+/** Whether this browser was signed in last time, so boot can fetch the library before the session check returns. */
+export function hasRememberedUser(): boolean {
+  return activeUserId() !== null;
+}
+
 export function clearOfflineIdentity(): void {
   globalThis.localStorage?.removeItem(ACTIVE_USER_KEY);
   void offlineStore()?.setActiveProfile(null);

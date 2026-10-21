@@ -1,4 +1,5 @@
 import {
+  queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
@@ -15,11 +16,13 @@ import {
 
 const metadataQueryKey = ["show-metadata"] as const;
 
+export const showMetadataQuery = queryOptions({
+  queryKey: metadataQueryKey,
+  queryFn: ({ signal }) => fetchShowMetadata(signal),
+});
+
 export function useShowMetadata(): UseQueryResult<ShowMetadata, Error> {
-  return useQuery({
-    queryKey: metadataQueryKey,
-    queryFn: ({ signal }) => fetchShowMetadata(signal),
-  });
+  return useQuery(showMetadataQuery);
 }
 
 export function useMetadataSearch(search: string): UseQueryResult<readonly AniListMedia[], Error> {

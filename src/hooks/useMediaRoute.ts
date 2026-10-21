@@ -63,7 +63,10 @@ function showFromPath(pathname: string): string | null {
 
 export function useMediaRoute(): MediaRoute {
   const snapshot = useSyncExternalStore(subscribeToLocation, locationSnapshot, () => "/");
-  const url = new URL(snapshot, globalThis.location.origin);
+  return mediaRoute(new URL(snapshot, globalThis.location.origin));
+}
+
+export function mediaRoute(url: URL): MediaRoute {
   return {
     admin: url.pathname === "/admin",
     adminTab: adminTabFromUrl(url),

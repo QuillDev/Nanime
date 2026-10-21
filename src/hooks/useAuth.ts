@@ -1,4 +1,5 @@
 import {
+  queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
@@ -25,8 +26,10 @@ import {
 const authKey = ["current-user"] as const;
 const usersKey = ["users"] as const;
 
+export const currentUserQuery = queryOptions({ queryKey: authKey, queryFn: ({ signal }) => fetchCurrentUser(signal) });
+
 export function useCurrentUser(): UseQueryResult<AuthUser | null, Error> {
-  return useQuery({ queryKey: authKey, queryFn: ({ signal }) => fetchCurrentUser(signal) });
+  return useQuery(currentUserQuery);
 }
 
 interface PasswordCredentials {

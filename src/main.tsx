@@ -6,8 +6,10 @@ import { CopyableErrorBoundary } from "./components/CopyableErrorBoundary.tsx";
 import { PwaRegistration } from "./components/PwaRegistration.tsx";
 import { queryClient } from "./lib/queryClient.ts";
 import { installTvRemote } from "./lib/tvRemote.ts";
+import { startBootRequests } from "./lib/bootRequests.ts";
 import "./styles.css";
 
+startBootRequests();
 installTvRemote();
 
 const container = document.querySelector("#root");
