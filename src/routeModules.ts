@@ -4,6 +4,7 @@ import type { MediaApp as MediaAppComponent } from "./components/MediaApp.tsx";
 import type { PlaybackGate as PlaybackGateComponent } from "./components/PlaybackGate.tsx";
 import type { Player as PlayerComponent } from "./components/Player.tsx";
 import type { ProfileApp as ProfileAppComponent } from "./components/ProfileApp.tsx";
+import type { LinkDevicePage as LinkDevicePageComponent, SignInScreen as SignInScreenComponent } from "./components/DeviceSignIn.tsx";
 import { instantLazy } from "./lib/instantLazy.ts";
 
 export const AdminAppRoute = instantLazy<ComponentProps<typeof AdminAppComponent>>(
@@ -34,6 +35,20 @@ export const PlaybackGateChunk = instantLazy<ComponentProps<typeof PlaybackGateC
   async () => {
     const module = await import("./components/PlaybackGate.tsx");
     return module.PlaybackGate;
+  },
+);
+
+// Only signed-out visitors and TV sign-in approvals need these (and the QR code library).
+export const SignInScreenRoute = instantLazy<ComponentProps<typeof SignInScreenComponent>>(
+  async () => {
+    const module = await import("./components/DeviceSignIn.tsx");
+    return module.SignInScreen;
+  },
+);
+export const LinkDevicePageRoute = instantLazy<ComponentProps<typeof LinkDevicePageComponent>>(
+  async () => {
+    const module = await import("./components/DeviceSignIn.tsx");
+    return module.LinkDevicePage;
   },
 );
 
@@ -71,6 +86,14 @@ export function preloadPlayerWhenIdle(): () => void {
   }
   const handle = globalThis.setTimeout(preloadPlayer, 1500);
   return () => globalThis.clearTimeout(handle);
+}
+
+export function preloadSignIn(): void {
+  settlePreload(SignInScreenRoute.load());
+}
+
+export function preloadLinkDevicePage(): void {
+  settlePreload(LinkDevicePageRoute.load());
 }
 
 export function preloadProfileApp(): void {
