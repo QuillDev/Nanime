@@ -72,13 +72,9 @@ export function SeasonTranscodeStatus({ summary, canTranscode }: SeasonTranscode
     return null;
   }
   if (summary.kind === "loading") {
-    // Holds the chip's place so the heading row does not jump when readiness arrives.
-    return (
-      <>
-        <span aria-hidden="true" className="h-9 w-44 animate-pulse rounded-full bg-muted/40" />
-        <span className="flex-1" />
-      </>
-    );
+    // Most seasons turn out ready (no chip), so loading lays out like ready:
+    // a placeholder chip wrapped the row on phones and then snapped back.
+    return <span className="flex-1" />;
   }
   const needs = summary.kind === "needs-transcode";
   return (

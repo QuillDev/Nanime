@@ -17,13 +17,13 @@ export function ProfileApp({ user }: { readonly user: AuthUser }): React.JSX.Ele
       document.querySelector(`#${OFFLINE_DOWNLOADS_ID}`)?.scrollIntoView({ behavior: "smooth" });
     }
   }, [downloadsLinked]);
-  const banner = recent.find((item) => item.episode.banner !== null)?.episode.banner ?? null;
+  const banner = recent.items.find((item) => item.episode.banner !== null)?.episode.banner ?? null;
   return (
     <div className="min-h-screen bg-background pb-16 text-foreground">
       <MediaHeader user={user} view="profile" />
       <ProfileHero user={user} banner={banner} />
       <main className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8">
-        <RecentlyWatched items={recent} />
+        <RecentlyWatched items={recent.items} pending={recent.pending} />
         <div className="mt-10">
           <PlaybackPreferences user={user} />
           <LinkedAccounts />
