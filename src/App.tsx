@@ -1,13 +1,12 @@
 import { Suspense } from "react";
 import { useCurrentUser } from "./hooks/useAuth.ts";
-import { LinkDevicePage, SignInScreen } from "./components/DeviceSignIn.tsx";
 import {
   navigateToShows,
   useMediaRoute,
   type MediaRoute,
 } from "./hooks/useMediaRoute.ts";
 import type { AuthUser } from "./types.ts";
-import { AdminAppRoute, MediaAppRoute, ProfileAppRoute } from "./routeModules.ts";
+import { AdminAppRoute, LinkDevicePageRoute, MediaAppRoute, ProfileAppRoute, SignInScreenRoute } from "./routeModules.ts";
 import { PageSkeleton } from "./components/PageSkeleton.tsx";
 import { skeletonPage } from "./lib/skeletonPage.ts";
 import { SessionProviders } from "./components/SessionProviders.tsx";
@@ -15,6 +14,9 @@ import { SessionProviders } from "./components/SessionProviders.tsx";
 const AdminApp = AdminAppRoute.Component;
 const MediaApp = MediaAppRoute.Component;
 const ProfileApp = ProfileAppRoute.Component;
+const SignInScreen = SignInScreenRoute.Component;
+const LinkDevicePage = LinkDevicePageRoute.Component;
+const SIGN_IN_LOADING = <div className="min-h-screen bg-background" />;
 // Placeholders shaped like the page the URL opens, shown before the session check and page code finish.
 const PAGE_LOADING = {
   home: <PageSkeleton page="home" />,
@@ -55,7 +57,11 @@ export function App(): React.JSX.Element {
     );
   }
   if (currentUser.data === null) {
-    return <SignInScreen />;
+    return (
+      <Suspense fallback={SIGN_IN_LOADING}>
+        <SignInScreen />
+      </Suspense>
+    );
   }
   return (
     <Suspense fallback={loading}>
