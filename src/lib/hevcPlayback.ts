@@ -28,10 +28,47 @@ function playbackSupported(type: string): boolean {
   return document.createElement("video").canPlayType(type) !== "";
 }
 
+/**
+ * Codecs this device said it decodes but then failed on. Some decoders (budget
+ * Android TVs) accept HEVC Main 10 in `isTypeSupported` and then fail on the
+ * first frame; those devices get the converted stream for a while instead.
+ */
+const UNPLAYABLE_KEY = "nanime.unplayable-codecs";
+const REMEMBER_FAILURE_MS = 30 * 24 * 60 * 60 * 1000;
+
+interface UnplayableCodecs {
+  readonly hevc?: unknown;
+  readonly av1?: unknown;
+}
+
+function unplayableCodecs(): UnplayableCodecs {
+  try {
+    return JSON.parse(localStorage.getItem(UNPLAYABLE_KEY) ?? "{}") as UnplayableCodecs;
+  } catch {
+    return {};
+  }
+}
+
+function recentlyFailed(failedAt: unknown): boolean {
+  return typeof failedAt === "number" && Date.now() - failedAt < REMEMBER_FAILURE_MS;
+}
+
+/** Stops asking for `codec` untouched on this device: its decoder failed on it. */
+export function markCodecUnplayable(codec: string): void {
+  if (codec !== "hevc" && codec !== "av1") {
+    return;
+  }
+  try {
+    localStorage.setItem(UNPLAYABLE_KEY, JSON.stringify({ ...unplayableCodecs(), [codec]: Date.now() }));
+  } catch {
+    // Storage may be off; this player still falls back below.
+  }
+}
+
 export function hevcPlaybackSupported(): boolean {
-  return playbackSupported(HEVC_MAIN10);
+  return !recentlyFailed(unplayableCodecs().hevc) && playbackSupported(HEVC_MAIN10);
 }
 
 export function av1PlaybackSupported(): boolean {
-  return playbackSupported(AV1_MAIN10);
+  return !recentlyFailed(unplayableCodecs().av1) && playbackSupported(AV1_MAIN10);
 }

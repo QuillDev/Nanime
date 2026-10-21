@@ -10,7 +10,7 @@ import {
 } from "./hlsCapacity.ts";
 import { HLS_SEGMENT_SECONDS, HLS_SESSION_IDLE_MS, hlsSessionKey, playlistReadyToServe, sessionStreams, transcodeArgs, type HlsSourceOptions } from "./hlsTranscode.ts";
 import { stopHlsProcess, type HlsProducer } from "./hlsProcess.ts";
-import { rewritePlaylist, safeSegmentName, segmentContentType, startPassthrough } from "./hlsPlaylist.ts";
+import { onDemand, rewritePlaylist, safeSegmentName, segmentContentType, startOnDemand } from "./hlsPlaylist.ts";
 import { hlsOwnershipKey, supersedeHlsLease } from "./hlsLeaseOwnership.ts";
 
 export { audioTracksResponse } from "./audioTracks.ts";
@@ -116,8 +116,8 @@ async function createSession(
   const directory = join(root, id);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const start = segmentIndex * HLS_SEGMENT_SECONDS;
-  const process = await startProducer(directory, () => (source.videoMode === "passthrough"
-    ? startPassthrough({ input: source.input, audioTrack, directory, duration: options.duration })
+  const process = await startProducer(directory, () => (onDemand(source)
+    ? startOnDemand({ source, audioTrack, directory, duration: options.duration })
     : Bun.spawn(["ffmpeg", ...transcodeArgs({ ...options, source, audioTrack, directory, segmentIndex, start })], {
       stdout: "ignore", stderr: "pipe",
     })));
@@ -211,8 +211,8 @@ async function createReservedSession(
 }
 
 function activeSession(options: HlsPlaylistOptions): Promise<HlsSession | null | undefined> {
-  // A passthrough playlist always spans the whole episode, so every start shares one session.
-  const { segmentIndex } = options.source.videoMode === "passthrough"
+  // An on-demand playlist always spans the whole episode, so every start shares one session.
+  const { segmentIndex } = onDemand(options.source)
     ? { segmentIndex: 0 }
     : hlsSessionPlan(options.duration, options.requestedStart);
   const key = hlsSessionKey(options, segmentIndex);
@@ -299,12 +299,15 @@ function abandonUnboundLease(options: HlsPlaylistOptions): void {
 
 function playlistReply(session: HlsSession, playlist: string, leaseId: string | null): Response {
   session.lastAccess = Date.now();
-  return new Response(rewritePlaylist(playlist, session.id, leaseId), {
-    headers: {
-      "content-type": "application/vnd.apple.mpegurl", "cache-control": "no-store",
-      "x-nanime-hls-session": session.id, "x-nanime-hls-start": String(session.start),
-    },
+  const headers = new Headers({
+    "content-type": "application/vnd.apple.mpegurl", "cache-control": "no-store",
+    "x-nanime-hls-session": session.id, "x-nanime-hls-start": String(session.start),
   });
+  // Lets a client whose decoder fails on the untouched codec ask for a converted stream instead.
+  if (session.process.codec !== undefined) {
+    headers.set("x-nanime-hls-passthrough", session.process.codec);
+  }
+  return new Response(rewritePlaylist(playlist, session.id, leaseId), { headers });
 }
 
 export async function hlsPlaylistResponse(options: HlsPlaylistOptions): Promise<Response> {

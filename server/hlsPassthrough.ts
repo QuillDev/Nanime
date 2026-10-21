@@ -38,6 +38,7 @@ export interface PassthroughOptions {
   readonly audioTrack: AudioTrack | undefined;
   readonly directory: string;
   readonly duration: number;
+  readonly codec?: string | undefined;
 }
 
 const keyframeCache = new Map<string, { readonly signature: string; readonly keyframes: Promise<readonly number[]> }>();
@@ -160,6 +161,7 @@ export class PassthroughProducer implements HlsProducer {
   readonly exited: Promise<number>;
   readonly stderr: ReadableStream<Uint8Array>;
   readonly start: number;
+  readonly codec: string | undefined;
   private readonly options: PassthroughOptions;
   private readonly keyframes: readonly number[];
   private readonly runs: PassthroughRun[] = [];
@@ -171,6 +173,7 @@ export class PassthroughProducer implements HlsProducer {
     this.options = options;
     this.keyframes = keyframes;
     this.start = keyframes[0] ?? 0;
+    this.codec = options.codec;
     const exit = Promise.withResolvers<number>();
     this.exited = exit.promise;
     this.stderr = new ReadableStream<Uint8Array>({

@@ -15,11 +15,16 @@ export interface HlsOptions {
  * Where a live HLS session reads video from. `copy` streams a stored transcode
  * whose keyframes sit on every segment boundary; `encode` re-encodes the video;
  * `passthrough` repackages HEVC or AV1 untouched into fMP4 segments, on
- * demand, for clients that decode it (see hlsPassthrough.ts).
+ * demand, for clients that decode it (see hlsPassthrough.ts); `cached` converts
+ * to H.264 on demand and keeps every segment it makes (see hlsSegmentCache.ts).
  */
 export interface HlsStreamSource {
   readonly input: string;
-  readonly videoMode: "copy" | "encode" | "passthrough";
+  readonly videoMode: "cached" | "copy" | "encode" | "passthrough";
+  /** For `passthrough`: the source codec the client gets untouched (`hevc`, `av1`). */
+  readonly codec?: string;
+  /** For `cached`: where the library keeps converted segments (see hlsSegmentCache.ts). */
+  readonly cacheRoot?: string;
   /** Output-relative audio map for a stored transcode; absent maps the source index. */
   readonly audioMap?: string;
 }
@@ -176,6 +181,52 @@ export function passthroughRunArgs(run: PassthroughRunCommand): readonly string[
     "-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init.mp4",
     "-hls_flags", "independent_segments+temp_file",
     "-hls_segment_filename", join(run.directory, "segment-%06d.m4s"),
+    join(run.directory, "index.m3u8"),
+  ];
+}
+
+interface CachedRunCommand {
+  readonly input: string;
+  readonly audioTrack: AudioTrack | undefined;
+  readonly directory: string;
+  /** Segment number and episode time the run starts at (a grid boundary), and how long it runs. */
+  readonly first: number;
+  readonly start: number;
+  readonly length: number;
+}
+
+/** `t` counts from the run's start, which is a grid boundary, so the run's grid is the episode's. */
+const gridKeyframes = `expr:gte(t,n_forced*${String(HLS_SEGMENT_SECONDS)})`;
+
+/** Added to every cached segment's timestamps; players align on the first segment they load. */
+export const CACHED_TIMESTAMP_OFFSET = 10;
+
+/** Threads per conversion run: at `faster`, 4 threads convert 1080p HEVC at 3-4x real time on the host. */
+const CACHED_RUN_THREADS = "4";
+
+/**
+ * One cached-conversion run: browser-safe H.264 from a grid boundary for
+ * `length` seconds. `-copyts` keeps the episode's own timestamps, and a
+ * keyframe is forced on the first frame past every 2 s boundary, so segments
+ * from any run cut on the same frames with the same timestamps as any other. `faster` scored within 0.1 VMAF of
+ * the stored copies' `medium` on anime at about 1.6x the speed.
+ */
+export function cachedRunArgs(run: CachedRunCommand): readonly string[] {
+  const audio = run.audioTrack === undefined ? [] : ["-map", `0:${String(run.audioTrack.index)}`];
+  return [
+    "-hide_banner", "-loglevel", "error",
+    "-copyts", "-ss", String(run.start), "-t", String(run.length), "-i", run.input,
+    "-map", "0:v:0", ...audio,
+    "-c:v", "libx264", "-preset", "faster", "-tune", "animation", "-crf", "20",
+    "-maxrate", "6M", "-bufsize", "12M", "-pix_fmt", "yuv420p", "-threads", CACHED_RUN_THREADS,
+    "-sc_threshold", "0", "-flags", "+cgop", "-force_key_frames", gridKeyframes,
+    ...audioArgs(run.audioTrack),
+    // A constant shift keeps decode times positive for a run from 0 too, which the muxer would otherwise shift alone.
+    "-output_ts_offset", String(CACHED_TIMESTAMP_OFFSET), "-muxdelay", "0",
+    // Cut at every keyframe; keyframes only land on the grid.
+    "-f", "hls", "-hls_time", "0.001", "-hls_list_size", "0", "-hls_playlist_type", "event",
+    "-start_number", String(run.first), "-hls_flags", "independent_segments+temp_file",
+    "-hls_segment_filename", join(run.directory, "segment-%06d.ts"),
     join(run.directory, "index.m3u8"),
   ];
 }

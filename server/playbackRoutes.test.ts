@@ -92,17 +92,17 @@ async function playlist(params: Record<string, string>): Promise<Playlist> {
 
 interface Readiness { readonly items: readonly { readonly path: string; readonly ready: boolean }[] }
 
-test("a viewer can tell which episodes play now: browser-safe H.264 yes, 10-bit HEVC only after a transcode", async () => {
+test("every episode plays now: browser-safe H.264 as it is, 10-bit HEVC converted as it's watched", async () => {
   const response = await target().request("/api/playback-readiness", {
     method: "POST", json: { paths: [H264, HEVC_10BIT] }, cookie: viewer,
   });
   expect(response.status).toBe(200);
   const readiness = await response.json() as Readiness;
   expect(readiness.items.map(({ path, ready }) => ({ path, ready }))).toEqual([
-    { path: H264, ready: true }, { path: HEVC_10BIT, ready: false },
+    { path: H264, ready: true }, { path: HEVC_10BIT, ready: true },
   ]);
 
-  expect(await statusAt(`/hls/index?${query({ path: HEVC_10BIT })}`)).toBe(409);
+  expect(await statusAt(`/hls/index?${query({ path: HEVC_10BIT })}`)).toBe(200);
 });
 
 interface AudioTrackInfo { readonly language: string | null; readonly isDefault: boolean }

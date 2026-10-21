@@ -93,12 +93,22 @@ function codecs(streams: readonly ProbedStream[]): readonly (readonly [string, s
   return streams.map((stream) => [stream.codec_name, stream.codec_tag_string] as const);
 }
 
-test("10-bit HEVC and AV1 play untouched only on clients that decode them", async () => {
-  expect(await ready(HEVC, { hevc: true })).toBe(true);
-  expect(await ready(HEVC)).toBe(false);
-  expect(await ready(AV1, { av1: true })).toBe(true);
-  expect(await ready(AV1, { hevc: true })).toBe(false);
-});
+async function passthroughCodec(params: Record<string, string>): Promise<string | null> {
+  const response = await get(`/hls/index?${new URLSearchParams(params).toString()}`);
+  expect(response.status).toBe(200);
+  await response.text();
+  return response.headers.get("x-nanime-hls-passthrough");
+}
+
+test("10-bit HEVC and AV1 play untouched only on clients that decode them, and play converted everywhere else", async () => {
+  for (const client of [{ hevc: true }, {}, { av1: true }]) {
+    expect(await ready(HEVC, client)).toBe(true);
+  }
+  expect(await passthroughCodec({ path: HEVC, hevc: "1" })).toBe("hevc");
+  expect(await passthroughCodec({ path: HEVC })).toBeNull();
+  expect(await passthroughCodec({ path: AV1, av1: "1" })).toBe("av1");
+  expect(await passthroughCodec({ path: AV1, hevc: "1" })).toBeNull();
+}, 60_000);
 
 test("an HEVC client gets the whole episode as one segment per source keyframe, and any segment starts on its keyframe", async () => {
   const { text, urls } = await playlist({ path: HEVC, hevc: "1" });
@@ -140,26 +150,25 @@ test("probed keyframes survive a restart without reading the episode again", asy
 
 interface TranscodeJob { readonly sourcePath: string; readonly status: string }
 
-async function waitUntilReady(path: string): Promise<void> {
+async function waitUntilStored(path: string): Promise<void> {
   const deadline = Date.now() + 90_000;
   while (Date.now() < deadline) {
-    const playable = await ready(path);
-    if (playable) {
+    const jobs = await getJson<readonly TranscodeJob[]>(target(), "/api/transcodes");
+    const status = jobs.find((job) => job.sourcePath === path)?.status;
+    expect(status).not.toBe("failed");
+    if (status === "complete") {
       return;
     }
-    const jobs = await getJson<readonly TranscodeJob[]>(target(), "/api/transcodes");
-    expect(jobs.find((job) => job.sourcePath === path)?.status).not.toBe("failed");
     await Bun.sleep(250);
   }
-  throw new Error(`${path} never became playable`);
+  throw new Error(`${path} was never stored`);
 }
 
 test("an admin's stored transcode makes 10-bit HEVC playable everywhere, seekable on segment boundaries with every audio track", async () => {
-  expect(await ready(STORED)).toBe(false);
   const queued = await target().request("/api/transcodes/bulk", { method: "POST", json: { paths: [STORED], preset: "compatibility" } });
   expect(queued.status).toBe(201);
 
-  await waitUntilReady(STORED);
+  await waitUntilStored(STORED);
   const jobs = await getJson<readonly TranscodeJob[]>(target(), "/api/transcodes");
   expect(jobs.filter((job) => job.sourcePath === STORED).map((job) => job.status)).toEqual(["complete"]);
 
