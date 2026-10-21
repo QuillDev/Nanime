@@ -91,7 +91,10 @@ client turns on remote support (`src/lib/tvRemote.ts`, `data-tv` on `<html>`).
 Focus movement is Chromium's spatial navigation, which WebView enables on devices
 without a touchscreen, so anything clickable must be a real button or link. Mark
 a page's main action with `data-tv-primary`; it takes focus on the first arrow
-press. Back calls `globalThis.nanimeTv.back()` before navigating. Check remote
+press. Back calls `globalThis.nanimeTv.back()` before navigating. TV sign-in is
+a device flow (`server/deviceLogins.ts`, `src/components/DeviceSignIn.tsx`): the
+TV polls a secret device code while a signed-in phone approves the short user
+code at `/link?code=…`; agent keys can't approve. Check remote
 navigation in the preview with a TV user agent and `--enable-spatial-navigation`
 at 960x540 (a 1080p TV's CSS viewport).
 

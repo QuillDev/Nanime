@@ -143,7 +143,39 @@ function AniListLoginOption({ enabled, setupMode }: {
   );
 }
 
-export function LoginScreen(): React.JSX.Element {
+/** The Android app's link for this page: phones open a TV's QR code in the browser, where the app's session isn't. */
+function appLink(): string | null {
+  const agent = navigator.userAgent;
+  const code = new URLSearchParams(globalThis.location.search).get("code");
+  if (globalThis.location.pathname !== "/link" || !agent.includes("Android") || agent.includes("NanimeAndroid/") || code === null) {
+    return null;
+  }
+  const fallback = encodeURIComponent(globalThis.location.href);
+  return `intent://link?code=${encodeURIComponent(code)}#Intent;scheme=nanime;package=dev.nanime.android;S.browser_fallback_url=${fallback};end`;
+}
+
+function OpenInApp(): React.JSX.Element | null {
+  const link = appLink();
+  if (link === null) {
+    return null;
+  }
+  return (
+    <>
+      <a href={link} className="flex w-full items-center justify-center rounded-md bg-primary px-4 py-2.5 font-semibold text-primary-foreground">Open in the Nanime app</a>
+      <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />or sign in here<span className="h-px flex-1 bg-border" /></div>
+    </>
+  );
+}
+
+function loginPrompt(setupMode: boolean): string {
+  if (setupMode) {
+    return "Activate your provisioned account";
+  }
+  return globalThis.location.pathname === "/link" ? "Sign in to connect your TV" : "Sign in to continue";
+}
+
+/** `onUsePhone` (on a TV) goes back to the QR sign-in. */
+export function LoginScreen({ onUsePhone }: { readonly onUsePhone?: () => void }): React.JSX.Element {
   const { fields, setupMode, error, pending, handleSubmit, handleModeChange } = useLoginForm();
   const [username, handleUsernameChange] = fields.username;
   const [password, handlePasswordChange] = fields.password;
@@ -161,11 +193,10 @@ export function LoginScreen(): React.JSX.Element {
         <div className="mb-8">
           <BrandLogo className="mb-2 h-9 w-auto" />
           <div>
-            <p className="text-sm text-muted-foreground">
-              {setupMode ? "Activate your provisioned account" : "Sign in to continue"}
-            </p>
+            <p className="text-sm text-muted-foreground">{loginPrompt(setupMode)}</p>
           </div>
         </div>
+        <OpenInApp />
         <CredentialInputs setupMode={setupMode} username={username} password={password} confirmation={confirmation} setupToken={setupToken} onUsernameChange={handleUsernameChange} onPasswordChange={handlePasswordChange} onConfirmationChange={handleConfirmationChange} onSetupTokenChange={handleSetupTokenChange} />
         {setupMode && password !== confirmation && confirmation !== "" && (
           <p className="mb-4 text-sm text-destructive">Passwords do not match.</p>
@@ -191,6 +222,11 @@ export function LoginScreen(): React.JSX.Element {
           {setupMode ? "Back to sign in" : "Activate a provisioned account"}
         </button>
         <AniListLoginOption enabled={aniListConfig.data?.enabled === true} setupMode={setupMode} />
+        {onUsePhone !== undefined && (
+          <button type="button" onClick={onUsePhone} className="mt-3 w-full py-2 text-sm text-muted-foreground hover:text-foreground">
+            Sign in with your phone instead
+          </button>
+        )}
       </form>
     </main>
   );

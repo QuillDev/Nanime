@@ -4,6 +4,8 @@ import type { PlaybackReadiness, PlaybackReadinessBatch } from "../libraryApi.ts
 
 // The preview turns on TV behavior the same way the app does (`NanimeTV/` in the user agent).
 export { installTvRemote } from "../lib/tvRemote.ts";
+export { SignInPreview } from "./SignInPreview.tsx";
+export { seedSignIn } from "./signInFixtures.ts";
 
 // Fictional fixtures by default. A real-show snapshot from
 // server/capturePreviewSnapshot.ts (gitignored src/preview/snapshot/) replaces them when present.

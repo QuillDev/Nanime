@@ -75,6 +75,17 @@ database.run(`
 `);
 database.run("CREATE INDEX IF NOT EXISTS sessions_user_id ON sessions(user_id)");
 database.run("CREATE INDEX IF NOT EXISTS sessions_expires_at ON sessions(expires_at)");
+// Pending TV sign-ins (server/deviceLogins.ts); a row lives at most ten minutes.
+database.run(`
+  CREATE TABLE IF NOT EXISTS device_logins (
+    device_hash TEXT PRIMARY KEY,
+    user_code TEXT NOT NULL UNIQUE,
+    device TEXT NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  )
+`);
 database.run(`
   CREATE TABLE IF NOT EXISTS agent_keys (
     id INTEGER PRIMARY KEY,

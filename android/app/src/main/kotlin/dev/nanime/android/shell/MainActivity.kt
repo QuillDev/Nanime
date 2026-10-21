@@ -94,9 +94,21 @@ class MainActivity : ComponentActivity() {
         if (server == null) {
             showServerPrompt(null)
         } else {
-            showWebApp(server, savedInstanceState)
+            showWebApp(server, savedInstanceState, deviceLink(server, intent))
         }
     }
+
+    // A TV sign-in link from the phone's browser: open its approval page here, where the session is.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val server = origin ?: return
+        val link = deviceLink(server, intent) ?: return
+        val web = webView
+        if (web == null) showWebApp(server, null, link) else web.loadUrl(link)
+    }
+
+    private fun deviceLink(server: ServerOrigin, intent: Intent?): String? =
+        intent?.dataString?.let(server::deviceLinkPage)
 
     override fun onResume() {
         super.onResume()
@@ -144,7 +156,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun showWebApp(server: ServerOrigin, savedInstanceState: Bundle?) {
+    private fun showWebApp(server: ServerOrigin, savedInstanceState: Bundle?, startUrl: String? = null) {
         root.removeAllViews()
         val web = WebView(this).apply {
             setBackgroundColor(Color.BLACK)
@@ -164,7 +176,9 @@ class MainActivity : ComponentActivity() {
         root.addView(web, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         // A remote's keys go to the focused view; nothing else on screen can take them.
         web.requestFocus()
-        if (savedInstanceState == null || web.restoreState(savedInstanceState) == null) {
+        if (startUrl != null) {
+            web.loadUrl(startUrl)
+        } else if (savedInstanceState == null || web.restoreState(savedInstanceState) == null) {
             web.loadUrl(server.url)
         }
     }
