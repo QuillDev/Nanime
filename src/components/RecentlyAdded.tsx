@@ -23,7 +23,7 @@ function RecentTile({ show, media, onSelect }: {
   return (
     <li>
       <button type="button" onClick={handleClick} className="group relative block aspect-[2/1] w-full overflow-hidden rounded-2xl bg-secondary text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        {source !== null && <img src={source} alt="" loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />}
+        {source !== null && <img src={source} alt="" loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-[1.03] group-focus-visible:scale-[1.03]" />}
         <span aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(0deg,rgb(0_0_0/0.92)_0%,rgb(0_0_0/0.6)_40%,transparent_75%)]" />
         <span className="absolute inset-x-4 bottom-3.5">
           <span className="block font-display text-lg font-bold leading-tight tracking-tight">{media === undefined ? show.name : mediaTitle(media)}</span>

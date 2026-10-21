@@ -120,7 +120,7 @@ export function EpisodeTile({
         className="group block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className={cn(
-          "relative block overflow-hidden rounded-xl transition-transform group-hover:scale-[1.015] [&_img]:transition-[filter] [&_img]:duration-300",
+          "relative block overflow-hidden rounded-xl transition-transform group-hover:scale-[1.015] group-focus-visible:scale-[1.015] [&_img]:transition-[filter] [&_img]:duration-300",
           unavailable && "[&_img]:brightness-[.4] [&_img]:grayscale",
           transcode.kind === "transcoding" && "[&_img]:brightness-50 [&_img]:grayscale-[.6]",
         )}

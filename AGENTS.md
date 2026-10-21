@@ -86,6 +86,15 @@ features and screens in the web client. Keep the shell limited to platform glue:
 server selection, navigation policy, fullscreen video, file pickers, insets and
 self-updates.
 
+On Android TV the shell adds `NanimeTV/<version>` to the user agent and the web
+client turns on remote support (`src/lib/tvRemote.ts`, `data-tv` on `<html>`).
+Focus movement is Chromium's spatial navigation, which WebView enables on devices
+without a touchscreen, so anything clickable must be a real button or link. Mark
+a page's main action with `data-tv-primary`; it takes focus on the first arrow
+press. Back calls `globalThis.nanimeTv.back()` before navigating. Check remote
+navigation in the preview with a TV user agent and `--enable-spatial-navigation`
+at 960x540 (a 1080p TV's CSS viewport).
+
 ## Client and design
 
 - Use Tailwind CSS v4 and the existing shadcn/ui patterns. Surfaces are solid

@@ -67,7 +67,7 @@ function FeatureCopy({ feature, onEpisodeSelect, onShowSelect, onDismiss }: Omit
       )}
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {playEntry !== undefined && (
-          <button type="button" onClick={handlePlay} onFocus={preloadPlayer} onPointerEnter={preloadPlayer} className="inline-flex h-11 items-center gap-2 rounded-full bg-foreground px-5 text-sm font-semibold text-background hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" data-tv-primary onClick={handlePlay} onFocus={preloadPlayer} onPointerEnter={preloadPlayer} className="inline-flex h-11 items-center gap-2 rounded-full bg-foreground px-5 text-sm font-semibold text-background hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <Play className="size-4 fill-current" />
             {continuing === null || continuing.kind === "next" ? "Play" : "Resume"}
           </button>

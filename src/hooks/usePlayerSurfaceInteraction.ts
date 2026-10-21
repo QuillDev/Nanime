@@ -6,6 +6,7 @@ import {
   type PointerEvent,
   type RefObject,
 } from "react";
+import { usePlayerRemote } from "./usePlayerRemote.ts";
 
 const DOUBLE_TAP_DELAY_MS = 300;
 type TapZone = "left" | "center" | "right";
@@ -16,6 +17,7 @@ interface PendingTap {
 }
 
 interface PlayerSurfaceInteractionOptions {
+  readonly playerRef: RefObject<HTMLDivElement | null>;
   readonly controlsVisible: boolean;
   readonly onTogglePlayback: () => void;
   readonly onShowControls: () => void;
@@ -118,6 +120,7 @@ function useTouchTaps({
 }
 
 export function usePlayerSurfaceInteraction({
+  playerRef,
   controlsVisible,
   onTogglePlayback,
   onShowControls,
@@ -130,6 +133,7 @@ export function usePlayerSurfaceInteraction({
     onHideControls,
     onSeekBy,
   });
+  usePlayerRemote({ playerRef, controlsVisible, onActivity: onShowControls, onTogglePlayback, onSeekBy });
   const handleDesktopSurface = useCallback(() => {
     if (controlsVisible) {
       onHideControls();

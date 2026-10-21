@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useState,
   type RefObject,
   type SyntheticEvent,
@@ -92,35 +91,6 @@ function useVideoState(
   };
 }
 
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && (
-    target.isContentEditable ||
-    target.tagName === "INPUT" ||
-    target.tagName === "SELECT" ||
-    target.tagName === "TEXTAREA"
-  );
-}
-
-function useKeyboardSeeking(onSeekBy: (seconds: number) => void): void {
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (isEditableTarget(event.target)) {
-        return;
-      }
-      if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        onSeekBy(-10);
-      } else if (event.key === "ArrowRight") {
-        event.preventDefault();
-        onSeekBy(10);
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onSeekBy]);
-}
-
 interface VideoControlsOptions {
   readonly playbackLocked: boolean;
   readonly knownDuration: number;
@@ -170,7 +140,6 @@ export function useVideoControls(options: VideoControlsOptions): VideoControls {
       ));
     }
   }, [handleSeek, playback.state.duration, playbackPosition, videoRef]);
-  useKeyboardSeeking(handleSeekBy);
   const handleVolume = useCallback((volume: number) => {
     if (videoRef.current !== null) {
       videoRef.current.volume = volume;

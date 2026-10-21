@@ -5,7 +5,10 @@ import { App } from "./App.tsx";
 import { CopyableErrorBoundary } from "./components/CopyableErrorBoundary.tsx";
 import { PwaRegistration } from "./components/PwaRegistration.tsx";
 import { queryClient } from "./lib/queryClient.ts";
+import { installTvRemote } from "./lib/tvRemote.ts";
 import "./styles.css";
+
+installTvRemote();
 
 const container = document.querySelector("#root");
 if (container === null) {
