@@ -1,6 +1,29 @@
 import { basename } from "node:path";
 
-export { startPassthrough } from "./hlsPassthrough.ts";
+import type { AudioTrack } from "./audioTracks.ts";
+import { startPassthrough } from "./hlsPassthrough.ts";
+import type { HlsProducer } from "./hlsProcess.ts";
+import { startCachedTranscode } from "./hlsSegmentCache.ts";
+import type { HlsStreamSource } from "./hlsTranscode.ts";
+
+interface OnDemandOptions {
+  readonly source: HlsStreamSource;
+  readonly audioTrack: AudioTrack | undefined;
+  readonly directory: string;
+  readonly duration: number;
+}
+
+/** Sources whose playlist spans the whole episode and whose segments are made on request. */
+export function onDemand(source: HlsStreamSource): boolean {
+  return source.videoMode === "passthrough" || source.videoMode === "cached";
+}
+
+export function startOnDemand(options: OnDemandOptions): Promise<HlsProducer> {
+  const { source, audioTrack, directory, duration } = options;
+  return source.videoMode === "cached" && source.cacheRoot !== undefined
+    ? startCachedTranscode({ input: source.input, audioTrack, cacheRoot: source.cacheRoot, directory, duration })
+    : startPassthrough({ input: source.input, audioTrack, directory, duration, codec: source.codec });
+}
 
 const MAP_URI = /^#EXT-X-MAP:URI="(?<uri>[^"]+)"/u;
 

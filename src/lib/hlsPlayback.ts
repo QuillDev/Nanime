@@ -3,7 +3,8 @@ import Hls, { type ErrorData, type RetryConfig } from "hls.js";
 export interface HlsAttachment {
   readonly video: HTMLVideoElement;
   readonly url: string;
-  readonly onError: (message: string) => void;
+  /** `media`: the browser couldn't decode or buffer the video (as opposed to loading it). */
+  readonly onError: (message: string, kind?: "media") => void;
   readonly resumeAt?: number;
   readonly shouldPlay?: boolean;
   readonly timelineOffset?: number;
@@ -94,7 +95,7 @@ function bindHlsEvents(hls: Hls, options: HlsAttachment): void {
       hls.recoverMediaError();
       return;
     }
-    onError(hlsErrorDetail(data));
+    onError(hlsErrorDetail(data), data.type === Hls.ErrorTypes.MEDIA_ERROR ? "media" : undefined);
   });
 }
 

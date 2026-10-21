@@ -18,6 +18,17 @@ See the [setup guide](setup.md) to install, configure, and run Nanime.
 
 For updates on the hosted machine, follow the [deployment runbook](DEPLOYMENT.md).
 
+## Playback
+
+Devices that decode the episode's video (H.264 everywhere, HEVC and AV1 where the
+browser can) get it untouched. Everything else is converted to H.264 as it's
+watched, starting wherever the viewer starts, and every converted 2-second piece
+is kept in `.nanime-segments/` in the library. Later plays and seeks reuse what's
+already converted, so an episode is converted at most once, a piece at a time.
+A device whose decoder fails on video it claimed to support (some Android TVs
+with 10-bit HEVC) switches to the converted stream by itself and remembers that
+for 30 days.
+
 ## Watch together
 
 Choose the people icon labeled **Party** in the navigation bar to **Create party**,

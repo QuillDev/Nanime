@@ -12,6 +12,8 @@ import { videoErrorDetail } from "../lib/videoError.ts";
 import { attachDirectVideoSource } from "../lib/directVideoPlayback.ts";
 import { attachManagedHls } from "../lib/managedHlsPlayback.ts";
 import {
+  decoderFailed,
+  playbackErrorHandler,
   restartHls,
   type MutableSourceState,
   type RestartOptions,
@@ -19,6 +21,7 @@ import {
 import { useHlsBackgroundRecovery } from "./useHlsBackgroundRecovery.ts";
 
 interface SourceAttachment {
+  readonly onPassthroughCodec: (codec: string | null) => void;
   readonly video: HTMLVideoElement;
   readonly entry: MediaEntry;
   readonly resumeAt: number;
@@ -28,7 +31,7 @@ interface SourceAttachment {
   readonly onTimelineOffset: (offset: number) => void;
 }
 function attachSource(options: SourceAttachment): (() => void) | undefined {
-  const { video, entry, resumeAt, onError, playerId, direct, onTimelineOffset } = options;
+  const { video, entry, resumeAt, onError, playerId, direct, onTimelineOffset, onPassthroughCodec } = options;
   if (direct) {
     attachDirectVideoSource(video, entry.offlineUrl ?? streamUrl(entry.rel));
     return undefined;
@@ -41,6 +44,7 @@ function attachSource(options: SourceAttachment): (() => void) | undefined {
     resumeAt,
     timelineOffset,
     onTimelineOffset,
+    onPassthroughCodec,
   }, playerId);
 }
 
@@ -104,13 +108,19 @@ function cleanupSource(
   Object.assign(source, { detach: undefined, video: null });
 }
 
-function usePlaybackErrorHandlers(
-  setError: (error: string | null) => void,
-  sourceRef: React.RefObject<MutableSourceState>,
-) {
+interface ErrorHandlerOptions {
+  readonly entry: MediaEntry;
+  readonly setError: (error: string | null) => void;
+  readonly setOffset: (offset: number) => void;
+  readonly sourceRef: React.RefObject<MutableSourceState>;
+}
+
+function usePlaybackErrorHandlers({ entry, setError, setOffset, sourceRef }: ErrorHandlerOptions) {
   const handleVideoError = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    setError(videoErrorDetail(event.currentTarget));
-  }, [setError]);
+    // A decoder that can't play the untouched video gets the converted stream instead of an error.
+    const report = playbackErrorHandler({ entry, setError, setOffset, source: sourceRef.current });
+    report(videoErrorDetail(event.currentTarget), decoderFailed(event.currentTarget) ? "media" : undefined);
+  }, [entry, setError, setOffset, sourceRef]);
   const handlePlaying = useCallback(() => {
     sourceRef.current.pendingPosition = null;
     setError(null);
@@ -133,6 +143,7 @@ function useSourceReferences(options: SourceReferenceOptions) {
     recoveryPending: false,
     selectedAudio: null,
     pendingPosition: null,
+    passthroughCodec: null,
     playerId: crypto.randomUUID(),
     timelineOffset,
     video: null,
@@ -201,10 +212,13 @@ export function useVideoSource(
           video,
           ...initialSourceRef.current,
           playerId: sourceRef.current.playerId,
-          onError: setPlaybackError,
+          onError: playbackErrorHandler({ entry: initialSourceRef.current.entry, setError: setPlaybackError, setOffset: setTimelineOffset, source: sourceRef.current }),
           onTimelineOffset: (offset) => {
             sourceRef.current.timelineOffset = offset;
             setTimelineOffset(offset);
+          },
+          onPassthroughCodec: (codec) => {
+            sourceRef.current.passthroughCodec = codec;
           },
         });
         sourceRef.current.detach = detachSource;
@@ -218,10 +232,9 @@ export function useVideoSource(
     },
     [initialSourceRef, setPlaybackError, setTimelineOffset, sourceRef, videoRef],
   );
-  const { handleVideoError, handlePlaying } = usePlaybackErrorHandlers(
-    setPlaybackError,
-    sourceRef,
-  );
+  const { handleVideoError, handlePlaying } = usePlaybackErrorHandlers({
+    entry, setError: setPlaybackError, setOffset: setTimelineOffset, sourceRef,
+  });
   const playbackPosition = useCallback((video: HTMLVideoElement): number => (
     absolutePlaybackPosition(
       video.currentTime,

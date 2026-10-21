@@ -32,34 +32,38 @@ function attachLoadedHls(
 export interface ManagedHlsAttachment extends HlsAttachment {
   /** Receives the episode time of the session's local zero once the server reports it. */
   readonly onTimelineOffset?: (offset: number) => void;
+  /** The codec the session streams untouched (`hevc`, `av1`), or null when it's converted. */
+  readonly onPassthroughCodec?: (codec: string | null) => void;
+}
+
+interface SessionDetails {
+  readonly offset: number | null;
+  readonly passthroughCodec: string | null;
 }
 
 /**
- * Where a session's playlist begins is the server's call: passthrough
- * playlists span the whole episode, transcoded ones start at the requested
- * segment boundary. Opening the session up front reads that start; the player
- * then loads the same, already-running session.
+ * Where a session's playlist begins is the server's call: passthrough and
+ * converted-on-demand playlists span the whole episode, live ones start at the
+ * requested segment boundary. Opening the session up front reads that start
+ * (and whether the video comes untouched); the player then loads the same,
+ * already-running session.
  */
-async function sessionTimelineOffset(url: string): Promise<number | null> {
+async function sessionDetails(url: string): Promise<SessionDetails> {
   const response = await fetch(url, { credentials: "same-origin" });
   if (!response.ok) {
-    return null;
+    return { offset: null, passthroughCodec: null };
   }
   await response.text();
   const start = Number(response.headers.get("x-nanime-hls-start") ?? Number.NaN);
-  return Number.isFinite(start) ? start : null;
-}
-
-function reportsTimelineOffset(url: string): boolean {
-  const query = new URL(url, "https://nanime.invalid").searchParams;
-  return query.get("hevc") === "1" || query.get("av1") === "1";
+  return {
+    offset: Number.isFinite(start) ? start : null,
+    passthroughCodec: response.headers.get("x-nanime-hls-passthrough"),
+  };
 }
 
 async function resolvedAttachment(options: ManagedHlsAttachment): Promise<HlsAttachment> {
-  if (!reportsTimelineOffset(options.url)) {
-    return options;
-  }
-  const offset = await sessionTimelineOffset(options.url);
+  const { offset, passthroughCodec } = await sessionDetails(options.url);
+  options.onPassthroughCodec?.(passthroughCodec);
   if (offset === null) {
     return options;
   }
@@ -83,9 +87,9 @@ export function attachManagedHls(options: ManagedHlsAttachment, playerId: string
   const leasedOptions = {
     ...options,
     url: leasedHlsUrl(options.url, lease),
-    onError: (message: string) => {
+    onError: (message: string, kind?: "media") => {
       if (lifecycle.active()) {
-        options.onError(message);
+        options.onError(message, kind);
       }
     },
   };

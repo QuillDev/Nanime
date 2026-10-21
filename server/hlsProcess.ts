@@ -11,6 +11,8 @@ export interface HlsProducer extends HlsProcess {
   readonly start?: number;
   /** Producers that repackage on demand resolve (and wait for) segment files themselves. */
   readonly segmentPath?: (name: string) => Promise<string | null>;
+  /** The codec streamed untouched, so a client whose decoder fails on it can ask for a converted stream. */
+  readonly codec?: string | undefined;
 }
 
 type GraceWait = (milliseconds: number) => Promise<void>;

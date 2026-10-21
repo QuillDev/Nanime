@@ -1,4 +1,5 @@
 import { lstat } from "node:fs/promises";
+import { join } from "node:path";
 import { HLS_SEGMENT_SECONDS } from "../shared/playback.ts";
 import type { HlsStreamSource } from "./hlsTranscode.ts";
 import type { MediaLibraryOptions } from "./mediaLibraryOptions.ts";
@@ -8,6 +9,9 @@ import { budget, STORED_KEYFRAME_TAG } from "./transcodeEncoder.ts";
 import { sourceKeyframes } from "./hlsPassthrough.ts";
 
 export { resumeTranscodeQueue } from "./transcodes.ts";
+
+/** Converted segments live beside the stored transcodes; the library skips `.nanime-` folders. */
+export const SEGMENT_CACHE_FOLDER = ".nanime-segments";
 
 /** Pixel formats browsers decode in H.264 without a re-encode. */
 const BROWSER_SAFE_PIXEL_FORMATS = new Set(["yuv420p", "yuvj420p"]);
@@ -109,15 +113,15 @@ export interface PlaybackPlanOptions extends MediaLibraryOptions {
 /**
  * Live HLS repackages HEVC or AV1 for clients that decode it, remuxes segment-aligned
  * stored transcodes, or re-encodes video that is already browser-safe (or uses
- * hardware encoding). Anything else must be transcoded ahead of time: a
- * software re-encode cannot keep up live.
+ * hardware encoding). Anything else is converted to H.264 as it's watched and
+ * kept, so each part of an episode is converted once.
  */
 export async function playbackPlan(abs: string, rel: string, options: PlaybackPlanOptions): Promise<PlaybackPlan> {
   const codecs = passthroughCodecs(options);
   if (codecs.size > 0) {
     const source = await cachedProbe(abs);
     if (source !== null && passthroughPlayable(source, codecs)) {
-      return { kind: "stream", source: { input: abs, videoMode: "passthrough" } };
+      return { kind: "stream", source: { input: abs, videoMode: "passthrough", codec: source.codec } };
     }
   }
   const stored = await storedCompatibilityCopy(rel, options);
@@ -132,7 +136,10 @@ export async function playbackPlan(abs: string, rel: string, options: PlaybackPl
   if (options.hardwareAcceleration === "vaapi" || (probe !== null && browserSafe(probe))) {
     return { kind: "stream", source: { input: abs, videoMode: "encode" } };
   }
-  return { kind: "transcode-required", transcode: sourceTranscodeState(rel) };
+  // Converted as it's watched, and every converted segment is kept (hlsSegmentCache.ts).
+  return probe === null
+    ? { kind: "transcode-required", transcode: sourceTranscodeState(rel) }
+    : { kind: "stream", source: { input: abs, videoMode: "cached", cacheRoot: join(options.mediaRoot, SEGMENT_CACHE_FOLDER) } };
 }
 
 const MAX_READINESS_PATHS = 500;
