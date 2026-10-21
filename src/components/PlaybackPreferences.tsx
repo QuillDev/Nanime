@@ -46,6 +46,10 @@ export function PlaybackPreferences({ user }: { readonly user: AuthUser }): Reac
   const handleDiagnosticsToggle = useCallback(() => {
     setPlaybackDiagnosticsEnabled(!diagnosticsEnabled);
   }, [diagnosticsEnabled]);
+  const streamChoice = useStreamChoiceEnabled();
+  const handleStreamChoice = useCallback(() => {
+    setStreamChoiceEnabled(!streamChoice);
+  }, [streamChoice]);
   const handleAudioLanguage = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { value } = event.target;
     preferences.mutate(value === "" ? null : value as PreferredAudioLanguage);
@@ -60,24 +64,13 @@ export function PlaybackPreferences({ user }: { readonly user: AuthUser }): Reac
       <ProfileSetting label="Player diagnostics">
         <ProfileSwitch checked={diagnosticsEnabled} label="Playback diagnostics" onToggle={handleDiagnosticsToggle} />
       </ProfileSetting>
-      {preferences.isError && (
-        <p className="select-text pt-2 text-sm text-destructive">{preferences.error.message}</p>
-      )}
-    </ProfileSection>
-  );
-}
-
-/** Features most viewers don't need, off until turned on here. */
-export function AdvancedPreferences(): React.JSX.Element {
-  const streamChoice = useStreamChoiceEnabled();
-  const handleStreamChoice = useCallback(() => {
-    setStreamChoiceEnabled(!streamChoice);
-  }, [streamChoice]);
-  return (
-    <ProfileSection id="advanced-preferences" title="Advanced" summary={streamChoice ? "Stream choice on" : undefined}>
+      {/* Off by default: shows the player's Original/Converted choice and its timeline strip. */}
       <ProfileSetting label="Original or converted stream in the player">
         <ProfileSwitch checked={streamChoice} label="Stream choice in the player" onToggle={handleStreamChoice} />
       </ProfileSetting>
+      {preferences.isError && (
+        <p className="select-text pt-2 text-sm text-destructive">{preferences.error.message}</p>
+      )}
     </ProfileSection>
   );
 }

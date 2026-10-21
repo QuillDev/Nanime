@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Advanced feature, off by default: the player's Original/Converted stream
+ * Off by default, turned on under Playback in the profile: the player's Original/Converted stream
  * choice and its timeline strip. Kept on the device, like player diagnostics.
  */
 const STREAM_CHOICE_KEY = "nanime-stream-choice-v1";
