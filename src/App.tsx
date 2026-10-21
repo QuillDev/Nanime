@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { useCurrentUser } from "./hooks/useAuth.ts";
-import { LoginScreen } from "./components/LoginScreen.tsx";
+import { LinkDevicePage, SignInScreen } from "./components/DeviceSignIn.tsx";
 import {
   navigateToShows,
   useMediaRoute,
@@ -68,7 +68,7 @@ export function App(): React.JSX.Element {
     );
   }
   if (currentUser.data === null) {
-    return <LoginScreen />;
+    return <SignInScreen />;
   }
   return (
     <Suspense fallback={loading}>
@@ -80,6 +80,9 @@ export function App(): React.JSX.Element {
 }
 
 function authenticatedView(user: AuthUser, route: MediaRoute): React.JSX.Element {
+  if (route.deviceCode !== null) {
+    return <LinkDevicePage code={route.deviceCode.toUpperCase()} user={user} />;
+  }
   if (route.admin) {
     return user.isAdmin
       ? <AdminApp user={user} tab={route.adminTab} />

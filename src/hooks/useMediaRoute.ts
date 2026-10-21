@@ -29,6 +29,8 @@ export interface MediaRoute {
   readonly episodeRel: string | null;
   readonly query: string;
   readonly watchTogether: string | null;
+  /** `/link?code=…`, the page a TV's sign-in QR code opens; "" when the code is missing. */
+  readonly deviceCode: string | null;
 }
 
 export type AdminTab = "find" | "downloads" | "transcodes" | "files" | "videos" | "users" | "agents" | "system";
@@ -70,6 +72,7 @@ export function useMediaRoute(): MediaRoute {
     episodeRel: url.searchParams.get("episode"),
     query: url.searchParams.get("q") ?? "",
     watchTogether: url.searchParams.get("watch"),
+    deviceCode: url.pathname === "/link" ? url.searchParams.get("code") ?? "" : null,
   };
 }
 
@@ -113,7 +116,7 @@ export function navigateToLogin(): void {
   updateUrl(url, true);
 }
 
-export function navigateAfterAuthentication(): void {
+function leaveLoginPage(): void {
   const url = new URL(globalThis.location.href);
   url.pathname = "/";
   const episode = url.searchParams.get("episode");
@@ -124,6 +127,13 @@ export function navigateAfterAuthentication(): void {
     if (episode !== null) { url.searchParams.set("episode", episode); }
   }
   updateUrl(url, true);
+}
+
+export function navigateAfterAuthentication(): void {
+  // Signing in on the phone is a step in approving a TV; stay on its page.
+  if (globalThis.location.pathname !== "/link") {
+    leaveLoginPage();
+  }
 }
 
 export function navigateToShow(showName: string): void {

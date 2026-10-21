@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { agentKeyUser } from "./agentKeys.ts";
+import { deviceLoginResponse } from "./deviceLogins.ts";
 import { database } from "./database.ts";
 import type { AuthUser } from "../shared/types.ts";
 import { isPreferredAudioLanguage } from "../shared/audioLanguage.ts";
@@ -102,11 +103,16 @@ function sessionCookie(token: string, maxAge: number): string {
   return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${String(maxAge)}; Priority=High${secure}`;
 }
 
-function createSession(user: UserRow): Response {
+function sessionForUser(userId: number): Response {
+  const user = findUserById.get(userId);
+  return user === null ? Response.json({ status: "expired" }) : createSession(user, { status: "approved", user: publicUser(user) });
+}
+
+function createSession(user: UserRow, body: unknown = publicUser(user)): Response {
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
   insertSession.run(tokenHash(token), user.id, now + SESSION_LIFETIME_MS, now);
-  return Response.json(publicUser(user), {
+  return Response.json(body, {
     headers: { "set-cookie": sessionCookie(token, SESSION_LIFETIME_MS / 1000) },
   });
 }
@@ -286,6 +292,10 @@ export function authResponse(
   }
   if (pathname === "/api/auth/login" && req.method === "POST") {
     return login(req, clientAddress);
+  }
+  const deviceLogin = deviceLoginResponse(pathname, req, { clientAddress, user: authenticatedUser(req), sessionFor: sessionForUser });
+  if (deviceLogin !== null) {
+    return deviceLogin;
   }
   if (pathname === "/api/auth/logout" && req.method === "POST") {
     return logout(req);

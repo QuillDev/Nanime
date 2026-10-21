@@ -98,6 +98,11 @@ driven by the remote: arrows move between items, OK opens them, and Back closes
 menus, dialogs and the player before going back a page. In the player, Left and
 Right skip 10 seconds, OK plays or pauses, and Up or Down brings up the controls.
 
+To sign a TV in, scan the QR code on its sign-in screen with a phone that is
+signed in to Nanime (or open `/link` on the phone and type the code), then
+confirm. A phone browser that isn't signed in offers to open the Android app,
+which is. The TV gets its own session for the user who confirmed.
+
 ## Metadata outages
 
 If metadata providers are unavailable, open **Match metadata → Link manually

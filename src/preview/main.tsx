@@ -9,7 +9,7 @@ import { isAdminTab, type AdminTab } from "../hooks/useMediaRoute.ts";
 import { readyReadiness, renameStateShow } from "./renameFixtures.ts";
 import "../styles.css";
 import {
-  installTvRemote, previewJobs, previewProgress, previewReadiness, previewShow, previewUser,
+  installTvRemote, SignInPreview, seedSignIn, previewJobs, previewProgress, previewReadiness, previewShow, previewUser,
   type PreviewState,
 } from "./fixtures.ts";
 
@@ -21,7 +21,7 @@ installTvRemote();
  * ?state=home-watching|home-fresh (library home)
  * ?state=profile|profile-open (profile page)
  * ?state=rename-episodes|rename-episode (rename dialogs over a release folder), organized (renamed season)
- * ?state=player (the player over the show page)
+ * ?state=player (the player over the show page), login-tv|link|link-code (TV sign-in with a phone)
  * or ?state=skeleton-home|show|results|profile|admin (loading placeholders) under `bun run dev`.
  */
 const STATES = new Set<PreviewState>(["loading", "needs", "partial", "transcoding", "ready"]);
@@ -64,6 +64,7 @@ if (state !== "loading") {
   client.setQueryData(["playback-readiness", ...streamed], previewReadiness(state));
 }
 client.setQueryData(["transcodes"], previewJobs(state));
+seedSignIn(client);
 
 const profileState = requested === "profile" || requested === "profile-open";
 // "profile-open" expands every section so their contents can be reviewed.
@@ -138,6 +139,17 @@ if (requested === "admin-videos-selected") {
   }, 400);
 }
 
+// The player and sign-in states; otherwise the show page.
+function PagePreview(): React.JSX.Element {
+  if (requested === "player") {
+    return <PlayerPreview show={shownShow} progress={previewProgress("ready")} />;
+  }
+  if (requested === "login-tv" || requested.startsWith("link")) {
+    return <SignInPreview state={requested} />;
+  }
+  return <ShowPreview show={shownShow} progress={previewProgress(state)} />;
+}
+
 function PreviewPage(): React.JSX.Element {
   if (requested.startsWith("skeleton-")) {
     return <SkeletonPreview page={requested.slice("skeleton-".length)} />;
@@ -148,10 +160,7 @@ function PreviewPage(): React.JSX.Element {
   if (profileState) {
     return <ProfilePreview />;
   }
-  if (requested === "player") {
-    return <PlayerPreview show={shownShow} progress={previewProgress("ready")} />;
-  }
-  return homeState === null ? <ShowPreview show={shownShow} progress={previewProgress(state)} /> : <HomePreview home={homeState} />;
+  return homeState === null ? <PagePreview /> : <HomePreview home={homeState} />;
 }
 
 createRoot(container).render(

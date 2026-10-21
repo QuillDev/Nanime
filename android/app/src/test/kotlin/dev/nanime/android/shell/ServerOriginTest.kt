@@ -33,4 +33,15 @@ class ServerOriginTest {
         assertFalse(origin.opensInApp("https://anime.example.com.evil.test/"))
         assertFalse(origin.opensInApp("https://nyaa.si/view/1"))
     }
+
+    @Test
+    fun opensATvSignInCodeOnThisServer() {
+        val origin = ServerOrigin.parse("https://anime.example.com")!!
+
+        assertEquals("https://anime.example.com/link?code=KD7MWQ4R", origin.deviceLinkPage("nanime://link?code=KD7MWQ4R"))
+        assertNull(origin.deviceLinkPage("nanime://link?code=KD7M%2F..%2Fadmin"))
+        assertNull(origin.deviceLinkPage("nanime://link"))
+        assertNull(origin.deviceLinkPage("nanime://other?code=KD7MWQ4R"))
+        assertNull(origin.deviceLinkPage("https://evil.test/link?code=KD7MWQ4R"))
+    }
 }
