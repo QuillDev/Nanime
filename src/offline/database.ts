@@ -161,6 +161,20 @@ export class IndexedDbOfflineStore implements OfflineDownloadStore {
     await done;
   }
 
+  /** `merge` returning null leaves the store untouched. */
+  async mergeProfile(userId: number, merge: (existing: OfflineProfile | null) => OfflineProfile | null): Promise<void> {
+    const database = await this.database();
+    const transaction = database.transaction(OFFLINE_PROFILE_STORE, "readwrite");
+    const done = transactionDone(transaction);
+    const store = transaction.objectStore(OFFLINE_PROFILE_STORE);
+    const existing = await requestResult(store.get(userId)) as OfflineProfile | undefined;
+    const next = merge(existing ?? null);
+    if (next !== null) {
+      store.put(next);
+    }
+    await done;
+  }
+
   async getProfile(userId: number): Promise<OfflineProfile | null> {
     const database = await this.database();
     const transaction = database.transaction(OFFLINE_PROFILE_STORE, "readonly");

@@ -12,7 +12,7 @@ export async function fetchShowMetadata(signal: AbortSignal): Promise<ShowMetada
       await api.api.metadata.get({ fetch: { signal } }),
       "Metadata request",
     );
-    await rememberOfflineMetadata(metadata);
+    rememberOfflineMetadata(metadata);
     return metadata;
   } catch (error: unknown) {
     if (canUseOfflineFallback(error)) {

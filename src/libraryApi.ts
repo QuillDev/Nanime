@@ -20,7 +20,7 @@ function downloadedEntry(entry: MediaEntry, downloadId: string): MediaEntry {
 export async function fetchLibrary(signal: AbortSignal): Promise<readonly MediaEntry[]> {
   try {
     const entries = unwrap(await api.api.list.get({ fetch: { signal } }), "Library request");
-    await rememberOfflineLibrary(entries);
+    rememberOfflineLibrary(entries);
     const downloads = await completedOfflineDownloads();
     const downloaded = new Map(downloads.map((download) => [download.rel, download]));
     return entries.map((entry) => {
