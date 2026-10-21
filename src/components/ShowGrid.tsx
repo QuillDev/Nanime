@@ -47,7 +47,7 @@ function ShowCard({
       >
         <span className="relative block">
           {preview !== undefined && (
-            <MediaThumbnail rel={preview.rel} source={cover} watched={watched} className="aspect-[2/3] rounded-[10px] transition-transform duration-300 group-hover:scale-[1.02] group-focus-visible:scale-[1.02]" />
+            <MediaThumbnail rel={preview.rel} source={cover} watched={watched} art="cover" sizes="(min-width: 1280px) 150px, (min-width: 768px) 20vw, 33vw" className="aspect-[2/3] rounded-[10px] transition-transform duration-300 group-hover:scale-[1.02] group-focus-visible:scale-[1.02]" />
           )}
           {downloadPercent !== null && (
             <span className="absolute inset-x-2 bottom-2 rounded-lg bg-black/85 p-2 text-xs font-semibold text-foreground">

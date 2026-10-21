@@ -4,6 +4,8 @@ import { episodeNumber, mediaTitle } from "./anilist.ts";
 import { primaryShowMetadata, type ShowGroup } from "./library.ts";
 import type { ContinueWatchingItem } from "./continueWatching.ts";
 import { partitionShowsByWatched } from "./watchedShows.ts";
+import { artSources, type ArtSources } from "./art.ts";
+import { thumbnailUrl } from "../api.ts";
 
 /** What the home banner features: the latest thing being watched, else the newest show. */
 export type HomeFeature =
@@ -116,4 +118,23 @@ export function episodeLabel(item: ContinueWatchingItem): string {
   }
   const number = episodeNumber(item.entry);
   return number === null ? item.episodeTitle : `Episode ${String(number)}`;
+}
+
+export interface HeroImage extends ArtSources {
+  /** A stand-in (cover) rather than a banner or episode frame, shown blurred. */
+  readonly blurred: boolean;
+}
+
+/** The home banner's backdrop: the show's banner, else the episode being watched, else its cover. */
+export function heroBackdrop(feature: HomeFeature): HeroImage | null {
+  const banner = feature.media?.bannerImage ?? null;
+  const [first] = feature.show.entries;
+  const frame = feature.kind === "continue" ? feature.item.thumbnail ?? thumbnailUrl(feature.item.entry.rel) : null;
+  const fallback = frame ?? feature.media?.coverImage.extraLarge ?? (first === undefined ? null : thumbnailUrl(first.rel));
+  const source = banner ?? fallback;
+  if (source === null) {
+    return null;
+  }
+  const blurred = banner === null && frame === null;
+  return { ...artSources(source, blurred ? "cover" : "banner"), blurred };
 }

@@ -125,7 +125,7 @@ export function EpisodeTile({
           transcode.kind === "transcoding" && "[&_img]:brightness-50 [&_img]:grayscale-[.6]",
         )}
         >
-          <MediaThumbnail rel={entry.rel} source={details?.thumbnail} watched={watch.watched && !unavailable} className="w-full" />
+          <MediaThumbnail rel={entry.rel} source={details?.thumbnail} watched={watch.watched && !unavailable} sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw" className="w-full" />
           <TranscodeOverlay state={transcode} />
           {watch.show && !unavailable && (
             <progress aria-label="Episode progress" max={100} value={watch.watched ? 100 : watch.percent} className="playback-progress absolute inset-x-0 bottom-0 block h-1 w-full" />

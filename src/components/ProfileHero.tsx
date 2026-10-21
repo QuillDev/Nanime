@@ -4,6 +4,7 @@ import { useLogout } from "../hooks/useAuth.ts";
 import { useAniListAccount } from "../hooks/useAniListAccount.ts";
 import { cn } from "../lib/utils.ts";
 import type { AuthUser } from "../types.ts";
+import { artSources } from "../lib/art.ts";
 
 function Avatar({ avatarUrl, username }: { readonly avatarUrl: string | null; readonly username: string }): React.JSX.Element {
   const className = "size-20 shrink-0 rounded-full border-4 border-background sm:size-24";
@@ -47,7 +48,7 @@ export function ProfileHero({ banner, user }: { readonly banner: string | null; 
     <header className="relative">
       <div className="relative h-44 overflow-hidden sm:h-64">
         {banner !== null && (
-          <img src={banner} alt="" className="absolute inset-0 size-full object-cover object-[50%_30%]" />
+          <img src={artSources(banner, "banner").src} srcSet={artSources(banner, "banner").srcSet} sizes="100vw" alt="" className="absolute inset-0 size-full object-cover object-[50%_30%]" />
         )}
         <span aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(0deg,rgb(0_0_0)_4%,rgb(0_0_0/0.55)_55%,rgb(0_0_0/0.25)),linear-gradient(90deg,rgb(0_0_0/0.75),transparent_60%)]" />
       </div>

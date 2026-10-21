@@ -116,7 +116,7 @@ function SearchResult({
         className="flex w-full items-center gap-3 p-3 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         {preview !== undefined && (
-          <MediaThumbnail rel={preview.rel} source={cover} className="aspect-[2/3] w-11 shrink-0" />
+          <MediaThumbnail rel={preview.rel} source={cover} art="cover" sizes="44px" className="aspect-[2/3] w-11 shrink-0" />
         )}
         <span className="min-w-0">
           <span className="block truncate text-sm font-semibold">{showTitle(show, metadata)}</span>

@@ -29,6 +29,7 @@ import {
   mediaRequest,
   rangedFileResponse,
   thumbnailResponse,
+  artResponse,
 } from "./mediaRouting.ts";
 import { adminLibraryRoutes } from "./adminLibraryRoutes.ts";
 import { mediaAdminResponse } from "./mediaAdmin.ts";
@@ -248,6 +249,9 @@ interface RouteContext {
   readonly user: AuthUser;
 }
 async function libraryRoute(context: RouteContext): Promise<Response | null> {
+  if (context.pathname === "/api/art" && context.req.method === "GET") {
+    return artResponse(context.url);
+  }
   const information = await libraryInformationRoute(context);
   return information ?? playbackRoute(context, {
     mediaExists,

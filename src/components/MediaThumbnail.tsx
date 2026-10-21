@@ -2,12 +2,16 @@ import { useCallback, useState } from "react";
 import { Check, Film } from "lucide-react";
 import { thumbnailUrl } from "../api.ts";
 import { cn } from "../lib/utils.ts";
+import { artSources, type ArtSize } from "../lib/art.ts";
 
 interface MediaThumbnailProps {
   readonly rel: string;
   readonly source?: string | null | undefined;
   readonly className?: string;
   readonly watched?: boolean;
+  /** Which resized widths to offer for AniList art, and how wide it shows (`sizes`). */
+  readonly art?: ArtSize;
+  readonly sizes?: string;
 }
 
 export function MediaThumbnail({
@@ -15,7 +19,10 @@ export function MediaThumbnail({
   source,
   className,
   watched = false,
+  art = "still",
+  sizes = "320px",
 }: MediaThumbnailProps): React.JSX.Element {
+  const image = artSources(source ?? thumbnailUrl(rel), art);
   const [failed, setFailed] = useState<boolean>(false);
   const handleError = useCallback(() => {
     setFailed(true);
@@ -32,7 +39,9 @@ export function MediaThumbnail({
         <Film className="size-10 text-primary" />
       ) : (
         <img
-          src={source ?? thumbnailUrl(rel)}
+          src={image.src}
+          srcSet={image.srcSet}
+          sizes={image.srcSet === undefined ? undefined : sizes}
           alt=""
           loading="lazy"
           decoding="async"

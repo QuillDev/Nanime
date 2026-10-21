@@ -5,6 +5,7 @@ import type { ShowGroup } from "../lib/library.ts";
 import { episodeNumber, mediaTitle } from "../lib/anilist.ts";
 import { thumbnailUrl } from "../api.ts";
 import { cn } from "../lib/utils.ts";
+import { artSources } from "../lib/art.ts";
 
 interface ShowHeroProps {
   readonly show: ShowGroup;
@@ -66,11 +67,15 @@ function HeroBackdrop({ show, media }: { readonly show: ShowGroup; readonly medi
   const cover = media?.coverImage.extraLarge ?? media?.coverImage.large ?? null;
   const fallback = show.entries[0] === undefined ? null : thumbnailUrl(show.entries[0].rel);
   const source = banner ?? cover ?? fallback;
+  const image = source === null ? null : artSources(source, banner === null ? "cover" : "banner");
   return (
     <>
-      {source !== null && (
+      {image !== null && (
         <img
-          src={source}
+          src={image.src}
+          srcSet={image.srcSet}
+          sizes="100vw"
+          fetchPriority="high"
           alt=""
           className={cn("absolute inset-0 size-full object-cover object-[50%_30%]", banner === null && "scale-110 blur-md")}
         />
