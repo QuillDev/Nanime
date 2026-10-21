@@ -9,9 +9,13 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: {
-      "@": fileURLToPath(new URL("src", import.meta.url)),
-    },
+    alias: [
+      { find: "@", replacement: fileURLToPath(new URL("src", import.meta.url)) },
+      // Nanime's playlists are single-rendition media playlists with no
+      // alternate audio, HLS subtitles or DRM, so the light build plays them
+      // all at about 60% of the full build's size. Types still come from "hls.js".
+      { find: /^hls\.js$/u, replacement: "hls.js/light" },
+    ],
   },
   server: {
     proxy: {
