@@ -33,7 +33,7 @@ function QueueRow({ item, onSelect, onDismiss }: QueueProps & { readonly item: C
           {percent > 0 && <progress aria-label="Playback progress" max={100} value={percent} className="playback-progress absolute inset-x-0 bottom-0 block h-1 w-full" />}
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold group-hover:text-primary">{item.showTitle}</span>
+          <span className="block truncate text-sm font-semibold group-hover:text-primary group-focus-visible:text-primary">{item.showTitle}</span>
           <span className="block truncate text-[13px] text-muted-foreground">{episodeLabel(item)} · {timeLeft(item)}</span>
         </span>
       </button>

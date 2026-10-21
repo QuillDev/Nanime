@@ -496,3 +496,22 @@
     background-color: #f472b6;
   }
 }
+
+/*
+ * Android TV app (`data-tv` from src/lib/tvRemote.ts): there is no pointer, so
+ * the focused item has to read from across the room.
+ */
+html[data-tv] :focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* The TV remote sets the volume itself, and a slider would trap its arrows. */
+html[data-tv] [data-player-volume] {
+  display: none;
+}
+
+/* Containers that only hold focus for a dialog (tabindex=-1) aren't something the user picked. */
+html[data-tv] [tabindex="-1"]:focus-visible {
+  outline: none;
+}

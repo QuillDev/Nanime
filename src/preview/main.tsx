@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ShowPreview } from "./ShowPreview.tsx";
+import { PlayerPreview, ShowPreview } from "./ShowPreview.tsx";
 import { SessionProviders } from "../components/SessionProviders.tsx";
 import { HomePreview, type HomeState } from "./homePreview.tsx";
 import { AdminPreview, ProfilePreview, SkeletonPreview } from "./AppPreviews.tsx";
@@ -9,9 +9,11 @@ import { isAdminTab, type AdminTab } from "../hooks/useMediaRoute.ts";
 import { readyReadiness, renameStateShow } from "./renameFixtures.ts";
 import "../styles.css";
 import {
-  previewJobs, previewProgress, previewReadiness, previewShow, previewUser,
+  installTvRemote, previewJobs, previewProgress, previewReadiness, previewShow, previewUser,
   type PreviewState,
 } from "./fixtures.ts";
+
+installTvRemote();
 
 /**
  * Design preview: the real show page rendered from fixtures, no backend.
@@ -19,6 +21,7 @@ import {
  * ?state=home-watching|home-fresh (library home)
  * ?state=profile|profile-open (profile page)
  * ?state=rename-episodes|rename-episode (rename dialogs over a release folder), organized (renamed season)
+ * ?state=player (the player over the show page)
  * or ?state=skeleton-home|show|results|profile|admin (loading placeholders) under `bun run dev`.
  */
 const STATES = new Set<PreviewState>(["loading", "needs", "partial", "transcoding", "ready"]);
@@ -144,6 +147,9 @@ function PreviewPage(): React.JSX.Element {
   }
   if (profileState) {
     return <ProfilePreview />;
+  }
+  if (requested === "player") {
+    return <PlayerPreview show={shownShow} progress={previewProgress("ready")} />;
   }
   return homeState === null ? <ShowPreview show={shownShow} progress={previewProgress(state)} /> : <HomePreview home={homeState} />;
 }

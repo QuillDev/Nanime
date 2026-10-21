@@ -21,6 +21,14 @@ import {
   DialogTitle,
 } from "./ui/dialog.tsx";
 
+// Focus the player itself rather than its first control, so OK and the arrows start out playing and seeking.
+function focusPlayerFrame(event: Event): void {
+  event.preventDefault();
+  if (event.currentTarget instanceof HTMLElement) {
+    event.currentTarget.focus();
+  }
+}
+
 interface PlayerProps {
   readonly entry: MediaEntry;
   readonly episodeDisplay: EpisodeDisplay | null;
@@ -86,7 +94,7 @@ export function Player({
 
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="left-0 top-0 block h-[100dvh] max-h-none w-screen max-w-none translate-x-0 translate-y-0 gap-0 border-0 p-0 sm:rounded-none">
+      <DialogContent onOpenAutoFocus={focusPlayerFrame} className="left-0 top-0 block h-[100dvh] max-h-none w-screen max-w-none translate-x-0 translate-y-0 gap-0 border-0 p-0 sm:rounded-none">
         <DialogHeader className="sr-only">
           <DialogTitle className="truncate pr-8">{entry.name}</DialogTitle>
           <DialogDescription>

@@ -48,7 +48,7 @@ function RecentTile({ item }: { readonly item: RecentEpisode }): React.JSX.Eleme
         className="group block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="relative block overflow-hidden rounded-lg">
-          <MediaThumbnail rel={episode.rel} source={episode.thumbnail} className="w-full transition-transform duration-300 group-hover:scale-[1.03]" />
+          <MediaThumbnail rel={episode.rel} source={episode.thumbnail} className="w-full transition-transform duration-300 group-hover:scale-[1.03] group-focus-visible:scale-[1.03]" />
           {percent > 0 && (
             <progress aria-label="Playback progress" max={100} value={percent} className="playback-progress absolute inset-x-0 bottom-0 h-1 w-full" />
           )}
