@@ -1,13 +1,11 @@
 import { createHash } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { isAllowedArtHost } from "../shared/artHosts.ts";
 
 // Bump when the encode settings change so cached images are re-made.
 const CACHE_VERSION = 1;
 const CACHE_ROOT = resolve(import.meta.dir, "..", ".nanime-cache", "art");
-// Show art comes from AniList (covers, banners) and its streaming episode
-// stills; nothing else is fetched, so this can't be used as an open proxy.
-const ALLOWED_HOSTS = new Set(["s4.anilist.co", "img1.ak.crunchyroll.com"]);
 export const ART_WIDTHS = [160, 320, 480, 640, 960, 1280, 1920] as const;
 const MAX_SOURCE_BYTES = 15 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 15_000;
@@ -27,7 +25,7 @@ interface ArtRequest {
 function artRequest(url: URL): ArtRequest | null {
   const width = Number(url.searchParams.get("w"));
   const source = URL.parse(url.searchParams.get("src") ?? "");
-  if (source?.protocol !== "https:" || !ALLOWED_HOSTS.has(source.hostname) || source.port !== "") {
+  if (source?.protocol !== "https:" || !isAllowedArtHost(source.hostname) || source.port !== "") {
     return null;
   }
   return ART_WIDTHS.some((allowed) => allowed === width) ? { source, width } : null;

@@ -243,6 +243,14 @@ database.run(`
   )
 `);
 database.run(`
+  CREATE TABLE IF NOT EXISTS episode_metadata_cache (
+    anilist_id INTEGER PRIMARY KEY,
+    providers TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  )
+`);
+database.run(`
   CREATE TABLE IF NOT EXISTS metadata_files_migration (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     migrated_at INTEGER NOT NULL

@@ -262,6 +262,7 @@ export async function startLibraryTestServer(
     NANIME_ANILIST_CLIENT_SECRET: "",
     NANIME_ANILIST_REDIRECT_URI: "",
     NANIME_TOKEN_ENCRYPTION_KEY: "",
+    NANIME_EPISODE_METADATA_PROVIDERS: "none",
     MEDIA_METADATA_FILE: join(directory, "metadata.json"),
     QBITTORRENT_URL: qbittorrent.origin,
     QBITTORRENT_USERNAME: login,
