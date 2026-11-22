@@ -39,11 +39,13 @@ export function HeaderSkeleton({ overlay = false, search = true }: {
         overlay ? "border-transparent bg-[linear-gradient(180deg,rgb(0_0_0/0.55),transparent)] bg-origin-border" : "border-border bg-background",
       )}
     >
-      <BrandLogo className="h-7 w-auto shrink-0" />
-      {search && <Bone className="library-search h-10 rounded-full" />}
-      <div className="ml-auto flex shrink-0 items-center gap-2">
-        <Bone className="m-2.5 size-4" />
-        <Bone className="size-8 rounded-full" />
+      <div className={cn("flex w-full items-center gap-2 sm:gap-4", search && "mx-auto max-w-[77rem]")}>
+        <BrandLogo className="h-7 w-auto shrink-0" />
+        {search && <Bone className="library-search h-10 rounded-full" />}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <Bone className="m-2.5 size-4" />
+          <Bone className="size-8 rounded-full" />
+        </div>
       </div>
     </header>
   );

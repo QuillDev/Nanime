@@ -36,12 +36,14 @@ export function ShowPage({
       <ShowHero
         show={show}
         media={media}
+        metadata={metadata}
         progress={progress}
         onBack={onBack}
         onLink={onShowLink}
         onPlay={onEpisodeSelect}
       />
       <SeasonList
+        key={show.name}
         seasons={show.seasons}
         metadata={metadata}
         progress={progress}

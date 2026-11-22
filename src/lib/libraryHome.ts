@@ -1,16 +1,16 @@
 import type { AniListMedia, PlaybackProgressMap, ShowMetadata } from "../types.ts";
 import { formatDuration } from "../format.ts";
 import { episodeNumber, mediaTitle } from "./anilist.ts";
-import { primaryShowMetadata, type ShowGroup } from "./library.ts";
+import { isMovieMedia, primaryShowMetadata, type ShowGroup } from "./library.ts";
 import type { ContinueWatchingItem } from "./continueWatching.ts";
-import { partitionShowsByWatched } from "./watchedShows.ts";
+import { isShowWatched, partitionShowsByWatched } from "./watchedShows.ts";
 import { artSources, type ArtSources } from "./art.ts";
 import { thumbnailUrl } from "../api.ts";
 
-/** What the home banner features: the latest thing being watched, else the newest show. */
+/** What the home banner can show: something being watched, or a show to start. */
 export type HomeFeature =
   | { readonly kind: "continue"; readonly item: ContinueWatchingItem; readonly show: ShowGroup; readonly media: AniListMedia | undefined }
-  | { readonly kind: "new"; readonly show: ShowGroup; readonly media: AniListMedia | undefined };
+  | { readonly kind: "show"; readonly show: ShowGroup; readonly media: AniListMedia | undefined };
 
 export type ShowSort = "added" | "title" | "year" | "score";
 
@@ -21,9 +21,15 @@ export const SHOW_SORTS: readonly { readonly key: ShowSort; readonly label: stri
   { key: "score", label: "Score" },
 ];
 
-/** Shows below this size gain nothing from a separate "Recently added" row: the wall shows them all. */
-export const RECENT_ROW_MIN_SHOWS = 8;
-export const RECENT_ROW_SIZE = 4;
+export type ShowFilter = "all" | "watching" | "unstarted" | "finished" | "movies";
+
+export const SHOW_FILTERS: readonly { readonly key: ShowFilter; readonly label: string }[] = [
+  { key: "all", label: "All shows" },
+  { key: "watching", label: "Watching" },
+  { key: "unstarted", label: "Not started" },
+  { key: "finished", label: "Finished" },
+  { key: "movies", label: "Movies" },
+];
 
 /** The newest file in a show marks when it was added (or last got a new episode). */
 export function showAddedAt(show: ShowGroup): number {
@@ -55,11 +61,38 @@ export function sortShows(shows: readonly ShowGroup[], metadata: ShowMetadata, s
     .map((item) => item.show);
 }
 
-export function recentlyAddedShows(shows: readonly ShowGroup[], metadata: ShowMetadata): readonly ShowGroup[] {
-  if (shows.length < RECENT_ROW_MIN_SHOWS) {
-    return [];
+interface ShowFilterContext {
+  readonly metadata: ShowMetadata;
+  readonly progress: PlaybackProgressMap;
+}
+
+function matchesFilter(show: ShowGroup, filter: ShowFilter, { metadata, progress }: ShowFilterContext): boolean {
+  if (filter === "movies") {
+    return isMovieMedia(primaryShowMetadata(show, metadata));
   }
-  return sortShows(shows, metadata, "added").slice(0, RECENT_ROW_SIZE);
+  const finished = isShowWatched(show, progress);
+  if (filter === "finished") {
+    return finished;
+  }
+  const started = show.entries.some((entry) => progress[entry.rel] !== undefined);
+  return filter === "watching" ? started && !finished : !started;
+}
+
+function lastWatchedAt(show: ShowGroup, progress: PlaybackProgressMap): number {
+  return show.entries.reduce((latest, entry) => Math.max(latest, progress[entry.rel]?.updatedAt ?? 0), 0);
+}
+
+/** Most recently watched first: the order of the "Watching" filter. */
+export function sortByLastWatched(shows: readonly ShowGroup[], progress: PlaybackProgressMap): readonly ShowGroup[] {
+  return shows
+    .map((show) => ({ show, at: lastWatchedAt(show, progress) }))
+    .toSorted((a, b) => b.at - a.at)
+    .map((item) => item.show);
+}
+
+/** The shows a home filter keeps: by how far along they are, or movies only. */
+export function filterShows(shows: readonly ShowGroup[], filter: ShowFilter, context: ShowFilterContext): readonly ShowGroup[] {
+  return filter === "all" ? shows : shows.filter((show) => matchesFilter(show, filter, context));
 }
 
 function showLength(media: AniListMedia): string | null {
@@ -79,20 +112,33 @@ export function showFacts(media: AniListMedia | undefined): string | null {
   return parts.length === 0 ? null : parts.join(" · ");
 }
 
-/** The latest thing being watched; with nothing in progress, the newest show. */
-export function homeFeature(
+const FEATURE_LIMIT = 8;
+
+interface HomeFeatureContext extends ShowFilterContext {
+  /** A number in [0, 1) choosing the show once every one has been watched. */
+  readonly pick: number;
+}
+
+/**
+ * The shows the home banner steps through: everything being watched, latest first. With nothing in progress,
+ * the shows not started yet, newest first; once those run out, one show chosen by `pick`.
+ */
+export function homeFeatures(
   items: readonly ContinueWatchingItem[],
   shows: readonly ShowGroup[],
-  metadata: ShowMetadata,
-): HomeFeature | null {
-  for (const item of items) {
+  { metadata, progress, pick }: HomeFeatureContext,
+): readonly HomeFeature[] {
+  const continuing = items.flatMap((item): HomeFeature[] => {
     const show = shows.find((candidate) => candidate.entries.some((entry) => entry.rel === item.entry.rel));
-    if (show !== undefined) {
-      return { kind: "continue", item, show, media: primaryShowMetadata(show, metadata) };
-    }
+    return show === undefined ? [] : [{ kind: "continue", item, show, media: primaryShowMetadata(show, metadata) }];
+  });
+  if (continuing.length > 0) {
+    return continuing;
   }
-  const [newest] = sortShows(shows, metadata, "added");
-  return newest === undefined ? null : { kind: "new", show: newest, media: primaryShowMetadata(newest, metadata) };
+  const unstarted = sortShows(filterShows(shows, "unstarted", { metadata, progress }), metadata, "added").slice(0, FEATURE_LIMIT);
+  const chosen = shows[Math.floor(pick * shows.length)];
+  const starters = unstarted.length > 0 || chosen === undefined ? unstarted : [chosen];
+  return starters.map((show) => ({ kind: "show", show, media: primaryShowMetadata(show, metadata) }));
 }
 
 export function watchedShowNames(shows: readonly ShowGroup[], progress: PlaybackProgressMap): ReadonlySet<string> {

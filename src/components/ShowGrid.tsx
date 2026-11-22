@@ -9,6 +9,7 @@ import { mediaTitle } from "../lib/anilist.ts";
 import { showFacts } from "../lib/libraryHome.ts";
 import { MediaThumbnail } from "./MediaThumbnail.tsx";
 import { usePrefetchShowReadiness } from "../hooks/usePlaybackReadiness.ts";
+import { cn } from "../lib/utils.ts";
 
 interface ShowCardProps {
   readonly show: ShowGroup;
@@ -82,6 +83,8 @@ interface ShowGridProps {
   readonly onSelect: (show: ShowGroup) => void;
   readonly downloads: readonly DownloadStatus[];
   readonly watched?: boolean | ((show: ShowGroup) => boolean);
+  /** Shown beside the filter rail: fewer posters per row on wide screens. */
+  readonly beside?: boolean;
 }
 
 function showTransitionName(name: string): string {
@@ -172,6 +175,7 @@ export function ShowGrid({
   onSelect,
   downloads,
   watched = false,
+  beside = false,
 }: ShowGridProps): React.JSX.Element {
   const [limit, setLimit] = useState(SHOW_BATCH_SIZE);
   const visible = shows.slice(0, limit);
@@ -181,7 +185,7 @@ export function ShowGrid({
   }, []);
   return (
     <>
-      <ul className="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
+      <ul className={cn("grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 md:grid-cols-5", beside ? "xl:grid-cols-6" : "lg:grid-cols-6 xl:grid-cols-8")}>
         {visible.map((show) => (
           <ShowGridItem
             key={show.name}

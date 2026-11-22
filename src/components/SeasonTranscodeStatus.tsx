@@ -4,23 +4,11 @@ import { cancelTranscode } from "../api.ts";
 import { formatRemaining, type SeasonTranscodeSummary } from "../lib/seasonTranscode.ts";
 import { playbackReadinessKey } from "../hooks/usePlaybackReadiness.ts";
 import { useStartTranscode, useTranscodes } from "../hooks/useTranscodes.ts";
+import { cn } from "../lib/utils.ts";
 
 interface SeasonTranscodeStatusProps {
   readonly summary: SeasonTranscodeSummary;
   readonly canTranscode: boolean;
-}
-
-const RING_RADIUS = 7;
-const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
-
-function ProgressRing({ ratio }: { readonly ratio: number }): React.JSX.Element {
-  const filled = Math.min(1, Math.max(0, ratio)) * RING_LENGTH;
-  return (
-    <svg aria-hidden="true" viewBox="0 0 18 18" className="size-[18px] shrink-0 -rotate-90">
-      <circle cx="9" cy="9" r={RING_RADIUS} fill="none" strokeWidth="3" className="stroke-white/15" />
-      <circle cx="9" cy="9" r={RING_RADIUS} fill="none" strokeWidth="3" strokeLinecap="round" className="stroke-primary" strokeDasharray={`${String(filled)} ${String(RING_LENGTH)}`} />
-    </svg>
-  );
 }
 
 function pathsNeedingTranscode(summary: SeasonTranscodeSummary): readonly string[] {
@@ -56,16 +44,14 @@ function useSeasonTranscodeActions(summary: SeasonTranscodeSummary, canTranscode
   return { handleStart, handleCancel, starting: start.isPending, error: start.error };
 }
 
-function chipText(summary: SeasonTranscodeSummary): string {
+function statusText(summary: SeasonTranscodeSummary): string {
   if (summary.kind === "needs-transcode") {
-    const missing = summary.total - summary.ready;
-    return summary.ready === 0 ? "Needs transcoding to play" : `${String(missing)} more need transcoding`;
+    return summary.ready === 0 ? "Needs transcoding" : "Some need transcoding";
   }
-  const left = summary.remainingSeconds === null ? "" : ` · ${formatRemaining(summary.remainingSeconds)} left`;
-  return `${String(summary.ready)} of ${String(summary.total)} ready${left}`;
+  return summary.remainingSeconds === null ? "Transcoding" : `Transcoding · ${formatRemaining(summary.remainingSeconds)} left`;
 }
 
-/** Season-level transcode state beside the Episodes heading; nothing when every episode can play. */
+/** Season-level transcode state in plain words beside its action, right of the heading; nothing when every episode can play. */
 export function SeasonTranscodeStatus({ summary, canTranscode }: SeasonTranscodeStatusProps): React.JSX.Element | null {
   const actions = useSeasonTranscodeActions(summary, canTranscode);
   if (summary.kind === "ready") {
@@ -79,22 +65,17 @@ export function SeasonTranscodeStatus({ summary, canTranscode }: SeasonTranscode
   const needs = summary.kind === "needs-transcode";
   return (
     <>
-      <output
-        className={needs
-          ? "inline-flex h-9 items-center gap-2.5 rounded-full bg-warning/10 px-3.5 text-sm font-medium text-warning ring-1 ring-inset ring-warning/35"
-          : "inline-flex h-9 items-center gap-2.5 rounded-full bg-primary/12 px-3.5 text-sm font-medium tabular-nums"}
-      >
-        {needs ? <span aria-hidden="true" className="size-2 rounded-full bg-warning" /> : <ProgressRing ratio={summary.ready / Math.max(1, summary.total)} />}
-        {chipText(summary)}
-      </output>
       <span className="flex-1" />
+      {/* Phones give the status and its action a line of their own under the heading. */}
+      <span aria-hidden="true" className="order-last basis-full sm:hidden" />
+      <output className={cn("max-sm:order-last max-sm:flex-1", needs ? "text-sm font-medium text-warning" : "text-sm tabular-nums text-muted-foreground")}>{statusText(summary)}</output>
       {canTranscode && needs && (
-        <button type="button" disabled={actions.starting} onClick={actions.handleStart} className="h-10 rounded-full bg-warning px-5 text-sm font-semibold text-warning-foreground disabled:opacity-60">
+        <button type="button" disabled={actions.starting} onClick={actions.handleStart} className="h-10 rounded-full bg-warning px-5 max-sm:order-last text-sm font-semibold text-warning-foreground disabled:opacity-60">
           Transcode season
         </button>
       )}
       {canTranscode && !needs && (
-        <button type="button" onClick={actions.handleCancel} className="h-10 rounded-full px-3 text-sm font-medium text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={actions.handleCancel} className="h-10 rounded-full px-3 text-sm font-medium text-muted-foreground hover:text-foreground max-sm:order-last">
           Cancel
         </button>
       )}

@@ -1,4 +1,5 @@
 import { isAllowedArtUrl } from "../../shared/artHosts.ts";
+import type { AniListMedia } from "../types.ts";
 
 /** Widths for an image `sizes` says is about `widest` CSS px or less, at 1x-2x density. */
 export const ART_WIDTHS = {
@@ -29,4 +30,10 @@ export function artSources(source: string, size: ArtSize): ArtSources {
     src: artUrl(source, widths[1]),
     srcSet: widths.map((width) => `${artUrl(source, width)} ${String(width)}w`).join(", "),
   };
+}
+
+/** The show's poster, at widths that fill a phone's screen. */
+export function posterArt(media: AniListMedia | undefined): ArtSources | null {
+  const cover = media?.coverImage.extraLarge ?? media?.coverImage.large ?? null;
+  return cover === null ? null : artSources(cover, "tile");
 }

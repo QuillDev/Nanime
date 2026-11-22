@@ -8,11 +8,11 @@ import type {
 import type { EpisodeTranscodeState, SeasonTranscodeSummary } from "../lib/seasonTranscode.ts";
 import { useSetPlaybackWatched } from "../hooks/usePlaybackProgress.ts";
 import { useSeriesCompletionPrompt } from "./SeriesCompletionPrompt.tsx";
-import { EpisodeTile } from "./EpisodeTile.tsx";
+import { EpisodeRow } from "./EpisodeRow.tsx";
 
 const READY: EpisodeTranscodeState = { kind: "ready" };
 
-interface EpisodeGridProps {
+interface EpisodeListProps {
   readonly entries: readonly MediaEntry[];
   readonly media: AniListMedia | undefined;
   readonly progress: PlaybackProgressMap;
@@ -21,14 +21,14 @@ interface EpisodeGridProps {
   readonly canRename: boolean;
 }
 
-export function EpisodeGrid({
+export function EpisodeList({
   entries,
   media,
   progress,
   onSelect,
   transcode,
   canRename,
-}: EpisodeGridProps): React.JSX.Element {
+}: EpisodeListProps): React.JSX.Element {
   const watchedState = useSetPlaybackWatched();
   const promptForScore = useSeriesCompletionPrompt();
   const handleSetWatched = useCallback((
@@ -62,9 +62,9 @@ export function EpisodeGrid({
           Could not update episode: {watchedState.error.message}
         </p>
       )}
-      <ul className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 lg:grid-cols-4">
+      <ul>
         {entries.map((entry) => (
-          <EpisodeTile
+          <EpisodeRow
             key={entry.rel}
             entry={entry}
             media={media}

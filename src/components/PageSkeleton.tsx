@@ -99,7 +99,7 @@ export function PageSkeleton({ page }: { readonly page: SkeletonPage }): React.J
   }
   return (
     <div className="min-h-screen overflow-x-clip bg-background text-foreground">
-      <HeaderSkeleton overlay={page === "home"} />
+      <HeaderSkeleton overlay={page !== "results"} />
       <main className="mx-auto max-w-7xl px-6 py-6">
         <LibrarySkeleton page={page} />
       </main>
