@@ -54,7 +54,27 @@ test("show art is served resized to the asked width as WebP, made once and then 
   });
 }, 30_000);
 
-test("art outside AniList or at an unlisted width is refused, and an unreachable image falls back to the original", async () => {
+test("episode stills from TVDB and TMDB are resized to WebP and cached on disk", async () => {
+  const banner = await bannerJpeg();
+  const source = `https://artworks.thetvdb.com/banners/v4/episode/${crypto.randomUUID()}/screencap/still.jpg`;
+  let fetches = 0;
+  await withFakeUpstream((url) => {
+    fetches += 1;
+    return url.href === source
+      ? new Response(banner, { headers: { "content-type": "image/jpeg" } })
+      : new Response("missing", { status: 404 });
+  }, async () => {
+    const first = await artResponse(artUrl(source, 480));
+    expect(first.status).toBe(200);
+    expect(first.headers.get("content-type")).toBe("image/webp");
+    expect(await widthOf(first)).toBe(480);
+    const second = await artResponse(artUrl(source, 480));
+    expect(second.status).toBe(200);
+    expect(fetches).toBe(1);
+  });
+}, 30_000);
+
+test("art outside allowed hosts or at an unlisted width is refused, and an unreachable image falls back to the original", async () => {
   const refused = await Promise.all([
     artResponse(artUrl("https://example.com/cover.jpg", 320)),
     artResponse(artUrl("http://s4.anilist.co/cover.jpg", 320)),

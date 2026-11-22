@@ -6,6 +6,7 @@ import { recordMappingActivity, type ActivityActor } from "./libraryActivity.ts"
 import { manualAniListMetadata } from "./manualMetadata.ts";
 import { canonicalMetadataKey, matchRef, metadataSlots, readFolderMetadata, slotsForKey, writeFolderMatches, type FolderMatch, type FolderMetadata, type MetadataRole, type MetadataSlot } from "./folderMetadata.ts";
 import { cachedMetadata, migrateLegacyMetadata, storeCachedMetadata } from "./metadataCache.ts";
+import { enrichMediaEpisodes } from "./episodeMetadata.ts";
 
 export { aniListErrorResponse } from "./anilistClient.ts";
 
@@ -119,11 +120,19 @@ async function resolveUncached(match: FolderMatch, ref: string): Promise<AnimeMe
   }
 }
 
+async function enrichCachedMedia(ref: string, cached: AnimeMetadata): Promise<AnimeMetadata> {
+  const enriched = await enrichMediaEpisodes(cached);
+  if (enriched !== cached) {
+    storeCachedMetadata(ref, enriched);
+  }
+  return enriched;
+}
+
 async function mediaFor(role: MetadataRole, match: FolderMatch): Promise<AnimeMetadata | undefined> {
   const ref = matchRef(role, match);
   const cached = cachedMetadata(ref);
   if (cached !== undefined) {
-    return cached;
+    return match.title === undefined ? await enrichCachedMedia(ref, cached) : cached;
   }
   if ((failedUntil.get(ref) ?? 0) > Date.now()) {
     return undefined;
@@ -185,12 +194,12 @@ export async function metadataResponse(): Promise<Response> {
   return Response.json(await metadata());
 }
 
-async function fetchMedia(id: number): Promise<AnimeMetadata> {
+async function fetchMedia(id: number, bypassEpisodeCache = false): Promise<AnimeMetadata> {
   const query = `query ($id: Int!) {
     Media(id: $id, type: ANIME) { ${MEDIA_FIELDS} }
   }`;
   const data = await aniListGraphQl<MediaData>({ query, variables: { id } });
-  return cleanMedia(data.Media);
+  return await enrichMediaEpisodes(cleanMedia(data.Media), { bypassCache: bypassEpisodeCache });
 }
 
 function updateRefreshStatus(update: Partial<MetadataRefreshStatus>): void {
@@ -204,7 +213,7 @@ function distinctMatches(placed: readonly PlacedMatch[]): readonly { readonly ro
 }
 
 async function pacedFetch(match: FolderMatch): Promise<AnimeMetadata> {
-  const media = await fetchMedia(match.id);
+  const media = await fetchMedia(match.id, true);
   await Bun.sleep(METADATA_REFRESH_INTERVAL_MS);
   return media;
 }
