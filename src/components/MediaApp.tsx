@@ -157,7 +157,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
         metadata={index.metadata}
         onQueryChange={handleQueryChange}
         onShowSelect={handleShowSelect}
-        overlay={route.showName === null && route.query.trim() === ""}
+        overlay={route.showName !== null || route.query.trim() === ""}
       />
       <main className="mx-auto max-w-7xl px-6 py-6">
         <LibraryContent library={library} index={index} progress={playbackProgress} route={route} user={user} onSelect={handleSelect} onShowSelect={handleShowSelect} />

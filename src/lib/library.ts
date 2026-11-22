@@ -100,14 +100,21 @@ function numberedSeason(season: SeasonGroup): number | undefined {
   return parseNumberedName(season.name)?.number;
 }
 
+/** The season's number when its folder or match states one. */
+export function statedSeasonNumber(
+  season: SeasonGroup,
+  media: AniListMedia | undefined,
+): number | undefined {
+  return numberedSeason(season)
+    ?? linkedSeasonNumber(media)
+    ?? seasonNumberFromTitles(season.name, season.sourceShow);
+}
+
 export function seasonNumber(
   season: SeasonGroup,
   media: AniListMedia | undefined,
 ): number {
-  return numberedSeason(season)
-    ?? linkedSeasonNumber(media)
-    ?? seasonNumberFromTitles(season.name, season.sourceShow)
-    ?? 1;
+  return statedSeasonNumber(season, media) ?? 1;
 }
 
 /** The season's folder name as shown: an organized folder drops its number. */

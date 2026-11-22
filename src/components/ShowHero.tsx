@@ -1,15 +1,18 @@
 import { useCallback, useState } from "react";
 import { ArrowLeft, ExternalLink, Link, Play } from "lucide-react";
-import type { AniListMedia, MediaEntry, PlaybackProgressMap } from "../types.ts";
-import type { ShowGroup } from "../lib/library.ts";
+import type { AniListMedia, MediaEntry, PlaybackProgressMap, ShowMetadata } from "../types.ts";
+import { isMovieMedia, seasonMetadata, seasonNumber, type ShowGroup } from "../lib/library.ts";
 import { episodeNumber, mediaTitle } from "../lib/anilist.ts";
 import { thumbnailUrl } from "../api.ts";
 import { cn } from "../lib/utils.ts";
-import { artSources } from "../lib/art.ts";
+import { ShowAbout } from "./ShowAbout.tsx";
+import { HeroArt } from "./HeroArt.tsx";
+import { artSources, posterArt } from "../lib/art.ts";
 
 interface ShowHeroProps {
   readonly show: ShowGroup;
   readonly media: AniListMedia | undefined;
+  readonly metadata: ShowMetadata;
   readonly progress: PlaybackProgressMap;
   readonly onBack: () => void;
   readonly onLink?: (() => void) | undefined;
@@ -21,23 +24,38 @@ interface NextEpisode {
   readonly label: string;
 }
 
-/** The first unfinished episode in library order; resuming one already started. */
-function nextEpisode(show: ShowGroup, progress: PlaybackProgressMap): NextEpisode | null {
+/** "S2E14": the season's stated number (1 when it states none) and the episode's. Nothing for a movie or an unnumbered file. */
+function episodeCode(show: ShowGroup, entry: MediaEntry, metadata: ShowMetadata): string | null {
+  const number = episodeNumber(entry);
+  const season = show.seasons.find((candidate) => candidate.entries.includes(entry));
+  const media = season === undefined ? undefined : seasonMetadata(metadata, season.sourceShow, season.name);
+  if (number === null || season === undefined || isMovieMedia(media)) {
+    return null;
+  }
+  return `S${String(seasonNumber(season, media))}E${String(number)}`;
+}
+
+function playVerb(show: ShowGroup, progress: PlaybackProgressMap, finished: boolean): string {
+  if (finished) {
+    return "Watch again";
+  }
+  return show.entries.some((entry) => progress[entry.rel] !== undefined) ? "Continue" : "Play";
+}
+
+/** The first unfinished episode in library order, labeled the same way every time: "Continue: S2E14". */
+function nextEpisode(show: ShowGroup, progress: PlaybackProgressMap, metadata: ShowMetadata): NextEpisode | null {
   const entries = show.seasons.flatMap((season) => season.entries);
   const next = entries.find((entry) => progress[entry.rel]?.completed !== true);
   const entry = next ?? entries[0];
   if (entry === undefined) {
     return null;
   }
-  const number = episodeNumber(entry);
-  const name = number === null ? "" : ` episode ${String(number)}`;
-  if (next === undefined) {
-    return { entry, label: `Watch again from${name || " the start"}` };
-  }
-  return { entry, label: progress[entry.rel] === undefined ? `Play${name}` : `Continue${name}` };
+  const verb = playVerb(show, progress, next === undefined);
+  const code = episodeCode(show, entry, metadata);
+  return { entry, label: code === null ? verb : `${verb}: ${code}` };
 }
 
-function kickerFacts(show: ShowGroup, media: AniListMedia | undefined): readonly string[] {
+function showFactList(show: ShowGroup, media: AniListMedia | undefined): readonly string[] {
   const seasons = show.seasons.length;
   return [
     seasons === 1 ? null : `${String(seasons)} seasons`,
@@ -62,27 +80,15 @@ function HeroDescription({ text }: { readonly text: string }): React.JSX.Element
   );
 }
 
+const WIDE_FADE = "bg-[linear-gradient(90deg,rgb(0_0_0/0.96)_0%,rgb(0_0_0/0.78)_42%,rgb(0_0_0/0.15)_80%),linear-gradient(0deg,rgb(0_0_0)_0%,transparent_55%)]";
+
 function HeroBackdrop({ show, media }: { readonly show: ShowGroup; readonly media: AniListMedia | undefined }): React.JSX.Element {
   const banner = media?.bannerImage ?? null;
   const cover = media?.coverImage.extraLarge ?? media?.coverImage.large ?? null;
   const fallback = show.entries[0] === undefined ? null : thumbnailUrl(show.entries[0].rel);
   const source = banner ?? cover ?? fallback;
-  const image = source === null ? null : artSources(source, banner === null ? "cover" : "banner");
-  return (
-    <>
-      {image !== null && (
-        <img
-          src={image.src}
-          srcSet={image.srcSet}
-          sizes="100vw"
-          fetchPriority="high"
-          alt=""
-          className={cn("absolute inset-0 size-full object-cover object-[50%_30%]", banner === null && "scale-110 blur-md")}
-        />
-      )}
-      <span aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(90deg,rgb(0_0_0/0.96)_0%,rgb(0_0_0/0.78)_42%,rgb(0_0_0/0.15)_80%),linear-gradient(0deg,rgb(0_0_0)_0%,transparent_55%)]" />
-    </>
-  );
+  const wide = source === null ? null : artSources(source, banner === null ? "cover" : "banner");
+  return <HeroArt wide={wide} poster={posterArt(media)} blurred={banner === null} wideFade={WIDE_FADE} />;
 }
 
 interface HeroText {
@@ -104,43 +110,57 @@ function heroText(show: ShowGroup, media: AniListMedia | undefined): HeroText {
   };
 }
 
-export function ShowHero({ show, media, progress, onBack, onLink, onPlay }: ShowHeroProps): React.JSX.Element {
-  const next = nextEpisode(show, progress);
+/** The show's genres and synopsis over the art; phones keep them under the About heading below the banner. */
+function HeroAbout({ text }: { readonly text: HeroText }): React.JSX.Element {
+  return (
+    <div className="mt-4 hidden sm:block">
+      {text.genres.length > 0 && (
+        <ul className="flex flex-wrap gap-2 text-[13px] text-muted-foreground">
+          {text.genres.map((genre) => <li key={genre} className="rounded-full px-3 py-1 ring-1 ring-inset ring-white/15">{genre}</li>)}
+        </ul>
+      )}
+      {text.description !== null && <HeroDescription text={text.description} />}
+    </div>
+  );
+}
+
+export function ShowHero({ show, media, metadata, progress, onBack, onLink, onPlay }: ShowHeroProps): React.JSX.Element {
+  const next = nextEpisode(show, progress, metadata);
   const handlePlay = useCallback(() => {
     if (next !== null) {
       onPlay(next.entry);
     }
   }, [next, onPlay]);
-  const { title, romaji, genres, description } = heroText(show, media);
+  const text = heroText(show, media);
+  const facts = showFactList(show, media);
   const linkLabel = media === undefined ? "Match show metadata" : "Change metadata match";
   return (
-    <section className="relative mx-[calc(50%-50vw)] -mt-6 mb-8 flex min-h-[420px] items-end overflow-hidden">
+    <>
+    <section className="relative mx-[calc(50%-50vw)] -mt-[calc(var(--header-height)+1.5rem)] mb-6 flex min-h-[600px] items-end overflow-hidden sm:mb-8 sm:min-h-[calc(420px+var(--header-height))]">
       <HeroBackdrop show={show} media={media} />
-      <div className="relative mx-auto w-full max-w-7xl px-6 pb-8 pt-16">
-        <button type="button" onClick={onBack} className="absolute left-6 top-5 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      {/* Pinned under the header, whatever the copy's height. On phones it sits on the poster itself, so it carries a backing like the banner's arrows. */}
+      <div className="absolute inset-x-0 top-[calc(var(--header-height)+1.25rem)] mx-auto max-w-7xl px-6">
+        <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-full text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:-ml-2 max-sm:bg-black/45 max-sm:px-3 max-sm:py-1.5 max-sm:text-foreground">
           <ArrowLeft className="size-4" />
           All titles
         </button>
-        <p className="flex flex-wrap gap-x-2 text-[15px] text-muted-foreground">
-          {kickerFacts(show, media).map((fact, index) => (
-            <span key={fact}>{index > 0 && <span aria-hidden="true" className="mr-2 text-muted-foreground/50">·</span>}{fact}</span>
-          ))}
-        </p>
-        <div className="mt-2 flex max-w-3xl items-start gap-3">
-          <h1 className="font-display text-4xl font-extrabold leading-[0.98] tracking-[-0.04em] text-balance sm:text-6xl">{title}</h1>
+      </div>
+      <div className="relative mx-auto w-full max-w-7xl px-6 pb-8 pt-[calc(var(--header-height)+4rem)]">
+        <div className="flex max-w-3xl items-start gap-3">
+          <h1 className="font-display text-4xl font-extrabold leading-[0.98] tracking-[-0.04em] text-balance sm:text-6xl">{text.title}</h1>
           {onLink !== undefined && (
             <button type="button" onClick={onLink} aria-label={linkLabel} title={linkLabel} className="mt-2 shrink-0 rounded-full p-2 text-muted-foreground hover:bg-white/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <Link className="size-4" />
             </button>
           )}
         </div>
-        {romaji !== null && <p className="mt-2 text-sm text-muted-foreground">{romaji}</p>}
-        {genres.length > 0 && (
-          <ul className="mt-4 flex flex-wrap gap-2 text-[13px] text-muted-foreground">
-            {genres.map((genre) => <li key={genre} className="rounded-full px-3 py-1 ring-1 ring-inset ring-white/15">{genre}</li>)}
-          </ul>
-        )}
-        {description !== null && <HeroDescription text={description} />}
+        {text.romaji !== null && <p className="mt-2 hidden text-sm text-muted-foreground sm:block">{text.romaji}</p>}
+        <p className="mt-3 hidden flex-wrap gap-x-2 text-[15px] text-muted-foreground sm:flex">
+          {facts.map((fact, index) => (
+            <span key={fact}>{index > 0 && <span aria-hidden="true" className="mr-2 text-muted-foreground/50">·</span>}{fact}</span>
+          ))}
+        </p>
+        <HeroAbout text={text} />
         <div className="mt-6 flex flex-wrap items-center gap-4">
           {next !== null && (
             <button type="button" data-tv-primary onClick={handlePlay} className="inline-flex h-11 items-center gap-2 rounded-full bg-foreground px-5 text-sm font-semibold text-background hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -149,7 +169,7 @@ export function ShowHero({ show, media, progress, onBack, onLink, onPlay }: Show
             </button>
           )}
           {media !== undefined && (
-            <a href={media.siteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+            <a href={media.siteUrl} target="_blank" rel="noreferrer" className="hidden items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground sm:inline-flex">
               AniList
               <ExternalLink className="size-3.5" />
             </a>
@@ -157,5 +177,7 @@ export function ShowHero({ show, media, progress, onBack, onLink, onPlay }: Show
         </div>
       </div>
     </section>
+    <ShowAbout description={text.description} genres={text.genres} facts={facts} romaji={text.romaji} siteUrl={media?.siteUrl} />
+    </>
   );
 }

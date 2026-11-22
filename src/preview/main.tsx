@@ -6,7 +6,7 @@ import { SessionProviders } from "../components/SessionProviders.tsx";
 import { HomePreview, type HomeState } from "./homePreview.tsx";
 import { AdminPreview, ProfilePreview, SkeletonPreview } from "./AppPreviews.tsx";
 import { isAdminTab, type AdminTab } from "../hooks/useMediaRoute.ts";
-import { readyReadiness, renameStateShow } from "./renameFixtures.ts";
+import { readyReadiness, renameStateShow, seasonsState, seedSeasons } from "./seasonsFixtures.ts";
 import "../styles.css";
 import {
   installTvRemote, SignInPreview, seedSignIn, previewJobs, previewProgress, previewReadiness, previewShow, previewUser,
@@ -18,14 +18,15 @@ installTvRemote();
 /**
  * Design preview: the real show page rendered from fixtures, no backend.
  * Open /preview/?state=loading|needs|partial|transcoding|ready (show page)
- * ?state=home-watching|home-fresh (library home)
+ * ?state=seasons|seasons-movie|seasons-release|seasons-about (a show with several seasons)
+ * ?state=home-watching|home-fresh|home-finished (library home: shows in progress, none started, all watched)
  * ?state=profile|profile-open (profile page)
  * ?state=rename-episodes|rename-episode (rename dialogs over a release folder), organized (renamed season)
  * ?state=player (the player over the show page), login-tv|link|link-code (TV sign-in with a phone)
  * or ?state=skeleton-home|show|results|profile|admin (loading placeholders) under `bun run dev`.
  */
 const STATES = new Set<PreviewState>(["loading", "needs", "partial", "transcoding", "ready"]);
-const HOME_STATES = new Set<HomeState>(["watching", "fresh"]);
+const HOME_STATES = new Set<HomeState>(["watching", "fresh", "finished"]);
 const requested = new URL(globalThis.location.href).searchParams.get("state") ?? "";
 const homeState = HOME_STATES.has(requested.replace(/^home-/u, "") as HomeState) && requested.startsWith("home-")
   ? requested.replace(/^home-/u, "") as HomeState
@@ -44,7 +45,9 @@ globalThis.fetch = Object.assign(
 
 const client = new QueryClient({ defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY, retry: false } } });
 const renameState = requested === "rename-episodes" || requested === "rename-episode";
-const shownShow = renameStateShow(requested) ?? previewShow;
+const franchise = seasonsState(requested);
+const shownShow = renameStateShow(requested) ?? franchise?.show ?? previewShow;
+seedSeasons(client, requested);
 if (shownShow !== previewShow) {
   client.setQueryData(["playback-readiness", ...shownShow.entries.map((entry) => entry.rel)], readyReadiness(shownShow));
 }
@@ -147,7 +150,7 @@ function PagePreview(): React.JSX.Element {
   if (requested === "login-tv" || requested.startsWith("link")) {
     return <SignInPreview state={requested} />;
   }
-  return <ShowPreview show={shownShow} progress={previewProgress(state)} />;
+  return <ShowPreview show={shownShow} progress={franchise?.progress ?? previewProgress(state)} />;
 }
 
 function PreviewPage(): React.JSX.Element {

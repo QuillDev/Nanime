@@ -17,7 +17,7 @@ type MediaHeaderProps = {
   readonly metadata: ShowMetadata;
   readonly onQueryChange: (event: ChangeEvent<HTMLInputElement>) => void;
   readonly onShowSelect: (show: ShowGroup) => void;
-  /** Transparent over the home banner until the page scrolls. */
+  /** Transparent over the home or show banner until the page scrolls. */
   readonly overlay?: boolean;
 } | {
   readonly user: AuthUser;
@@ -29,6 +29,8 @@ export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
   const surface = useHeaderSurface(props.view === "library" && props.overlay === true);
   return (
     <header className={surface}>
+      {/* Library pages line the header up with their centered column; admin and profile keep it edge to edge. */}
+      <div className={view === "library" ? "mx-auto flex w-full max-w-[77rem] items-center gap-2 sm:gap-4" : "flex w-full items-center gap-2 sm:gap-4"}>
       <button
         type="button"
         onClick={navigateToShows}
@@ -51,6 +53,7 @@ export function MediaHeader(props: MediaHeaderProps): React.JSX.Element {
       )}
       <HeaderActivity isAdmin={user.isAdmin} />
       <AccountMenu user={user} view={view} />
+      </div>
     </header>
   );
 }

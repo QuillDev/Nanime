@@ -93,12 +93,15 @@ function progressAt({ rel, position, updatedAt, completed = false }: SavedAt): P
   return rel === undefined ? {} : { [rel]: { rel, position, duration: 1440, completed, updatedAt, dismissedAt: null } };
 }
 
-export type HomeState = "watching" | "fresh";
+export type HomeState = "watching" | "fresh" | "finished";
 
-/** "watching": the featured show mid-episode plus three more in the queue; "fresh": nothing started yet. */
+/** "watching": the featured show mid-episode plus four more in progress; "fresh": nothing started yet; "finished": everything watched. */
 export function homeProgress(state: HomeState): PlaybackProgressMap {
   if (state === "fresh") {
     return {};
+  }
+  if (state === "finished") {
+    return Object.assign({}, ...homeEntries.map((entry, index) => progressAt({ rel: entry.rel, position: 1440, updatedAt: index + 1, completed: true }))) as PlaybackProgressMap;
   }
   const show = (index: number) => fictional[index]?.group.entries;
   return {
@@ -106,6 +109,7 @@ export function homeProgress(state: HomeState): PlaybackProgressMap {
     ...progressAt({ rel: show(1)?.[6]?.rel, position: 330, updatedAt: 30 }),
     ...progressAt({ rel: show(4)?.[1]?.rel, position: 1440, updatedAt: 20, completed: true }),
     ...progressAt({ rel: show(6)?.[2]?.rel, position: 1000, updatedAt: 10 }),
+    ...progressAt({ rel: show(2)?.[3]?.rel, position: 480, updatedAt: 8 }),
     // The movie is finished, so it shows as watched in the wall.
     ...progressAt({ rel: show(5)?.[0]?.rel, position: 1440, updatedAt: 5, completed: true }),
   };
