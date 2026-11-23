@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { AniListMedia, MediaEntry, PlaybackProgressMap, ShowMetadata } from "../types.ts";
 import { seasonMetadataKey, type SeasonGroup, type ShowGroup } from "../lib/library.ts";
 import { previewMedia, previewMetadata, previewShow } from "./fixtures.ts";
+import { seedPlayer } from "./playerFixtures.ts";
 
 export { readyReadiness, renameStateShow } from "./renameFixtures.ts";
 
@@ -61,12 +62,13 @@ const seasonsProgress: PlaybackProgressMap = Object.assign(
   ...second.entries.slice(0, WATCHED_IN_SECOND + 1).map((entry, index) => saved(entry, 100 + index, index === WATCHED_IN_SECOND ? 640 : 1440)),
 ) as PlaybackProgressMap;
 
-/** "seasons" opens on the season being watched; "seasons-movie" and "seasons-release" pick another from the rail; "seasons-about" opens the phone's About section. */
+/** The franchise for the "seasons…" and "player…" states. "seasons" opens on the season being watched; "seasons-movie" and "seasons-release" pick another from the rail; "seasons-about" opens the phone's About section. */
 export function seasonsState(state: string): { readonly show: ShowGroup; readonly progress: PlaybackProgressMap } | null {
-  return state.startsWith("seasons") ? { show: seasonsShow, progress: seasonsProgress } : null;
+  return state.startsWith("seasons") || state.startsWith("player") ? { show: seasonsShow, progress: seasonsProgress } : null;
 }
 
 export function seedSeasons(client: QueryClient, state: string): void {
+  seedPlayer(client, state, seasonsShow.entries.map((entry) => entry.rel));
   for (const group of seasons) {
     const paths = group.entries.map((entry) => entry.rel);
     client.setQueryData(["playback-readiness", ...paths], { workers: 2, items: paths.map((path) => ({ path, ready: true, transcode: null })) });

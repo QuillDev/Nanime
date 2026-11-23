@@ -25,7 +25,6 @@ export interface LibraryIndex {
   readonly metadataPending: boolean;
   readonly metadataError: Error | null;
   readonly entriesByRel: ReadonlyMap<string, MediaEntry>;
-  readonly previousByRel: ReadonlyMap<string, MediaEntry>;
   readonly nextByRel: ReadonlyMap<string, MediaEntry>;
   readonly playbackTargetByRel: ReadonlyMap<string, AniListPlaybackTarget>;
   readonly displayByRel: ReadonlyMap<string, EpisodeDisplay>;
@@ -33,7 +32,6 @@ export interface LibraryIndex {
 
 interface MutableLibraryIndex {
   readonly entries: Map<string, MediaEntry>;
-  readonly previous: Map<string, MediaEntry>;
   readonly next: Map<string, MediaEntry>;
   readonly targets: Map<string, AniListPlaybackTarget>;
   readonly displays: Map<string, EpisodeDisplay>;
@@ -47,11 +45,7 @@ function indexAdjacency(
 ): void {
   for (const [position, entry] of ordered.entries()) {
     index.entries.set(entry.rel, entry);
-    const previous = ordered[position - 1];
     const next = ordered[position + 1];
-    if (previous !== undefined) {
-      index.previous.set(entry.rel, previous);
-    }
     if (next !== undefined) {
       index.next.set(entry.rel, next);
     }
@@ -164,7 +158,6 @@ function buildLibraryIndex(options: LibraryIndexOptions): LibraryIndex {
   const mappedShows = sortShowsByMetadataTitle(shows.mapped, metadata);
   const index = {
     entries: new Map<string, MediaEntry>(),
-    previous: new Map<string, MediaEntry>(),
     next: new Map<string, MediaEntry>(),
     targets: new Map<string, AniListPlaybackTarget>(),
     displays: new Map<string, EpisodeDisplay>(),
@@ -178,7 +171,6 @@ function buildLibraryIndex(options: LibraryIndexOptions): LibraryIndex {
     metadataPending,
     metadataError,
     entriesByRel: index.entries,
-    previousByRel: index.previous,
     nextByRel: index.next,
     playbackTargetByRel: index.targets,
     displayByRel: index.displays,

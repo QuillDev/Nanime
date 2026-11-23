@@ -1,61 +1,30 @@
-import { useCallback, useRef, type SyntheticEvent } from "react";
+import { useMemo, useRef, type SyntheticEvent } from "react";
 import type { PlaybackHandlers } from "../hooks/usePlayerProgress.ts";
 import { usePlayerVideo } from "../hooks/usePlayerVideo.ts";
 import {
   subtitleClass,
   useControlVisibility,
+  usePlaybackEvents,
+  usePlayerPanel,
   usePlayerSurfaceInteraction,
   useSubtitleDisplay,
 } from "../hooks/usePlayerPresentation.ts";
 import { useAudioSelection, useSubtitleTracks } from "../hooks/useSubtitleTracks.ts";
-import type { VideoControls } from "../hooks/useVideoControls.ts";
 import type { EpisodeDisplay, MediaEntry, PlayerStreamChoice, PreferredAudioLanguage, SubtitleTrack } from "../types.ts";
+import { PlayerCenter, PlayerPanels, PlayerTopBar } from "./PlayerChrome.tsx";
 import { PlayerControls } from "./PlayerControls.tsx";
-import {
-  PlayerDiagnostics,
-  PlayerErrors,
-  PlayerNowPlaying,
-  PlayerPlaybackOverlay,
-} from "./PlayerPlaybackOverlay.tsx";
+import { PlayerDiagnostics, PlayerErrors, PlayerPlaybackOverlay } from "./PlayerPlaybackOverlay.tsx";
 import { SubtitleTracks } from "./SubtitleTracks.tsx";
 
 const EMPTY_SUBTITLES: readonly SubtitleTrack[] = [];
 
-interface PlaybackEventCallbacks {
-  readonly onPlay: () => void;
-  readonly onSourceMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
-}
-
-function usePlaybackEvents(
-  progress: PlaybackHandlers,
-  controls: VideoControls,
-  callbacks: PlaybackEventCallbacks,
-) {
-  const { onPlay, onSourceMetadata } = callbacks;
-  const handlePlay = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    controls.handlePlay();
-    progress.handlePlay(event);
-    onPlay();
-  }, [controls, onPlay, progress]);
-  const handleLoadedMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    onSourceMetadata(event);
-    progress.handleLoadedMetadata(event);
-    controls.handleDurationChange(event);
-  }, [controls, onSourceMetadata, progress]);
-  const handlePause = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    progress.handlePause(event);
-    controls.handlePause();
-  }, [controls, progress]);
-  const handleEnded = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    progress.handleEnded(event);
-    controls.handlePause();
-  }, [controls, progress]);
-  return { handlePlay, handleLoadedMetadata, handlePause, handleEnded };
-}
+type PanelsProps = React.ComponentProps<typeof PlayerPanels>;
 
 interface PlayerSurfaceProps {
   readonly playbackLocked: boolean;
-  readonly children: React.ReactNode;
+  readonly library: PanelsProps["library"];
+  readonly party: PanelsProps["party"];
+  readonly onClose: () => void;
   readonly entry: MediaEntry;
   readonly preferredAudioLanguage: PreferredAudioLanguage | null;
   readonly playbackMode: "direct" | "hls";
@@ -68,8 +37,8 @@ interface PlayerSurfaceProps {
   readonly handlePlaying: () => void;
   readonly handleSourceMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
   readonly progress: PlaybackHandlers;
-  readonly previousAvailable: boolean; readonly nextAvailable: boolean;
-  readonly onPrevious: () => void; readonly onNext: () => void;
+  readonly nextAvailable: boolean;
+  readonly onNext: () => void;
   readonly onAudioTrack: (index: number) => void;
   readonly onTimelineSeek: (position: number) => void;
   readonly playbackPosition: (video: HTMLVideoElement) => number;
@@ -89,12 +58,81 @@ function usePlayerTracks(
   return { audio, subtitles };
 }
 
+interface PlayerInterfaceProps extends Pick<PlayerSurfaceProps, "entry" | "episodeDisplay" | "library" | "party" | "videoRef" | "playbackLocked" | "nextAvailable" | "onNext" | "onClose" | "stream"> {
+  readonly controls: ReturnType<typeof usePlayerVideo>["controls"];
+  readonly buffering: boolean;
+  readonly visibility: ReturnType<typeof useControlVisibility>;
+  readonly panels: ReturnType<typeof usePlayerPanel>;
+  readonly audio: ReturnType<typeof useAudioSelection>;
+  readonly subtitles: readonly SubtitleTrack[];
+  readonly display: ReturnType<typeof useSubtitleDisplay>;
+  readonly onCenterPlayback: () => void;
+}
+
+/** Everything drawn over the picture: the title bar, the middle controls, the bottom bar and the open side panel. */
+function PlayerInterface({
+  entry, episodeDisplay, library, party, videoRef, playbackLocked, nextAvailable, onNext, onClose, stream,
+  controls, buffering, visibility, panels, audio, subtitles, display, onCenterPlayback,
+}: PlayerInterfaceProps): React.JSX.Element {
+  const { panel } = panels;
+  const shown = visibility.visible || panel !== null;
+  const tracks = useMemo(() => ({
+    audioTracks: audio.tracks,
+    selectedAudioTrack: audio.selectedTrack,
+    onAudioTrack: audio.handleTrack,
+    subtitles,
+    selectedSubtitle: display.selectedTrack,
+    onSubtitle: display.handleTrack,
+    appearance: display.appearance,
+    onAppearance: display.handleAppearance,
+    stream,
+  }), [audio.tracks, audio.selectedTrack, audio.handleTrack, subtitles, display.selectedTrack, display.handleTrack, display.appearance, display.handleAppearance, stream]);
+  return (
+    <>
+      {/* The controls stop at the open panel's edge rather than running under its blur. */}
+      <div className={`pointer-events-none absolute inset-y-0 left-0 z-30 ${panel === null ? "right-0" : "right-0 sm:right-[20.5rem] lg:right-[25rem]"}`}>
+        <div className={shown ? undefined : "invisible"}>
+          <PlayerTopBar entry={entry} display={episodeDisplay} library={library} partyAvailable={party !== null} partyActive={party !== null && (party.host !== null || party.guestId !== null)} partyOpen={panel === "party"} onBack={onClose} onParty={panels.handleParty} />
+        </div>
+        <PlayerCenter shown={shown || controls.paused} paused={controls.paused} buffering={buffering} onTogglePlayback={onCenterPlayback} onSeekBy={controls.handleSeekBy} />
+        <div data-player-controls className={`absolute inset-x-0 bottom-0 ${shown ? "" : "invisible"}`}>
+          <PlayerControls
+            mediaPath={entry.rel}
+            bufferedUntil={controls.bufferedUntil}
+            currentTime={controls.currentTime}
+            duration={controls.duration}
+            muted={controls.muted}
+            volume={controls.volume}
+            fullscreen={controls.fullscreen}
+            episodesAvailable={!playbackLocked}
+            nextAvailable={nextAvailable}
+            openMenu={panel === "party" ? null : panel}
+            skipShown={panel === null}
+            selectedAudioTrack={audio.selectedTrack}
+            converted={stream?.converted === true}
+            onTimelineInteractionEnd={visibility.handleInteractionEnd}
+            onTimelineInteractionStart={visibility.handleInteractionStart}
+            onSeek={controls.handleSeek}
+            onSeekBy={controls.handleSeekBy}
+            onVolume={controls.handleVolume}
+            onToggleMuted={controls.handleToggleMuted}
+            onToggleFullscreen={controls.handleToggleFullscreen}
+            onNext={onNext}
+            onMenu={panels.handleToggle}
+          />
+        </div>
+      </div>
+      <PlayerPanels panel={panel} rel={entry.rel} library={library} tracks={tracks} party={party} videoRef={videoRef} onClose={panels.handleClose} />
+    </>
+  );
+}
+
 export function PlayerSurface({
   entry, preferredAudioLanguage, playbackMode, playbackLocked,
   episodeDisplay, timelineOffset, knownDuration, videoRef,
   setVideo, handleVideoError, handlePlaying, handleSourceMetadata, progress,
-  previousAvailable, nextAvailable, onPrevious, onNext,
-  onAudioTrack, onTimelineSeek, playbackPosition, children, stream,
+  nextAvailable, onNext, onClose, library, party,
+  onAudioTrack, onTimelineSeek, playbackPosition, stream,
 }: PlayerSurfaceProps): React.JSX.Element {
   const { audio, subtitles } = usePlayerTracks(entry, onAudioTrack, preferredAudioLanguage);
   const playerRef = useRef<HTMLDivElement | null>(null);
@@ -124,7 +162,8 @@ export function PlayerSurface({
     { onPlay: visibility.handleActivity, onSourceMetadata: handleSourceMetadata },
   );
   const display = useSubtitleDisplay(subtitles.data);
-  const controlsVisible = visibility.visible || display.settingsOpen;
+  const panels = usePlayerPanel();
+  const controlsVisible = visibility.visible || panels.panel !== null;
   const interaction = usePlayerSurfaceInteraction({
     playerRef, controlsVisible,
     onTogglePlayback: controls.handleTogglePlayback,
@@ -169,14 +208,7 @@ export function PlayerSurface({
             className={`pointer-events-none absolute inset-0 z-[1] h-full w-full bg-black object-contain${frameVisible ? "" : " hidden"}`}
             aria-hidden="true"
           />
-          <PlayerPlaybackOverlay
-            paused={controls.paused}
-            buffering={buffering}
-            controlsVisible={controlsVisible}
-            onSurfacePointerUp={interaction.handleSurfacePointerUp}
-            onSurfaceClick={interaction.handleSurfaceClick}
-            onCenterPlayback={interaction.handleCenterPlayback}
-          />
+          <PlayerPlaybackOverlay onSurfacePointerUp={interaction.handleSurfacePointerUp} onSurfaceClick={interaction.handleSurfaceClick} />
           <PlayerDiagnostics
             buffering={buffering}
             controlsVisible={controlsVisible}
@@ -184,9 +216,6 @@ export function PlayerSurface({
             playbackMode={playbackMode}
             videoRef={videoRef}
           />
-          {controlsVisible && (
-            <PlayerNowPlaying display={episodeDisplay} fallbackTitle={entry.name} />
-          )}
           {display.cueText !== "" && (
             <div
               className="player-subtitle-position pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3"
@@ -196,46 +225,13 @@ export function PlayerSurface({
             </div>
           )}
         </div>
-        <div data-player-controls className={controlsVisible ? "absolute inset-x-0 bottom-0 z-30 visible" : "invisible absolute inset-x-0 bottom-0 z-30"}>
-          <PlayerControls
-            mediaPath={entry.rel}
-            bufferedUntil={controls.bufferedUntil}
-            currentTime={controls.currentTime}
-            duration={controls.duration}
-            muted={controls.muted}
-            volume={controls.volume}
-            fullscreen={controls.fullscreen}
-            previousAvailable={previousAvailable}
-            nextAvailable={nextAvailable}
-            tracks={subtitles.data ?? EMPTY_SUBTITLES}
-            audioTracks={audio.tracks}
-            selectedAudioTrack={audio.selectedTrack}
-            selectedTrack={display.selectedTrack}
-            appearance={display.appearance}
-            settingsOpen={display.settingsOpen}
-            onTimelineInteractionEnd={visibility.handleInteractionEnd}
-            onTimelineInteractionStart={visibility.handleInteractionStart}
-            onSeek={controls.handleSeek}
-            onSeekBy={controls.handleSeekBy}
-            onVolume={controls.handleVolume}
-            onToggleMuted={controls.handleToggleMuted}
-            onToggleFullscreen={controls.handleToggleFullscreen}
-            onPrevious={onPrevious}
-            onNext={onNext}
-            onToggleSettings={display.handleToggleSettings}
-            onTrack={display.handleTrack}
-            onAudioTrack={audio.handleTrack}
-            onAppearance={display.handleAppearance} stream={stream}
-          />
-        </div>
-        {children}
-        <PlayerErrors
-          noSubtitles={subtitles.status === "success" && subtitles.data.length === 0}
-          controlsVisible={controlsVisible}
-          subtitleError={subtitles.error}
-          audioError={audio.error}
-          fullscreenError={controls.fullscreenError}
+        <PlayerInterface
+          entry={entry} episodeDisplay={episodeDisplay} library={library} party={party} videoRef={videoRef}
+          playbackLocked={playbackLocked} nextAvailable={nextAvailable} onNext={onNext} onClose={onClose} stream={stream}
+          controls={controls} buffering={buffering} visibility={visibility} panels={panels} audio={audio}
+          subtitles={subtitles.data ?? EMPTY_SUBTITLES} display={display} onCenterPlayback={interaction.handleCenterPlayback}
         />
+        <PlayerErrors subtitleError={subtitles.error} audioError={audio.error} fullscreenError={controls.fullscreenError} />
     </div>
   );
 }
