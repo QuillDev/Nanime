@@ -36,7 +36,7 @@ interface PlayerControlsProps {
   readonly onMenu: (menu: PlayerMenu) => void;
 }
 
-const iconButton = "grid size-11 shrink-0 place-items-center rounded-md text-foreground hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const iconButton = "grid size-11 shrink-0 place-items-center rounded-full text-foreground hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function IntroSkipButton({ onSeekBy }: Pick<PlayerControlsProps, "onSeekBy">): React.JSX.Element {
   const handleClick = useCallback(() => {
@@ -63,7 +63,7 @@ function MenuButton({ menu, label, icon: Icon, open, onMenu }: MenuButtonProps):
     onMenu(menu);
   }, [menu, onMenu]);
   return (
-    <button type="button" aria-label={label} aria-pressed={open} onClick={handleClick} className={cn("flex h-11 shrink-0 items-center gap-2 rounded-md px-3 text-[15px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", open ? "h-[38px] rounded-full bg-white px-4 text-black" : "hover:bg-white/10")}>
+    <button type="button" aria-label={label} aria-pressed={open} onClick={handleClick} className={cn("flex h-[38px] shrink-0 items-center gap-2 rounded-full px-4 text-[15px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", open ? "bg-white text-black" : "hover:bg-white/10")}>
       <Icon className="size-5" aria-hidden="true" />
       <span className="hidden whitespace-nowrap sm:inline">{label}</span>
     </button>
@@ -115,12 +115,12 @@ export function PlayerControls(props: PlayerControlsProps): React.JSX.Element {
         </div>
         <Time seconds={duration} />
       </div>
-      <div className="pointer-events-auto -mx-3 flex items-center gap-1">
+      <div className="pointer-events-auto -ml-4 -mr-3 flex items-center gap-1">
         {props.episodesAvailable && <MenuButton menu="episodes" label="Episodes" icon={ListVideo} open={props.openMenu === "episodes"} onMenu={props.onMenu} />}
         <MenuButton menu="tracks" label="Audio & subtitles" icon={Captions} open={props.openMenu === "tracks"} onMenu={props.onMenu} />
         <span className="flex-1" />
         <VolumeControl muted={props.muted} volume={props.volume} onToggleMuted={props.onToggleMuted} onVolume={props.onVolume} />
-        <button type="button" disabled={!props.nextAvailable} onClick={props.onNext} aria-label="Next episode" title="Next episode" className="flex h-11 shrink-0 items-center gap-2 rounded-md px-3 text-[15px] font-medium hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-muted-foreground disabled:hover:bg-transparent">
+        <button type="button" disabled={!props.nextAvailable} onClick={props.onNext} aria-label="Next episode" title="Next episode" className="flex h-[38px] shrink-0 items-center gap-2 rounded-full px-4 text-[15px] font-medium hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-muted-foreground disabled:hover:bg-transparent">
           <span className="hidden whitespace-nowrap lg:inline">Next episode</span>
           <SkipForward className="size-5" aria-hidden="true" />
         </button>

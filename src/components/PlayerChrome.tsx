@@ -9,7 +9,7 @@ import { WatchTogether } from "./WatchTogether.tsx";
 
 export type PlayerPanelName = "episodes" | "tracks" | "party";
 
-const iconButton = "pointer-events-auto grid size-11 shrink-0 place-items-center rounded-md text-foreground hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const iconButton = "pointer-events-auto grid size-11 shrink-0 place-items-center rounded-full text-foreground hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 interface PlayerTopBarProps {
   readonly entry: MediaEntry;

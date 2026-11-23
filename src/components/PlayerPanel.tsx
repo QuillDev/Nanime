@@ -9,7 +9,7 @@ interface PlayerPanelProps {
   readonly children: ReactNode;
 }
 
-const iconButton = "grid size-11 shrink-0 place-items-center rounded-md text-foreground hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const iconButton = "grid size-11 shrink-0 place-items-center rounded-full text-foreground hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /** Opening a panel moves focus into it, onto what is playing when the panel marks it, so a remote lands inside. */
 function focusFirstControl(panel: HTMLElement | null): void {
