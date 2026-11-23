@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { SubtitleAppearance } from "../components/PlayerControls.tsx";
+import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
+import type { PlayerPanelName } from "../components/PlayerChrome.tsx";
+import type { SubtitleAppearance } from "../components/PlayerTracks.tsx";
 import type { SubtitleTrack } from "../types.ts";
 import { ControlVisibilityController } from "../lib/controlVisibility.ts";
+import type { PlaybackHandlers } from "./usePlayerProgress.ts";
+import type { VideoControls } from "./useVideoControls.ts";
 
 export { usePlayerSurfaceInteraction } from "./usePlayerSurfaceInteraction.ts";
 const EMPTY_SUBTITLES: readonly SubtitleTrack[] = [];
@@ -73,7 +76,6 @@ export function useSubtitleDisplay(tracks: readonly SubtitleTrack[] | undefined)
   const [trackSelection, setTrackSelection] = useState<number | null | undefined>(undefined);
   const [cueText, setCueText] = useState("");
   const [appearance, setAppearance] = useState<SubtitleAppearance>(loadAppearance);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const selectedTrack = trackSelection === undefined
     ? preferredSubtitleIndex(tracks)
     : trackSelection;
@@ -85,15 +87,59 @@ export function useSubtitleDisplay(tracks: readonly SubtitleTrack[] | undefined)
       // Browser privacy settings may disable storage; the in-memory setting still works.
     }
   }, []);
-  const handleToggleSettings = useCallback(() => setSettingsOpen((open) => !open), []);
   return {
     appearance,
     cueText,
     selectedTrack,
-    settingsOpen,
     handleAppearance,
     handleCueText: setCueText,
     handleTrack: setTrackSelection,
-    handleToggleSettings,
   };
+}
+
+/** Which side panel is open. A button opens its panel, or closes it when it is the one showing. */
+export function usePlayerPanel() {
+  const [panel, setPanel] = useState<PlayerPanelName | null>(null);
+  const handleToggle = useCallback((name: PlayerPanelName) => {
+    setPanel((open) => (open === name ? null : name));
+  }, []);
+  const handleParty = useCallback(() => {
+    handleToggle("party");
+  }, [handleToggle]);
+  const handleClose = useCallback(() => {
+    setPanel(null);
+  }, []);
+  return { panel, handleToggle, handleParty, handleClose };
+}
+
+interface PlaybackEventCallbacks {
+  readonly onPlay: () => void;
+  readonly onSourceMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
+}
+
+export function usePlaybackEvents(
+  progress: PlaybackHandlers,
+  controls: VideoControls,
+  callbacks: PlaybackEventCallbacks,
+) {
+  const { onPlay, onSourceMetadata } = callbacks;
+  const handlePlay = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    controls.handlePlay();
+    progress.handlePlay(event);
+    onPlay();
+  }, [controls, onPlay, progress]);
+  const handleLoadedMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    onSourceMetadata(event);
+    progress.handleLoadedMetadata(event);
+    controls.handleDurationChange(event);
+  }, [controls, onSourceMetadata, progress]);
+  const handlePause = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    progress.handlePause(event);
+    controls.handlePause();
+  }, [controls, progress]);
+  const handleEnded = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    progress.handleEnded(event);
+    controls.handlePause();
+  }, [controls, progress]);
+  return { handlePlay, handleLoadedMetadata, handlePause, handleEnded };
 }

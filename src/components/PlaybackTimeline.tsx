@@ -5,7 +5,6 @@ import {
   type ChangeEvent,
   type PointerEvent,
 } from "react";
-import { formatDuration } from "../format.ts";
 import { TimelinePreview } from "./TimelinePreview.tsx";
 
 interface PlaybackTimelineProps {
@@ -30,7 +29,6 @@ interface TimelineValues {
   readonly time: number;
   readonly bufferedUntil: number;
   readonly maximum: number;
-  readonly timeRemaining: number;
 }
 
 interface PreviewInteractionOptions {
@@ -55,7 +53,6 @@ function timelineValues(duration: number, currentTime: number, bufferedUntil: nu
     time: safeTime,
     bufferedUntil: Math.min(Math.max(bufferedUntil, safeTime), safeDuration),
     maximum: safeDuration > 0 ? safeDuration : 1,
-    timeRemaining: Math.max(0, safeDuration - safeTime),
   };
 }
 
@@ -150,12 +147,7 @@ export function PlaybackTimeline({
     ? preview.preview.time
     : values.time;
   return (
-    <div className="relative pt-5 pb-1">
-      {values.duration > 0 && (
-        <output className="absolute right-0 top-0 text-[11px] tabular-nums text-muted-foreground">
-          -{formatDuration(values.timeRemaining)}
-        </output>
-      )}
+    <div className="relative py-2">
       <label className="sr-only" htmlFor="player-playback-position">Playback position</label>
       <span
         className="relative block h-3"

@@ -123,14 +123,21 @@
   .player-safe-controls {
     background: linear-gradient(to top, rgb(0 0 0 / 72%) 0%, rgb(0 0 0 / 45%) 52%, transparent 100%);
     padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
-    padding-left: max(0.5rem, env(safe-area-inset-left));
-    padding-right: max(0.5rem, env(safe-area-inset-right));
+    padding-left: max(1.375rem, env(safe-area-inset-left));
+    padding-right: max(1.375rem, env(safe-area-inset-right));
     padding-top: 4rem;
   }
 
   .player-safe-close {
     right: max(1rem, env(safe-area-inset-right));
     top: max(1rem, env(safe-area-inset-top));
+  }
+
+  .player-panel {
+    padding-bottom: max(0.875rem, env(safe-area-inset-bottom));
+    padding-left: 1.375rem;
+    padding-right: max(1.375rem, env(safe-area-inset-right));
+    padding-top: max(0.875rem, env(safe-area-inset-top));
   }
 
   .player-surface-interaction,
@@ -144,8 +151,9 @@
   .player-now-playing {
     background: linear-gradient(to bottom, rgb(0 0 0 / 72%) 0%, rgb(0 0 0 / 45%) 52%, transparent 100%);
     padding-bottom: 4.5rem;
-    padding-left: max(1rem, env(safe-area-inset-left));
-    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-left: max(1.375rem, env(safe-area-inset-left));
+    padding-right: max(1.375rem, env(safe-area-inset-right));
+    padding-top: max(1.25rem, env(safe-area-inset-top));
   }
 
   .player-subtitle {
@@ -309,11 +317,6 @@
     textarea {
       font-size: 1rem;
     }
-
-    [data-slot="dialog-content"]:has([data-player-controls-visible="false"])
-      [data-slot="dialog-close"] {
-      visibility: hidden;
-    }
   }
 
   @media (hover: hover) and (pointer: fine) {
@@ -419,7 +422,7 @@
   }
 
   .player-buffered-range::-webkit-progress-bar {
-    background-color: var(--muted);
+    background-color: rgb(255 255 255 / 22%);
   }
 
   .player-buffered-range::-webkit-progress-value {
@@ -436,7 +439,7 @@
 
   .player-played-range::-webkit-progress-value,
   .player-played-range::-moz-progress-bar {
-    background-color: var(--primary);
+    background-color: #ffffff;
   }
 
   .player-seek-range {
@@ -451,7 +454,7 @@
 
   .player-seek-range::-webkit-slider-thumb {
     appearance: none;
-    background-color: var(--primary);
+    background-color: #ffffff;
     border: 0;
     border-radius: 9999px;
     height: 1rem;
@@ -465,7 +468,7 @@
   }
 
   .player-seek-range::-moz-range-thumb {
-    background-color: var(--primary);
+    background-color: #ffffff;
     border: 0;
     border-radius: 9999px;
     height: 1rem;

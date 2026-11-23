@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { PlayerPreview, ShowPreview } from "./ShowPreview.tsx";
+import { PlayerPreview, ShowPreview } from "./PlayerPreview.tsx";
 import { SessionProviders } from "../components/SessionProviders.tsx";
 import { HomePreview, type HomeState } from "./homePreview.tsx";
 import { AdminPreview, ProfilePreview, SkeletonPreview } from "./AppPreviews.tsx";
@@ -22,7 +22,9 @@ installTvRemote();
  * ?state=home-watching|home-fresh|home-finished (library home: shows in progress, none started, all watched)
  * ?state=profile|profile-open (profile page)
  * ?state=rename-episodes|rename-episode (rename dialogs over a release folder), organized (renamed season)
- * ?state=player (the player over the show page), login-tv|link|link-code (TV sign-in with a phone)
+ * ?state=player|player-episodes|player-tracks|player-subtitles (the player and its side panels),
+ * player-party-start|player-party|player-party-crowded|player-party-leave (its watch-together panel),
+ * login-tv|link|link-code (TV sign-in with a phone)
  * or ?state=skeleton-home|show|results|profile|admin (loading placeholders) under `bun run dev`.
  */
 const STATES = new Set<PreviewState>(["loading", "needs", "partial", "transcoding", "ready"]);
@@ -144,8 +146,8 @@ if (requested === "admin-videos-selected") {
 
 // The player and sign-in states; otherwise the show page.
 function PagePreview(): React.JSX.Element {
-  if (requested === "player") {
-    return <PlayerPreview show={shownShow} progress={previewProgress("ready")} />;
+  if (requested.startsWith("player")) {
+    return <PlayerPreview show={shownShow} progress={franchise?.progress ?? previewProgress("ready")} party={requested.replace(/^player-?/u, "").replace(/-leave$/u, "")} />;
   }
   if (requested === "login-tv" || requested.startsWith("link")) {
     return <SignInPreview state={requested} />;

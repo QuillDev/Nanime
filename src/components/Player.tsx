@@ -1,4 +1,4 @@
-import { WatchTogether, useWatchTogether, useWatchTogetherPosition } from "./WatchTogether.tsx";
+import { useWatchTogether, useWatchTogetherPosition } from "./WatchTogether.tsx";
 import { useCallback } from "react";
 import type {
   AniListPlaybackTarget,
@@ -21,6 +21,15 @@ import {
   DialogTitle,
 } from "./ui/dialog.tsx";
 
+// Escape and the TV remote's Back close an open side panel before they close the player.
+function closeOpenPanel(event: Event): void {
+  const close = document.querySelector<HTMLElement>("[data-player-panel-close]");
+  if (close !== null) {
+    event.preventDefault();
+    close.click();
+  }
+}
+
 // Focus the player itself rather than its first control, so OK and the arrows start out playing and seeking.
 function focusPlayerFrame(event: Event): void {
   event.preventDefault();
@@ -33,11 +42,10 @@ interface PlayerProps {
   readonly entry: MediaEntry;
   readonly episodeDisplay: EpisodeDisplay | null;
   readonly nextAvailable: boolean;
-  readonly previousAvailable: boolean;
+  readonly library: React.ComponentProps<typeof PlayerSurface>["library"];
   readonly initialProgress: PlaybackProgress | undefined;
   readonly onClose: () => void;
   readonly onNext: () => void;
-  readonly onPrevious: () => void;
   readonly anilistTarget: AniListPlaybackTarget | null;
   readonly knownDuration: number;
   readonly preferredAudioLanguage: PreferredAudioLanguage | null;
@@ -47,11 +55,10 @@ export function Player({
   entry,
   episodeDisplay,
   nextAvailable,
-  previousAvailable,
+  library,
   initialProgress,
   onClose,
   onNext,
-  onPrevious,
   anilistTarget,
   knownDuration,
   preferredAudioLanguage,
@@ -82,21 +89,21 @@ export function Player({
     playbackPosition,
   });
 
-  const handleOpenChange = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        if (videoRef.current !== null && !videoRef.current.ended && !videoRef.current.paused) {
-          progress.saveCurrentProgress(videoRef.current, false, "stopped");
-        }
-        onClose();
-      }
-    },
-    [onClose, progress, videoRef],
-  );
+  const handleClose = useCallback(() => {
+    if (videoRef.current !== null && !videoRef.current.ended && !videoRef.current.paused) {
+      progress.saveCurrentProgress(videoRef.current, false, "stopped");
+    }
+    onClose();
+  }, [onClose, progress, videoRef]);
+  const handleOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      handleClose();
+    }
+  }, [handleClose]);
 
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent onOpenAutoFocus={focusPlayerFrame} className="left-0 top-0 block h-[100dvh] max-h-none w-screen max-w-none translate-x-0 translate-y-0 gap-0 border-0 p-0 sm:rounded-none">
+      <DialogContent onOpenAutoFocus={focusPlayerFrame} onEscapeKeyDown={closeOpenPanel} className="left-0 top-0 block h-[100dvh] max-h-none w-screen max-w-none translate-x-0 translate-y-0 gap-0 border-0 p-0 sm:rounded-none [&>[data-slot=dialog-close]]:hidden">
         <DialogHeader className="sr-only">
           <DialogTitle className="truncate pr-8">{entry.name}</DialogTitle>
           <DialogDescription>
@@ -121,14 +128,13 @@ export function Player({
             onTimelineSeek={handleTimelineSeek}
             playbackPosition={playbackPosition}
             progress={progress}
-            previousAvailable={previousAvailable && together.guestId === null}
             nextAvailable={nextAvailable && together.guestId === null}
-            onPrevious={onPrevious}
             onNext={onNext}
+            onClose={handleClose}
+            library={library}
+            party={entry.offlineUrl === undefined ? together : null}
             stream={stream}
-          >
-            {entry.offlineUrl === undefined && <WatchTogether session={together} videoRef={videoRef} />}
-          </PlayerSurface>
+          />
         </CopyableErrorBoundary>
         {playbackError !== null && (
           <CopyablePlaybackError detail={playbackError} />

@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, type ChangeEvent } from "react";
+import { Suspense, useCallback, useEffect, useMemo, type ChangeEvent } from "react";
 import type { AuthUser, MediaEntry } from "../types.ts";
 import type { ShowGroup } from "../lib/library.ts";
 import { useLibrary, useMediaDuration } from "../hooks/useLibrary.ts";
@@ -37,13 +37,7 @@ interface MediaAppProps {
 
 function useEpisodeNavigation(index: LibraryIndex, rel: string | null) {
   const selected = rel === null ? null : index.entriesByRel.get(rel) ?? null;
-  const previous = rel === null ? null : index.previousByRel.get(rel) ?? null;
   const next = rel === null ? null : index.nextByRel.get(rel) ?? null;
-  const handlePrevious = useCallback(() => {
-    if (previous !== null) {
-      navigateToEpisode(previous.rel);
-    }
-  }, [previous]);
   const handleNext = useCallback(() => {
     if (next !== null) {
       navigateToEpisode(next.rel);
@@ -51,11 +45,9 @@ function useEpisodeNavigation(index: LibraryIndex, rel: string | null) {
   }, [next]);
   return {
     selected,
-    previous,
     next,
     target: rel === null ? null : index.playbackTargetByRel.get(rel) ?? null,
     display: rel === null ? null : index.displayByRel.get(rel) ?? null,
-    handlePrevious,
     handleNext,
   };
 }
@@ -101,6 +93,8 @@ function seasonStreamPaths(entries: readonly MediaEntry[] | undefined, selected:
 
 function PlayerLayer({
   navigation,
+  index,
+  onSelect,
   progress,
   mediaDuration,
   preferredAudioLanguage,
@@ -108,12 +102,20 @@ function PlayerLayer({
   canTranscode,
 }: {
   readonly navigation: ReturnType<typeof useEpisodeNavigation>;
+  readonly index: LibraryIndex;
+  readonly onSelect: (entry: MediaEntry) => void;
   readonly progress: ReturnType<typeof usePlaybackProgress>;
   readonly mediaDuration: ReturnType<typeof useMediaDuration>;
   readonly preferredAudioLanguage: AuthUser["preferredAudioLanguage"];
   readonly entries: readonly MediaEntry[] | undefined;
   readonly canTranscode: boolean;
 }): React.JSX.Element | null {
+  const library = useMemo(() => ({
+    shows: index.shows,
+    metadata: index.metadata,
+    progress: progress.data ?? EMPTY_PROGRESS,
+    onSelect,
+  }), [index.shows, index.metadata, progress.data, onSelect]);
   if (navigation.selected === null || progress.status === "pending") {
     return null;
   }
@@ -124,7 +126,7 @@ function PlayerLayer({
   return (
     <Suspense fallback={PLAYER_LOADING}>
       <PlaybackGate key={navigation.selected.rel} entry={navigation.selected} canTranscode={canTranscode} seasonPaths={seasonStreamPaths(entries, navigation.selected)} onClose={closeEpisode}>
-        <Player key={navigation.selected.rel} entry={navigation.selected} episodeDisplay={navigation.display} anilistTarget={navigation.target} nextAvailable={navigation.next !== null} previousAvailable={navigation.previous !== null} initialProgress={initialProgress} knownDuration={knownDuration} preferredAudioLanguage={preferredAudioLanguage} onClose={closeEpisode} onNext={navigation.handleNext} onPrevious={navigation.handlePrevious} />
+        <Player key={navigation.selected.rel} entry={navigation.selected} episodeDisplay={navigation.display} anilistTarget={navigation.target} nextAvailable={navigation.next !== null} library={library} initialProgress={initialProgress} knownDuration={knownDuration} preferredAudioLanguage={preferredAudioLanguage} onClose={closeEpisode} onNext={navigation.handleNext} />
       </PlaybackGate>
     </Suspense>
   );
@@ -162,7 +164,7 @@ export function MediaApp({ user }: MediaAppProps): React.JSX.Element {
       <main className="mx-auto max-w-7xl px-6 py-6">
         <LibraryContent library={library} index={index} progress={playbackProgress} route={route} user={user} onSelect={handleSelect} onShowSelect={handleShowSelect} />
       </main>
-      <PlayerLayer navigation={navigation} progress={playbackProgress} mediaDuration={mediaDuration} preferredAudioLanguage={user.preferredAudioLanguage} entries={library.data} canTranscode={user.isAdmin} />
+      <PlayerLayer navigation={navigation} index={index} onSelect={handleSelect} progress={playbackProgress} mediaDuration={mediaDuration} preferredAudioLanguage={user.preferredAudioLanguage} entries={library.data} canTranscode={user.isAdmin} />
     </div>
   );
 }
