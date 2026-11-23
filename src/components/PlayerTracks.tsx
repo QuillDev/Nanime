@@ -108,7 +108,7 @@ function SettingRow({ view, value, onOpen }: {
     onOpen(view);
   }, [onOpen, view]);
   return (
-    <button type="button" onClick={handleClick} className="flex min-h-12 w-full items-center gap-3 rounded-md text-left text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <button type="button" onClick={handleClick} className="flex min-h-12 w-full items-center gap-3 rounded-[10px] px-2 text-left text-[15px] hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span className="shrink-0">{TITLES[view]}</span>
       <span className="ml-auto min-w-0 truncate text-sm text-muted-foreground">{value}</span>
       <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -130,7 +130,7 @@ export function PlayerTracks({ settings, onClose }: PlayerTracksProps): React.JS
   if (view === null) {
     return (
       <PlayerPanel title="Audio & subtitles" onClose={onClose}>
-        <div className="mt-1 overflow-y-auto">
+        <div className="-mx-2 mt-1 overflow-y-auto">
           {shownViews(settings).map((shown) => (
             <SettingRow key={shown} view={shown} value={choicesFor(shown, settings).find((choice) => choice.active)?.label ?? ""} onOpen={setView} />
           ))}
@@ -140,12 +140,12 @@ export function PlayerTracks({ settings, onClose }: PlayerTracksProps): React.JS
   }
   return (
     <PlayerPanel key={view} title={TITLES[view]} onBack={handleBack} onClose={onClose}>
-      <div className="mt-1 overflow-y-auto">
+      <div className="-mx-2 mt-1 overflow-y-auto">
         {choicesFor(view, settings).map((choice) => (
           <PlayerPanelOption key={choice.key} label={choice.label} active={choice.active} onSelect={choice.handleSelect} />
         ))}
         {view === "subtitles" && settings.subtitles.length === 0 && (
-          <p className="mt-2 text-muted-foreground">No compatible subtitles found.</p>
+          <p className="mt-2 px-2 text-muted-foreground">No compatible subtitles found.</p>
         )}
       </div>
     </PlayerPanel>

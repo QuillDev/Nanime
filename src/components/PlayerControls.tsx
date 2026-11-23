@@ -43,7 +43,7 @@ function IntroSkipButton({ onSeekBy }: Pick<PlayerControlsProps, "onSeekBy">): R
     onSeekBy(85);
   }, [onSeekBy]);
   return (
-    <button type="button" onClick={handleClick} title="Skip ahead 85 seconds" className="pointer-events-auto absolute bottom-full right-0 mb-3 rounded-full bg-white px-4 py-2 text-sm font-semibold text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <button type="button" onClick={handleClick} title="Skip ahead 85 seconds" className="pointer-events-auto absolute bottom-full right-0 mb-3 rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-white/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       Skip intro
     </button>
   );
