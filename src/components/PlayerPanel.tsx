@@ -45,7 +45,7 @@ interface PlayerPanelOptionProps {
 /** One choice in a panel list; the current one is ticked. */
 export function PlayerPanelOption({ label, active, onSelect }: PlayerPanelOptionProps): React.JSX.Element {
   return (
-    <button type="button" aria-pressed={active} onClick={onSelect} className={`flex min-h-11 w-full items-center gap-2 rounded-md text-left text-[15px] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "font-semibold text-foreground" : "text-foreground/80"}`}>
+    <button type="button" aria-pressed={active} onClick={onSelect} className={`flex min-h-11 w-full items-center gap-2 rounded-[10px] px-2 text-left text-[15px] hover:bg-white/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "font-semibold text-foreground" : "text-foreground/80"}`}>
       <span className="grid w-5 shrink-0 place-items-center">{active && <Check className="size-4 stroke-[2.5]" aria-hidden="true" />}</span>
       <span className="min-w-0 break-words">{label}</span>
     </button>

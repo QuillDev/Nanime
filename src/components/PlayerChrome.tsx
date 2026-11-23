@@ -56,7 +56,7 @@ function SeekButton({ seconds, onSeekBy }: SeekButtonProps): React.JSX.Element {
   const label = seconds < 0 ? "Back 10 seconds" : "Forward 10 seconds";
   const Icon = seconds < 0 ? RotateCcw : RotateCw;
   return (
-    <button type="button" onClick={handleClick} aria-label={label} title={label} className="pointer-events-auto relative grid size-14 place-items-center rounded-full text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:size-16">
+    <button type="button" onClick={handleClick} aria-label={label} title={label} className="pointer-events-auto relative grid size-14 place-items-center rounded-full text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:size-16">
       <Icon className="size-9 lg:size-11" strokeWidth={1.75} />
       <span className="absolute text-[13px] font-bold lg:text-base">10</span>
     </button>
@@ -82,7 +82,7 @@ export function PlayerCenter({ shown, paused, buffering, onTogglePlayback, onSee
           <LoaderCircle className="size-11 animate-spin lg:size-14" aria-hidden="true" />
         </output>
       ) : (
-        <button type="button" data-player-primary onClick={onTogglePlayback} aria-label={paused ? "Play video" : "Pause video"} className="pointer-events-auto grid size-16 place-items-center rounded-full text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:size-20">
+        <button type="button" data-player-primary onClick={onTogglePlayback} aria-label={paused ? "Play video" : "Pause video"} className="pointer-events-auto grid size-16 place-items-center rounded-full text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:size-20">
           {paused ? <Play className="ml-1 size-11 fill-current lg:size-14" /> : <Pause className="size-11 fill-current lg:size-14" />}
         </button>
       )}

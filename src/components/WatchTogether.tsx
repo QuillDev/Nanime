@@ -15,7 +15,7 @@ interface Props {
   readonly onClose: () => void;
 }
 
-const solidButton = "flex h-10 flex-1 items-center justify-center gap-2 rounded-full bg-white px-4 text-sm font-semibold text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60";
+const solidButton = "flex h-10 flex-1 items-center justify-center gap-2 rounded-full bg-white px-4 text-sm font-semibold text-black hover:bg-white/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60";
 const quietButton = "flex h-10 flex-1 shrink-0 items-center justify-center gap-2 rounded-full bg-white/15 px-4 text-sm font-semibold hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function memberNote(member: PartyMember): string {
