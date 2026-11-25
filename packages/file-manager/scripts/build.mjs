@@ -40,6 +40,7 @@ await build({
 });
 
 await Bun.write(`${dist}/styles.css`, Bun.file(`${root}src/styles.css`));
-await Bun.write(`${dist}/THIRD_PARTY_NOTICES.txt`, Bun.file(packageFile("lucide-react/LICENSE")));
+// The lucide-react package only exports package.json, so find its LICENSE beside it.
+await Bun.write(`${dist}/THIRD_PARTY_NOTICES.txt`, Bun.file(packageFile("lucide-react/package.json").replace(/package\.json$/u, "LICENSE")));
 await emitDeclarations();
 console.log("built dist/index.js, dist/index.d.ts, dist/styles.css, dist/THIRD_PARTY_NOTICES.txt");

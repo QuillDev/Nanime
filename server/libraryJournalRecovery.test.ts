@@ -59,7 +59,9 @@ async function idOf(abs: string): Promise<string> {
 }
 
 async function exists(abs: string): Promise<boolean> {
-  return await lstat(abs).then(() => true, () => false);
+  return await lstat(abs)
+    .then(() => true)
+    .catch(() => false);
 }
 
 const STARTED = { state: "started", created: null } as const;
