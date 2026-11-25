@@ -3,7 +3,7 @@ import { schema } from "./schemas.ts";
 export const hlsSegmentQuerySchema = schema.object({
   session: schema.string({ minLength: 1 }),
   lease: schema.optional(schema.string({ format: "uuid" })),
-  name: schema.string({ pattern: "^(?:segment-[0-9]{6}\\.(?:ts|m4s)|init\\.mp4)$" }),
+  name: schema.string({ pattern: String.raw`^(?:segment-[0-9]{6}\.(?:ts|m4s)|init\.mp4)$` }),
 });
 
 export const hlsQuerySchema = schema.object({
