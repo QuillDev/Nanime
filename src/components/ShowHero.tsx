@@ -136,10 +136,10 @@ export function ShowHero({ show, media, metadata, progress, onBack, onLink, onPl
   const linkLabel = media === undefined ? "Match show metadata" : "Change metadata match";
   return (
     <>
-    <section className="relative mx-[calc(50%-50vw)] -mt-[calc(var(--header-height)+1.5rem)] mb-6 flex min-h-[600px] items-end overflow-hidden sm:mb-8 sm:min-h-[calc(420px+var(--header-height))]">
+    <section className="relative isolate mx-[calc(50%-50vw)] -mt-[calc(var(--header-height)+1.5rem)] mb-6 flex min-h-[600px] items-end overflow-hidden sm:mb-8 sm:min-h-[calc(420px+var(--header-height))]">
       <HeroBackdrop show={show} media={media} />
       {/* Pinned under the header, whatever the copy's height. On phones it sits on the poster itself, so it carries a backing like the banner's arrows. */}
-      <div className="absolute inset-x-0 top-[calc(var(--header-height)+1.25rem)] mx-auto max-w-7xl px-6">
+      <div className="absolute inset-x-0 top-[calc(var(--header-height)+1.25rem)] z-10 mx-auto max-w-7xl px-6">
         <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-full text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:-ml-2 max-sm:bg-black/45 max-sm:px-3 max-sm:py-1.5 max-sm:text-foreground">
           <ArrowLeft className="size-4" />
           All titles
