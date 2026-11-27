@@ -4,6 +4,7 @@ import { useVideoBuffering } from "./useVideoBuffering.ts";
 import { useVideoControls } from "./useVideoControls.ts";
 
 interface PlayerVideoOptions {
+  readonly controlsVisible: boolean;
   readonly playbackLocked: boolean;
   readonly knownDuration: number;
   readonly onPlaying: () => void;
@@ -15,6 +16,7 @@ interface PlayerVideoOptions {
 }
 
 export function usePlayerVideo({
+  controlsVisible,
   onPlaying,
   playbackLocked,
   playerRef,
@@ -25,28 +27,40 @@ export function usePlayerVideo({
   playbackPosition,
 }: PlayerVideoOptions) {
   const buffering = useVideoBuffering(videoRef);
+  const {
+    handleBuffering,
+    handleProgressing,
+    handleReady,
+    handleSeeked: handleBufferingSeeked,
+  } = buffering;
   const controls = useVideoControls({
+    controlsVisible,
     knownDuration,
     playbackLocked,
-    onBeforeSeek: buffering.handleBuffering,
+    onBeforeSeek: handleBuffering,
     onTimelineSeek,
     playbackPosition,
     playerRef,
     videoRef,
   });
+  const { handleTimeUpdate: handleControlsTimeUpdate } = controls;
+  const {
+    handleSeeked: handleProgressSeeked,
+    handleTimeUpdate: handleProgressTimeUpdate,
+  } = progress;
   const handlePlayerPlaying = useCallback(() => {
-    buffering.handleReady();
+    handleReady();
     onPlaying();
-  }, [buffering, onPlaying]);
+  }, [handleReady, onPlaying]);
   const handlePlayerTimeUpdate = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    buffering.handleProgressing(event);
-    progress.handleTimeUpdate(event);
-    controls.handleTimeUpdate(event);
-  }, [buffering, controls, progress]);
+    handleProgressing(event);
+    handleProgressTimeUpdate(event);
+    handleControlsTimeUpdate(event);
+  }, [handleControlsTimeUpdate, handleProgressTimeUpdate, handleProgressing]);
   const handlePlayerSeeked = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    buffering.handleSeeked(event);
-    progress.handleSeeked(event);
-  }, [buffering, progress]);
+    handleBufferingSeeked(event);
+    handleProgressSeeked(event);
+  }, [handleBufferingSeeked, handleProgressSeeked]);
   return {
     ...buffering,
     controls,

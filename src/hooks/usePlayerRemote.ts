@@ -25,7 +25,7 @@ function controlFocused(player: HTMLDivElement): boolean {
   return active instanceof HTMLElement && player.contains(active) && active.matches(":focus-visible");
 }
 
-type KeyAction = (options: PlayerRemoteOptions, player: HTMLDivElement) => void;
+type KeyAction = (options: Omit<PlayerRemoteOptions, "controlsVisible">, player: HTMLDivElement) => void;
 
 const toggle: KeyAction = (options) => options.onTogglePlayback();
 const back: KeyAction = (options) => options.onSeekBy(-SEEK_SECONDS);
@@ -81,7 +81,7 @@ const FREE_KEYS = new Map<string, KeyAction>([
 export function usePlayerRemote(options: PlayerRemoteOptions): void {
   const { playerRef, controlsVisible, onActivity, onTogglePlayback, onSeekBy } = options;
   useEffect(() => {
-    const actions = { playerRef, controlsVisible, onActivity, onTogglePlayback, onSeekBy };
+    const actions = { playerRef, onActivity, onTogglePlayback, onSeekBy };
     const handleKeyDown = (event: KeyboardEvent): void => {
       const player = playerRef.current;
       if (player === null) {
@@ -99,7 +99,7 @@ export function usePlayerRemote(options: PlayerRemoteOptions): void {
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [controlsVisible, onActivity, onSeekBy, onTogglePlayback, playerRef]);
+  }, [onActivity, onSeekBy, onTogglePlayback, playerRef]);
   // Hidden controls give focus back, so the next arrow seeks instead of moving inside an invisible bar.
   useEffect(() => {
     const active = document.activeElement;

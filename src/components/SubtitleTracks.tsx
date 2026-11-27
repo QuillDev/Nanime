@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { subtitleUrl } from "../api.ts";
 import type { SubtitleTrack } from "../types.ts";
 
@@ -82,7 +82,7 @@ interface SubtitleTracksProps {
   readonly timelineOffset: number;
 }
 
-export function SubtitleTracks({
+function SubtitleTracksContent({
   rel,
   tracks,
   selectedTrack,
@@ -104,3 +104,5 @@ export function SubtitleTracks({
     </>
   );
 }
+
+export const SubtitleTracks = memo(SubtitleTracksContent);

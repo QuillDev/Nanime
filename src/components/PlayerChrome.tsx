@@ -1,5 +1,5 @@
 import { ArrowLeft, LoaderCircle, Pause, Play, RotateCcw, RotateCw, UsersRound } from "lucide-react";
-import { useCallback, type RefObject } from "react";
+import { memo, useCallback, type RefObject } from "react";
 import { playerHeading, type PlayerLibrary } from "../lib/playerLibrary.ts";
 import type { EpisodeDisplay, MediaEntry } from "../types.ts";
 import { cn } from "../lib/utils.ts";
@@ -23,8 +23,7 @@ interface PlayerTopBarProps {
   readonly onParty: () => void;
 }
 
-/** What is playing, with the way back on its left and the party on its right. */
-export function PlayerTopBar({ entry, display, library, partyAvailable, partyActive, partyOpen, onBack, onParty }: PlayerTopBarProps): React.JSX.Element {
+function PlayerTopBarContent({ entry, display, library, partyAvailable, partyActive, partyOpen, onBack, onParty }: PlayerTopBarProps): React.JSX.Element {
   const heading = playerHeading(library, entry, display);
   return (
     <div className="player-now-playing absolute inset-x-0 top-0 flex items-start gap-2 text-white">
@@ -43,6 +42,9 @@ export function PlayerTopBar({ entry, display, library, partyAvailable, partyAct
     </div>
   );
 }
+
+/** What is playing, with the way back on its left and the party on its right. */
+export const PlayerTopBar = memo(PlayerTopBarContent);
 
 interface SeekButtonProps {
   readonly seconds: number;
@@ -102,8 +104,7 @@ interface PlayerPanelsProps {
   readonly onClose: () => void;
 }
 
-/** The open side panel, and under the controls a layer that closes it when the picture is tapped. */
-export function PlayerPanels({ panel, rel, library, tracks, party, videoRef, onClose }: PlayerPanelsProps): React.JSX.Element | null {
+function PlayerPanelsContent({ panel, rel, library, tracks, party, videoRef, onClose }: PlayerPanelsProps): React.JSX.Element | null {
   if (panel === null) {
     return null;
   }
@@ -116,3 +117,6 @@ export function PlayerPanels({ panel, rel, library, tracks, party, videoRef, onC
     </>
   );
 }
+
+/** The open side panel, and under the controls a layer that closes it when the picture is tapped. */
+export const PlayerPanels = memo(PlayerPanelsContent);
