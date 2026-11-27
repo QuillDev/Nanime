@@ -103,7 +103,7 @@ export function Player({
 
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent onOpenAutoFocus={focusPlayerFrame} onEscapeKeyDown={closeOpenPanel} className="left-0 top-0 block h-[100dvh] max-h-none w-screen max-w-none translate-x-0 translate-y-0 gap-0 border-0 p-0 sm:rounded-none [&>[data-slot=dialog-close]]:hidden">
+      <DialogContent onOpenAutoFocus={focusPlayerFrame} onEscapeKeyDown={closeOpenPanel} className="left-0 top-0 block h-[100dvh] max-h-none w-screen max-w-none sm:max-w-none translate-x-0 translate-y-0 gap-0 border-0 p-0 rounded-none [&>[data-slot=dialog-close]]:hidden">
         <DialogHeader className="sr-only">
           <DialogTitle className="truncate pr-8">{entry.name}</DialogTitle>
           <DialogDescription>

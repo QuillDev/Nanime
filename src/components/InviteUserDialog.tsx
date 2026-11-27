@@ -80,7 +80,7 @@ export function InviteUserDialog({ onClose }: { readonly onClose: () => void }):
   }, [onClose]);
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         {invite === null
           ? <InviteForm onInvited={handleInvited} />
           : <SetupCode username={invite.username} code={invite.code} onDone={onClose} />}

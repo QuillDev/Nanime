@@ -40,7 +40,7 @@ export function DeleteMediaDialog({
   }, [deletion, onDeleted, target]);
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Delete {target.label}?</DialogTitle>
           <DialogDescription>

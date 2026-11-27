@@ -228,7 +228,7 @@ export function TrackPruneDialog({
   const paths = useMemo(() => entries.map((entry) => entry.rel), [entries]);
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90dvh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] sm:max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Remove {mode === "audio" ? "audio" : "subtitle"} tracks</DialogTitle>
           <DialogDescription>

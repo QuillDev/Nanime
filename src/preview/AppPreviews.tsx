@@ -31,7 +31,7 @@ export function AdminPreview({ tab, createdKey }: { readonly tab: AdminTab; read
       <AdminApp user={previewUser} tab={tab} />
       {createdKey && (
         <Dialog open>
-          <DialogContent className="max-w-xl">
+          <DialogContent className="sm:max-w-xl">
             <AgentKeyCreated created={createdAgentKey} mcp={agentMcp} origin="https://nanime.example" onDone={closePreview} />
           </DialogContent>
         </Dialog>

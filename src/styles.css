@@ -1,40 +1,15 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@import "nakomponents/theme.css";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/bricolage-grotesque";
 
 /*
  * Nanime theme.
- * Solid black surfaces, pink ("nako") accent, amber for needs-transcode.
+ * The shared near-black palette and pink accent come from nakomponents;
+ * Nanime adds its fonts, the header height and amber for needs-transcode.
  * Panels stay opaque; scrims appear only over artwork for legibility.
  */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Bricolage Grotesque Variable", "Geist Variable", ui-sans-serif, sans-serif;
   --color-warning: var(--warning);
@@ -42,38 +17,8 @@
 }
 
 :root {
-  --radius: 0.625rem;
   /* Fixed so the home banner can slide under the transparent header exactly. */
   --header-height: 4.5rem;
-
-  --background: #000000;
-  --foreground: #fafafa;
-
-  --card: #0a0a0a;
-  --card-foreground: #fafafa;
-
-  --popover: #0a0a0a;
-  --popover-foreground: #fafafa;
-
-  /* nako pink */
-  --primary: #ec4899;
-  --primary-foreground: #000000;
-
-  --secondary: #171717;
-  --secondary-foreground: #fafafa;
-
-  --muted: #171717;
-  --muted-foreground: #a1a1aa;
-
-  --accent: #1a1a1a;
-  --accent-foreground: #fafafa;
-
-  --destructive: #ef4444;
-  --destructive-foreground: #fafafa;
-
-  --border: #262626;
-  --input: #262626;
-  --ring: #ec4899;
 
   /* Needs action: video that must be transcoded before it can play. */
   --warning: #ffb547;
@@ -513,6 +458,11 @@ html[data-tv] :focus-visible {
 /* The TV remote sets the volume itself, and a slider would trap its arrows. */
 html[data-tv] [data-player-volume] {
   display: none;
+}
+
+/* Dialogs open over a solid black backdrop, not a see-through scrim. */
+[data-slot="dialog-overlay"] {
+  background-color: #000000;
 }
 
 /* Containers that only hold focus for a dialog (tabindex=-1) aren't something the user picked. */
