@@ -117,7 +117,7 @@ export function NewAgentKeyDialog({ mcp, onClose }: NewKeyProps): React.JSX.Elem
   }, [onClose]);
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="sm:max-w-xl">
         {created === null
           ? <NewKeyForm onCreated={setCreated} />
           : <AgentKeyCreated created={created} mcp={mcp} origin={globalThis.location.origin} onDone={onClose} />}
@@ -141,7 +141,7 @@ export function RevokeAgentKeyDialog({ agentKey }: { readonly agentKey: AgentKey
         Revoke
       </button>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Revoke {agentKey.name}?</DialogTitle>
             <DialogDescription>The agent using this key loses access right away.</DialogDescription>

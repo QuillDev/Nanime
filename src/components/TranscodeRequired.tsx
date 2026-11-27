@@ -70,7 +70,7 @@ export function TranscodeRequired({
   const actionable = canTranscode && canQueue(readiness);
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="left-0 top-0 flex h-[100dvh] max-h-none w-screen max-w-none translate-x-0 translate-y-0 flex-col items-center justify-center gap-4 border-0 bg-black p-6 text-center sm:rounded-none">
+      <DialogContent className="left-0 top-0 flex h-[100dvh] max-h-none w-screen max-w-none sm:max-w-none translate-x-0 translate-y-0 flex-col items-center justify-center gap-4 border-0 bg-black p-6 text-center rounded-none">
         <DialogHeader className="items-center">
           <DialogTitle>This episode needs to be transcoded</DialogTitle>
           <DialogDescription>{transcodeStatusLine(readiness, canTranscode)}</DialogDescription>

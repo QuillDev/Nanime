@@ -51,7 +51,7 @@ export function RenameEpisodesDialog({ plan, onClose }: RenameEpisodesDialogProp
   }, [onClose, plan, rename]);
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Rename episodes</DialogTitle>
           <DialogDescription>

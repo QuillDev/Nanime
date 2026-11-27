@@ -104,7 +104,7 @@ function CompletionDialog({
   }
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="z-[70] max-w-md overflow-hidden border-primary/30 bg-card p-0 shadow-2xl [&_[data-slot=dialog-close]]:right-4 [&_[data-slot=dialog-close]]:top-4">
+      <DialogContent className="z-[70] sm:max-w-md overflow-hidden border-primary/30 bg-card p-0 shadow-2xl [&_[data-slot=dialog-close]]:right-4 [&_[data-slot=dialog-close]]:top-4">
         <div className="bg-gradient-to-br from-primary/20 via-card to-card px-6 pb-5 pt-8">
           <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/20">
             <Star className="size-6 fill-current" />

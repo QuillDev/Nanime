@@ -61,7 +61,7 @@ export function RemoveDownloadDialog({ download, onClose }: RemoveDownloadDialog
 
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Remove download?</DialogTitle>
           <DialogDescription>

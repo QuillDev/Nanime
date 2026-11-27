@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "extends": ["./node_modules/nakomponents/oxlint.json"],
   "plugins": [
     "react",
     "react-perf",
@@ -43,6 +44,10 @@
     "anti-slop/require-safety-comment-for-type-assertion": "off",
     "eslint/complexity": ["error", { "max": 15 }],
     "react/react-in-jsx-scope": "off",
+    "react/no-array-index-key": "error",
+    "react-perf/jsx-no-new-array-as-prop": "error",
+    "react-perf/jsx-no-new-function-as-prop": "error",
+    "react-perf/jsx-no-new-object-as-prop": "error",
     "unicorn/filename-case": [
       "error",
       { "cases": { "pascalCase": true, "camelCase": true } }

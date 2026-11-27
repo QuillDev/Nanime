@@ -43,7 +43,7 @@ export function RenameEpisodeDialog({ entry, number, title, onClose }: RenameEpi
   }, [entry, name, onClose, rename]);
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit} className="grid gap-4">
           <DialogHeader>
             <DialogTitle>Rename episode {String(number)}</DialogTitle>

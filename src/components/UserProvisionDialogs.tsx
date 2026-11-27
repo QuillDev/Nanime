@@ -28,7 +28,7 @@ export function CancelProvisionDialog({ user }: { readonly user: ProvisionedUser
         Cancel invite
       </button>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Cancel the invite for {user.username}?</DialogTitle>
             <DialogDescription>
