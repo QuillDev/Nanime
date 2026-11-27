@@ -194,8 +194,9 @@
     animation: player-diagnostics-reveal 0s 3s both;
   }
 
+  /* Clear the bottom controls, less whatever black bar already sits below the picture. */
   [data-player-controls-visible="true"] .player-subtitle-position {
-    bottom: 6rem;
+    bottom: max(1rem, 6rem - (100cqh - 100%) / 2);
   }
 
   .library-search {
@@ -341,7 +342,7 @@
 
   @media (hover: hover) and (pointer: fine) {
     .player-subtitle-position {
-      bottom: 6rem;
+      bottom: max(1rem, 6rem - (100cqh - 100%) / 2);
     }
   }
 

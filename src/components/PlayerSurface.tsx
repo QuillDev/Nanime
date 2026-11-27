@@ -178,7 +178,7 @@ export function PlayerSurface({
       className="relative h-full w-full overflow-hidden bg-black"
       onPointerMove={interaction.handlePointerMove}
     >
-        <div className="relative flex h-full w-full items-center justify-center bg-black">
+        <div className="relative flex h-full w-full items-center justify-center bg-black [container-type:size]">
           <video
             ref={setVideo}
             crossOrigin="anonymous"
@@ -198,6 +198,7 @@ export function PlayerSurface({
             onPause={playbackEvents.handlePause}
             onSeeked={handlePlayerSeeked}
             onEnded={playbackEvents.handleEnded}
+            onResize={display.handleVideoResize}
             className="h-full w-full bg-black object-contain"
           >
             <track kind="captions" />
@@ -217,11 +218,13 @@ export function PlayerSurface({
             videoRef={videoRef}
           />
           {display.cueText !== "" && (
-            <div
-              className="player-subtitle-position pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3"
-              aria-live="off"
-            >
-              <span className={subtitleClass(display.appearance)}>{display.cueText}</span>
+            <div className="pointer-events-none absolute inset-0 z-10 m-auto" style={display.pictureStyle}>
+              <div
+                className="player-subtitle-position absolute inset-x-0 flex justify-center px-3"
+                aria-live="off"
+              >
+                <span className={subtitleClass(display.appearance)}>{display.cueText}</span>
+              </div>
             </div>
           )}
         </div>
