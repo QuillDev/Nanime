@@ -25,6 +25,7 @@ interface WalkOptions {
   readonly videoExtensions: ReadonlySet<string>;
   readonly directPlayExtensions: ReadonlySet<string>;
   readonly entries: MediaEntry[];
+  readonly runLimited: <T>(task: () => Promise<T>) => Promise<T>;
 }
 
 interface LibraryOptions {
@@ -34,11 +35,12 @@ interface LibraryOptions {
 }
 
 const LIBRARY_STALE_MS = 60_000;
+const WALK_CONCURRENCY = 32;
 const rows = database.query<MediaRow, []>(`
   SELECT rel, name, folder, size, direct, added_at FROM media_library ORDER BY rel
 `);
 const distinctFolders = database.query<{ readonly folder: string }, []>(`
-  SELECT DISTINCT folder FROM media_library
+  SELECT folder FROM media_library GROUP BY folder ORDER BY MIN(rel)
 `);
 const state = database.query<LibraryStateRow, []>(`
   SELECT last_scanned_at, entry_count FROM media_library_state WHERE id = 1
@@ -98,12 +100,39 @@ async function mutationsIdle(): Promise<void> {
   }
 }
 
+function createLimiter(maxConcurrent: number): <T>(task: () => Promise<T>) => Promise<T> {
+  let active = 0;
+  const queue: (() => void)[] = [];
+  const release = (): void => {
+    const next = queue.shift();
+    if (next === undefined) {
+      active -= 1;
+    } else {
+      next();
+    }
+  };
+  return async <T>(task: () => Promise<T>): Promise<T> => {
+    if (active >= maxConcurrent) {
+      const slot = Promise.withResolvers<void>();
+      queue.push(slot.resolve);
+      await slot.promise;
+    } else {
+      active += 1;
+    }
+    try {
+      return await task();
+    } finally {
+      release();
+    }
+  };
+}
+
 async function mediaEntryFromFile(
   absolutePath: string,
   name: string,
   options: WalkOptions,
 ): Promise<MediaEntry | null> {
-  const stats = await stat(absolutePath).catch(() => null);
+  const stats = await options.runLimited(() => stat(absolutePath)).catch(() => null);
   if (stats === null) {
     return null;
   }
@@ -125,7 +154,7 @@ async function walk(
   options: WalkOptions,
   root = false,
 ): Promise<void> {
-  const pending = readdir(directory, { withFileTypes: true });
+  const pending = options.runLimited(() => readdir(directory, { withFileTypes: true }));
   const items = root ? await pending : await pending.catch(() => []);
   const subdirectories: string[] = [];
   const videoFiles: { readonly absolutePath: string; readonly name: string }[] = [];
@@ -159,7 +188,8 @@ async function scanFiles(
   options: LibraryOptions,
 ): Promise<readonly MediaEntry[]> {
   const entries: MediaEntry[] = [];
-  await walk(options.mediaDir, { ...options, entries }, true);
+  const runLimited = createLimiter(WALK_CONCURRENCY);
+  await walk(options.mediaDir, { ...options, entries, runLimited }, true);
   entries.sort(compareRel);
   return entries;
 }

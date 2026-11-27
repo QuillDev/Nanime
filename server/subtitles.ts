@@ -32,8 +32,34 @@ const TEXT_SUBTITLE_CODECS = new Set([
   "mov_text",
   "text",
 ]);
+const MAX_TRACK_CACHE = 2000;
+const MAX_SUBTITLE_CACHE = 128;
 const trackCache = new Map<string, Promise<readonly SubtitleTrack[]>>();
 const subtitleCache = new Map<string, Promise<string | null>>();
+
+function setTrackCache(abs: string, pending: Promise<readonly SubtitleTrack[]>): void {
+  trackCache.delete(abs);
+  trackCache.set(abs, pending);
+  while (trackCache.size > MAX_TRACK_CACHE) {
+    const oldest = trackCache.keys().next().value as string | undefined;
+    if (oldest === undefined) {
+      break;
+    }
+    trackCache.delete(oldest);
+  }
+}
+
+function setSubtitleCache(key: string, pending: Promise<string | null>): void {
+  subtitleCache.delete(key);
+  subtitleCache.set(key, pending);
+  while (subtitleCache.size > MAX_SUBTITLE_CACHE) {
+    const oldest = subtitleCache.keys().next().value as string | undefined;
+    if (oldest === undefined) {
+      break;
+    }
+    subtitleCache.delete(oldest);
+  }
+}
 const SIDECAR_EXTENSIONS = new Map(Object.entries({
   ".ass": "ass",
   ".srt": "subrip",
@@ -130,9 +156,18 @@ async function sidecarSubtitleTracks(abs: string): Promise<readonly SidecarSubti
   return tracks;
 }
 
+async function loadSubtitleTracks(abs: string): Promise<readonly SubtitleTrack[]> {
+  try {
+    return await probeSubtitleTracks(abs);
+  } catch (error: unknown) {
+    trackCache.delete(abs);
+    throw error;
+  }
+}
+
 export async function subtitleTracks(abs: string): Promise<readonly SubtitleTrack[]> {
-  const pending = trackCache.get(abs) ?? probeSubtitleTracks(abs);
-  trackCache.set(abs, pending);
+  const pending = trackCache.get(abs) ?? loadSubtitleTracks(abs);
+  setTrackCache(abs, pending);
   const [embedded, sidecars] = await Promise.all([pending, sidecarSubtitleTracks(abs)]);
   return [
     ...embedded,
@@ -230,6 +265,26 @@ export function shiftWebVtt(text: string, offset: number): string {
     .join("\n\n");
 }
 
+async function loadShiftedSubtitle(options: {
+  readonly key: string;
+  readonly abs: string;
+  readonly index: number;
+  readonly sidecar: SidecarSubtitleTrack | undefined;
+  readonly safeOffset: number;
+}): Promise<string | null> {
+  try {
+    const text = await (
+      options.sidecar === undefined
+        ? convertSubtitle(options.abs, options.index)
+        : convertSidecar(options.sidecar.path)
+    );
+    return text === null ? null : shiftWebVtt(text, options.safeOffset);
+  } catch (error: unknown) {
+    subtitleCache.delete(options.key);
+    throw error;
+  }
+}
+
 export async function subtitleResponse(abs: string, index: number, offset: number): Promise<Response> {
   const sidecars = await sidecarSubtitleTracks(abs);
   const sidecar = sidecars.find((track) => track.index === index);
@@ -239,16 +294,19 @@ export async function subtitleResponse(abs: string, index: number, offset: numbe
   }
   const safeOffset = Number.isFinite(offset) && offset >= 0 ? offset : 0;
   const key = `${abs}:${String(index)}:${String(safeOffset)}`;
-  const pending = subtitleCache.get(key) ?? (async (): Promise<string | null> => {
-    const text = await (
-      sidecar === undefined ? convertSubtitle(abs, index) : convertSidecar(sidecar.path)
-    );
-    return text === null ? null : shiftWebVtt(text, safeOffset);
-  })();
-  subtitleCache.set(key, pending);
+  const pending = subtitleCache.get(key) ?? loadShiftedSubtitle({
+    key,
+    abs,
+    index,
+    sidecar,
+    safeOffset,
+  });
+  setSubtitleCache(key, pending);
   const text = await pending;
   if (text === null) {
-    subtitleCache.delete(key);
+    if (subtitleCache.get(key) === pending) {
+      subtitleCache.delete(key);
+    }
     return new Response("Subtitle conversion failed", { status: 500 });
   }
   return new Response(text, {

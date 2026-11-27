@@ -73,13 +73,13 @@ export function sortShowsByMetadataTitle(
   shows: readonly ShowGroup[],
   metadata: ShowMetadata,
 ): readonly ShowGroup[] {
-  return shows.toSorted((left, right) => {
-    const leftMedia = primaryShowMetadata(left, metadata);
-    const rightMedia = primaryShowMetadata(right, metadata);
-    const leftTitle = leftMedia?.title.english ?? leftMedia?.title.romaji ?? left.name;
-    const rightTitle = rightMedia?.title.english ?? rightMedia?.title.romaji ?? right.name;
-    return nameCollator.compare(leftTitle, rightTitle);
-  });
+  return shows
+    .map((show) => {
+      const media = primaryShowMetadata(show, metadata);
+      return { show, title: media?.title.english ?? media?.title.romaji ?? show.name };
+    })
+    .toSorted((left, right) => nameCollator.compare(left.title, right.title))
+    .map((item) => item.show);
 }
 
 const nameCollator = new Intl.Collator(undefined, {
@@ -160,10 +160,6 @@ function showName(entry: MediaEntry): string {
   return folderIdentityOf(entry).show;
 }
 
-function seasonName(entry: MediaEntry): string {
-  return folderIdentityOf(entry).season;
-}
-
 function groupSeasons(entries: readonly MediaEntry[]): readonly SeasonGroup[] {
   const groups = new Map<string, {
     readonly name: string;
@@ -171,8 +167,7 @@ function groupSeasons(entries: readonly MediaEntry[]): readonly SeasonGroup[] {
     readonly entries: MediaEntry[];
   }>();
   for (const entry of entries) {
-    const sourceShow = showName(entry);
-    const name = seasonName(entry);
+    const { show: sourceShow, season: name } = folderIdentityOf(entry);
     const key = `${sourceShow}\0${name}`;
     const group = groups.get(key);
     if (group === undefined) {
@@ -207,10 +202,12 @@ function mergeSeasons(
         .toSorted((a, b) => nameCollator.compare(a.name, b.name)),
     });
   }
-  return [...merged.values()].toSorted((a, b) => {
-    const order = seasonOrder(a, metadata) - seasonOrder(b, metadata);
-    return order === 0 ? nameCollator.compare(a.name, b.name) : order;
-  });
+  return [...merged.values()]
+    .map((season) => ({ season, order: seasonOrder(season, metadata) }))
+    .toSorted((a, b) => (
+      a.order === b.order ? nameCollator.compare(a.season.name, b.season.name) : a.order - b.order
+    ))
+    .map((item) => item.season);
 }
 
 function seasonOrder(season: SeasonGroup, metadata: ShowMetadata): number {

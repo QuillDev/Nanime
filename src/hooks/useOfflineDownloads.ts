@@ -63,12 +63,19 @@ async function cacheOfflineAssets(entry: MediaEntry): Promise<void> {
 }
 
 function waitForPreparation(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    return Promise.reject(new DOMException("Download cancelled", "AbortError"));
+  }
   const result = Promise.withResolvers<void>();
-  const timer = setTimeout(result.resolve, 1000);
-  signal.addEventListener("abort", () => {
+  const onAbort = (): void => {
     clearTimeout(timer);
     result.reject(new DOMException("Download cancelled", "AbortError"));
-  }, { once: true });
+  };
+  const timer = setTimeout(() => {
+    signal.removeEventListener("abort", onAbort);
+    result.resolve();
+  }, 1000);
+  signal.addEventListener("abort", onAbort, { once: true });
   return result.promise;
 }
 
