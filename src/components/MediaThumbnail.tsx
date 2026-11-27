@@ -23,10 +23,11 @@ export function MediaThumbnail({
   sizes = "320px",
 }: MediaThumbnailProps): React.JSX.Element {
   const image = artSources(source ?? thumbnailUrl(rel), art);
-  const [failed, setFailed] = useState<boolean>(false);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const failed = failedSrc === image.src;
   const handleError = useCallback(() => {
-    setFailed(true);
-  }, []);
+    setFailedSrc(image.src);
+  }, [image.src]);
 
   return (
     <div

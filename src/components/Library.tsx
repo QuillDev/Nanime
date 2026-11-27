@@ -17,9 +17,9 @@ import {
 } from "../lib/library.ts";
 import { AniListLinkDialog } from "./AniListLinkDialog.tsx";
 import {
-  useContinueWatchingItems,
+  buildContinueWatchingItems,
   type ContinueWatchingItem,
-} from "./ContinueWatching.tsx";
+} from "../lib/continueWatching.ts";
 import { ShowPage } from "./ShowPage.tsx";
 import { MoviePage } from "./MoviePage.tsx";
 import { useDownloads } from "../hooks/useDownloads.ts";
@@ -234,7 +234,10 @@ export function Library({
     selectedShowName,
   });
   const downloads = useDownloads(canManageMappings && selectedShow === null);
-  const continueWatching = useContinueWatchingItems(allShows, metadata, progress);
+  const continueWatching = useMemo(
+    () => buildContinueWatchingItems(allShows, metadata, progress),
+    [allShows, metadata, progress],
+  );
   const showMedia = selectedShow === null
     ? undefined
     : primaryShowMetadata(selectedShow, metadata);
