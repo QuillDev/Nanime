@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import type { PlayerPanelName } from "../components/PlayerChrome.tsx";
 import type { SubtitleAppearance } from "../components/PlayerTracks.tsx";
 import type { SubtitleTrack } from "../types.ts";
@@ -79,6 +79,16 @@ export function useSubtitleDisplay(tracks: readonly SubtitleTrack[] | undefined)
   const selectedTrack = trackSelection === undefined
     ? preferredSubtitleIndex(tracks)
     : trackSelection;
+  const [videoAspect, setVideoAspect] = useState<number | null>(null);
+  const handleVideoResize = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    const { videoWidth, videoHeight } = event.currentTarget;
+    setVideoAspect(videoWidth > 0 && videoHeight > 0 ? videoWidth / videoHeight : null);
+  }, []);
+  const pictureStyle = useMemo(() => (
+    videoAspect === null
+      ? undefined
+      : { width: `min(100%, ${String(videoAspect * 100)}cqh)`, height: `min(100%, ${String(100 / videoAspect)}cqw)` }
+  ), [videoAspect]);
   const handleAppearance = useCallback((nextAppearance: SubtitleAppearance) => {
     setAppearance(nextAppearance);
     try {
@@ -90,10 +100,12 @@ export function useSubtitleDisplay(tracks: readonly SubtitleTrack[] | undefined)
   return {
     appearance,
     cueText,
+    pictureStyle,
     selectedTrack,
     handleAppearance,
     handleCueText: setCueText,
     handleTrack: setTrackSelection,
+    handleVideoResize,
   };
 }
 
