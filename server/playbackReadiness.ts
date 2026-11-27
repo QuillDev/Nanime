@@ -22,18 +22,64 @@ interface VideoProbe {
   readonly keyframeSeconds: number | null;
 }
 
-const probeCache = new Map<string, { readonly signature: string; readonly probe: Promise<VideoProbe | null> }>();
+interface ProbeExpiry {
+  expiresAt: number | null;
+}
 
-async function probeVideo(abs: string): Promise<VideoProbe | null> {
-  const proc = Bun.spawn([
-    "ffprobe", "-v", "error", "-select_streams", "v:0",
-    "-show_entries", `stream=codec_name,pix_fmt:format_tags=${STORED_KEYFRAME_TAG}`,
-    "-of", "json", abs,
-  ], { stdin: "ignore", stdout: "pipe", stderr: "ignore" });
-  const { code, text } = await captureProbe(proc, new Response(proc.stdout).text());
-  if (code !== 0) {
-    return null;
+interface ProbeCacheEntry {
+  readonly signature: string;
+  readonly probe: Promise<VideoProbe | null>;
+  /** Epoch ms when a failed probe may be retried; null while in flight or cached on success. */
+  readonly expiry: ProbeExpiry;
+}
+
+function positiveMs(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+const MAX_PROBE_CACHE = 2000;
+const MAX_CONCURRENT_PROBES = 4;
+const PROBE_FAILURE_TTL_MS = positiveMs("NANIME_PROBE_FAILURE_TTL_MS", 30_000);
+const PROBE_TIMEOUT_MS = positiveMs("NANIME_PROBE_TIMEOUT_MS", 15_000);
+
+const probeCache = new Map<string, ProbeCacheEntry>();
+const priorityProbeWaiters: (() => void)[] = [];
+const batchProbeWaiters: (() => void)[] = [];
+let activeProbes = 0;
+
+async function acquireProbeSlot(priority: boolean): Promise<void> {
+  if (activeProbes < MAX_CONCURRENT_PROBES) {
+    activeProbes += 1;
+    return;
   }
+  const slot = Promise.withResolvers<void>();
+  (priority ? priorityProbeWaiters : batchProbeWaiters).push(slot.resolve);
+  await slot.promise;
+}
+
+function releaseProbeSlot(): void {
+  const next = priorityProbeWaiters.shift() ?? batchProbeWaiters.shift();
+  if (next === undefined) {
+    activeProbes -= 1;
+    return;
+  }
+  next();
+}
+
+function rememberProbe(abs: string, entry: ProbeCacheEntry): void {
+  probeCache.delete(abs);
+  probeCache.set(abs, entry);
+  while (probeCache.size > MAX_PROBE_CACHE) {
+    const oldest = probeCache.keys().next().value as string | undefined;
+    if (oldest === undefined) {
+      return;
+    }
+    probeCache.delete(oldest);
+  }
+}
+
+function parseProbeOutput(text: string): VideoProbe | null {
   const parsed = JSON.parse(text) as {
     readonly streams?: readonly { readonly codec_name?: string; readonly pix_fmt?: string }[];
     readonly format?: { readonly tags?: Readonly<Record<string, string>> };
@@ -52,28 +98,66 @@ async function probeVideo(abs: string): Promise<VideoProbe | null> {
   };
 }
 
+async function probeVideo(abs: string, priority: boolean): Promise<VideoProbe | null> {
+  await acquireProbeSlot(priority);
+  try {
+    const proc = Bun.spawn([
+      "ffprobe", "-v", "error", "-select_streams", "v:0",
+      "-show_entries", `stream=codec_name,pix_fmt:format_tags=${STORED_KEYFRAME_TAG}`,
+      "-of", "json", abs,
+    ], { stdin: "ignore", stdout: "pipe", stderr: "ignore" });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGKILL");
+    }, PROBE_TIMEOUT_MS);
+    try {
+      const { code, text } = await captureProbe(proc, new Response(proc.stdout).text());
+      return timedOut || code !== 0 ? null : parseProbeOutput(text);
+    } finally {
+      clearTimeout(timer);
+    }
+  } finally {
+    releaseProbeSlot();
+  }
+}
+
+async function settledProbe(abs: string, priority: boolean, expiry: ProbeExpiry): Promise<VideoProbe | null> {
+  try {
+    const result = await probeVideo(abs, priority);
+    if (result === null) {
+      expiry.expiresAt = Date.now() + PROBE_FAILURE_TTL_MS;
+    }
+    return result;
+  } catch {
+    expiry.expiresAt = Date.now() + PROBE_FAILURE_TTL_MS;
+    return null;
+  }
+}
+
+function createProbeEntry(abs: string, signature: string, priority: boolean): ProbeCacheEntry {
+  const expiry: ProbeExpiry = { expiresAt: null };
+  return {
+    signature,
+    expiry,
+    probe: settledProbe(abs, priority, expiry),
+  };
+}
+
 /** Probe once per file version; playlist polling must not spawn ffprobe each time. */
-async function cachedProbe(abs: string): Promise<VideoProbe | null> {
+async function cachedProbe(abs: string, priority: boolean): Promise<VideoProbe | null> {
   const stat = await lstat(abs).catch(() => null);
   if (stat === null) {
     return null;
   }
   const signature = `${String(stat.size)}:${String(stat.mtimeMs)}`;
   const cached = probeCache.get(abs);
-  if (cached?.signature === signature) {
+  if (cached?.signature === signature && (cached.expiry.expiresAt === null || cached.expiry.expiresAt > Date.now())) {
     return cached.probe;
   }
-  const probe = settledProbe(abs);
-  probeCache.set(abs, { signature, probe });
-  return probe;
-}
-
-async function settledProbe(abs: string): Promise<VideoProbe | null> {
-  try {
-    return await probeVideo(abs);
-  } catch {
-    return null;
-  }
+  const entry = createProbeEntry(abs, signature, priority);
+  rememberProbe(abs, entry);
+  return entry.probe;
 }
 
 function browserSafe(probe: VideoProbe): boolean {
@@ -110,6 +194,8 @@ export interface PlaybackPlanOptions extends MediaLibraryOptions {
   readonly av1Client?: boolean;
   /** The viewer chose the converted stream over the original, whatever the client decodes. */
   readonly convertClient?: boolean;
+  /** Interactive playback probes jump ahead of background batch readiness scans. */
+  readonly probePriority?: boolean;
 }
 
 function convertedSource(abs: string, options: PlaybackPlanOptions): HlsStreamSource {
@@ -122,7 +208,7 @@ async function clientChosenSource(abs: string, options: PlaybackPlanOptions): Pr
   if (options.convertClient !== true && codecs.size === 0) {
     return null;
   }
-  const probe = await cachedProbe(abs);
+  const probe = await cachedProbe(abs, options.probePriority ?? true);
   if (probe === null) {
     return null;
   }
@@ -139,16 +225,17 @@ async function clientChosenSource(abs: string, options: PlaybackPlanOptions): Pr
  * kept, so each part of an episode is converted once.
  */
 export async function playbackPlan(abs: string, rel: string, options: PlaybackPlanOptions): Promise<PlaybackPlan> {
+  const priority = options.probePriority ?? true;
   const chosen = await clientChosenSource(abs, options);
   if (chosen !== null) {
     return { kind: "stream", source: chosen };
   }
   const stored = await storedCompatibilityCopy(rel, options);
-  const storedProbe = stored === null ? null : await cachedProbe(stored);
+  const storedProbe = stored === null ? null : await cachedProbe(stored, priority);
   if (stored !== null && storedProbe !== null && segmentAligned(storedProbe)) {
     return { kind: "stream", source: { input: stored, videoMode: "copy" } };
   }
-  const probe = await cachedProbe(abs);
+  const probe = await cachedProbe(abs, priority);
   if (probe !== null && segmentAligned(probe)) {
     return { kind: "stream", source: { input: abs, videoMode: "copy" } };
   }
@@ -205,7 +292,12 @@ export async function playbackReadinessResponse(
     if (abs === null) {
       return [];
     }
-    const plan = await playbackPlan(abs, rel, { ...options, hevcClient: request.hevc, av1Client: request.av1 });
+    const plan = await playbackPlan(abs, rel, {
+      ...options,
+      hevcClient: request.hevc,
+      av1Client: request.av1,
+      probePriority: request.paths.length === 1,
+    });
     if (request.paths.length === 1 && plan.kind === "stream" && plan.source.videoMode === "passthrough") {
       void warmKeyframes(abs);
     }

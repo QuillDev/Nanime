@@ -42,6 +42,7 @@ const generationPaths = new Set<string>();
 const invalidatedPaths = new Set<string>();
 const failures = new Map<string, GenerationFailure>();
 const liveFrames = new Map<string, Promise<ArrayBuffer | null>>();
+const liveFrameWaiters: (() => void)[] = [];
 let generationActive = false;
 let activeGenerationPath: string | null = null;
 let activeLiveFrames = 0;
@@ -303,17 +304,27 @@ export async function trickplaySheetResponse(abs: string, version: string | null
   });
 }
 
-async function waitForLiveFrameSlot(): Promise<void> {
+async function acquireLiveFrameSlot(): Promise<void> {
   if (activeLiveFrames < 2) {
+    activeLiveFrames += 1;
     return;
   }
-  await Bun.sleep(20);
-  return waitForLiveFrameSlot();
+  const slot = Promise.withResolvers<void>();
+  liveFrameWaiters.push(slot.resolve);
+  await slot.promise;
+}
+
+function releaseLiveFrameSlot(): void {
+  const next = liveFrameWaiters.shift();
+  if (next === undefined) {
+    activeLiveFrames -= 1;
+    return;
+  }
+  next();
 }
 
 async function renderLiveFrame(abs: string, time: number): Promise<ArrayBuffer | null> {
-  await waitForLiveFrameSlot();
-  activeLiveFrames += 1;
+  await acquireLiveFrameSlot();
   try {
     const process = Bun.spawn(["ffmpeg", ...trickplayFrameArgs(abs, time)], {
       stdout: "pipe",
@@ -323,7 +334,7 @@ async function renderLiveFrame(abs: string, time: number): Promise<ArrayBuffer |
     const exitCode = await process.exited;
     return exitCode === 0 && bytes.byteLength > 0 ? bytes : null;
   } finally {
-    activeLiveFrames -= 1;
+    releaseLiveFrameSlot();
   }
 }
 

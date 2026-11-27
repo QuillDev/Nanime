@@ -3,6 +3,7 @@ import { link, lstat, mkdir, readdir, rename, rm, writeFile } from "node:fs/prom
 import { join } from "node:path";
 import { HLS_SEGMENT_SECONDS } from "../shared/playback.ts";
 import type { AudioTrack } from "./audioTracks.ts";
+import { fileSystemErrorCode } from "./fileSystemError.ts";
 import { cachedRunArgs } from "./hlsTranscode.ts";
 import type { HlsProducer } from "./hlsProcess.ts";
 
@@ -46,6 +47,8 @@ interface CachedRun {
   readonly end: number;
   readonly process: Bun.Subprocess<"ignore", "ignore", "pipe">;
   readonly stderr: Promise<string>;
+  /** Segment indexes already hard-linked into the episode cache by this run. */
+  readonly kept: Set<number>;
   /** Highest segment a viewer has asked this run for. */
   wanted: number;
   stopped: boolean;
@@ -101,10 +104,18 @@ async function writtenSegments(directory: string): Promise<readonly number[]> {
 }
 
 async function keep(run: CachedRun, cache: string, index: number): Promise<void> {
+  if (run.kept.has(index)) {
+    return;
+  }
   const target = join(cache, cachedSegmentName(index));
-  if (!await isFile(target)) {
+  try {
     // A hard link: a viewer may be reading the run's copy right now.
-    await link(join(run.directory, cachedSegmentName(index)), target).catch(() => undefined);
+    await link(join(run.directory, cachedSegmentName(index)), target);
+    run.kept.add(index);
+  } catch (error: unknown) {
+    if (fileSystemErrorCode(error) === "EEXIST" || await isFile(target)) {
+      run.kept.add(index);
+    }
   }
 }
 
@@ -181,6 +192,7 @@ export class CachedTranscodeProducer implements HlsProducer {
   private choosing: Promise<void> = Promise.resolve();
   private finish: ((code: number, message: string) => void) | null = null;
   private readonly watcher: ReturnType<typeof setInterval>;
+  private tending = false;
 
   constructor(options: CachedTranscodeOptions, cache: string) {
     this.options = options;
@@ -205,6 +217,7 @@ export class CachedTranscodeProducer implements HlsProducer {
     this.watcher = setInterval(() => {
       void this.tend();
     }, WATCH_MS);
+    this.watcher.unref();
   }
 
   kill(): void {
@@ -262,9 +275,12 @@ export class CachedTranscodeProducer implements HlsProducer {
   /** The first segment at or after `index` that's already on disk: where a new run can stop. */
   private async gapEnd(index: number): Promise<number> {
     const names = new Set(await readdir(this.cache).catch((): string[] => []));
-    const next = Array.from({ length: this.count - index }, (_, offset) => index + offset)
-      .find((candidate) => names.has(cachedSegmentName(candidate)));
-    return next ?? this.count;
+    for (let candidate = index; candidate < this.count; candidate += 1) {
+      if (names.has(cachedSegmentName(candidate))) {
+        return candidate;
+      }
+    }
+    return this.count;
   }
 
   private async startRun(index: number): Promise<CachedRun> {
@@ -282,7 +298,7 @@ export class CachedTranscodeProducer implements HlsProducer {
       stdin: "ignore", stdout: "ignore", stderr: "pipe",
     });
     const run: CachedRun = {
-      directory, first: index, end, process, stderr: new Response(process.stderr).text(), wanted: index, stopped: false,
+      directory, first: index, end, process, stderr: new Response(process.stderr).text(), kept: new Set(), wanted: index, stopped: false,
     };
     this.runs.push(run);
     trackRun(this.cache, run);
@@ -304,14 +320,22 @@ export class CachedTranscodeProducer implements HlsProducer {
 
   /** Keeps finished segments and stops runs that got far ahead of their viewer. */
   private async tend(): Promise<void> {
-    await Promise.all(this.runs.filter((run) => !run.stopped && run.process.exitCode === null).map(async (run) => {
-      const written = await writtenSegments(run.directory);
-      // The newest segment may still be growing; everything before it is done.
-      await Promise.all(written.slice(0, -1).map((index) => keep(run, this.cache, index)));
-      if ((written.at(-1) ?? run.first) - run.wanted > RUN_AHEAD_SEGMENTS) {
-        await this.stopRun(run);
-      }
-    }));
+    if (this.tending) {
+      return;
+    }
+    this.tending = true;
+    try {
+      await Promise.all(this.runs.filter((run) => !run.stopped && run.process.exitCode === null).map(async (run) => {
+        const written = await writtenSegments(run.directory);
+        // The newest segment may still be growing; everything before it is done.
+        await Promise.all(written.slice(0, -1).map((index) => keep(run, this.cache, index)));
+        if ((written.at(-1) ?? run.first) - run.wanted > RUN_AHEAD_SEGMENTS) {
+          await this.stopRun(run);
+        }
+      }));
+    } finally {
+      this.tending = false;
+    }
   }
 
   /** SIGKILL: on SIGTERM ffmpeg would close out its current segment early, and that cut-off copy must not look finished. */
@@ -322,6 +346,10 @@ export class CachedTranscodeProducer implements HlsProducer {
     }
     await run.process.exited.catch(() => -1);
     await rm(run.directory, { recursive: true, force: true });
+    const index = this.runs.indexOf(run);
+    if (index !== -1) {
+      this.runs.splice(index, 1);
+    }
   }
 
   private async waitForSegment(chosen: CachedRun, index: number): Promise<string | null> {
