@@ -17,7 +17,20 @@ export interface AudioTrack {
   readonly isDefault: boolean;
 }
 
+const MAX_TRACK_CACHE = 2000;
 const trackCache = new Map<string, Promise<readonly AudioTrack[]>>();
+
+function setTrackCache(abs: string, pending: Promise<readonly AudioTrack[]>): void {
+  trackCache.delete(abs);
+  trackCache.set(abs, pending);
+  while (trackCache.size > MAX_TRACK_CACHE) {
+    const oldest = trackCache.keys().next().value as string | undefined;
+    if (oldest === undefined) {
+      break;
+    }
+    trackCache.delete(oldest);
+  }
+}
 
 interface DeleteAudioTrackRequest {
   readonly path?: unknown;
@@ -82,9 +95,18 @@ async function probeAudioTracks(abs: string): Promise<readonly AudioTrack[]> {
   });
 }
 
+async function loadAudioTracks(abs: string): Promise<readonly AudioTrack[]> {
+  try {
+    return await probeAudioTracks(abs);
+  } catch (error: unknown) {
+    trackCache.delete(abs);
+    throw error;
+  }
+}
+
 export function audioTracks(abs: string): Promise<readonly AudioTrack[]> {
-  const pending = trackCache.get(abs) ?? probeAudioTracks(abs);
-  trackCache.set(abs, pending);
+  const pending = trackCache.get(abs) ?? loadAudioTracks(abs);
+  setTrackCache(abs, pending);
   return pending;
 }
 

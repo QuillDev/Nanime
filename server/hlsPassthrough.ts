@@ -41,7 +41,23 @@ export interface PassthroughOptions {
   readonly codec?: string | undefined;
 }
 
+const MAX_KEYFRAME_CACHE = 256;
 const keyframeCache = new Map<string, { readonly signature: string; readonly keyframes: Promise<readonly number[]> }>();
+
+function setKeyframeCache(
+  abs: string,
+  entry: { readonly signature: string; readonly keyframes: Promise<readonly number[]> },
+): void {
+  keyframeCache.delete(abs);
+  keyframeCache.set(abs, entry);
+  while (keyframeCache.size > MAX_KEYFRAME_CACHE) {
+    const oldest = keyframeCache.keys().next().value as string | undefined;
+    if (oldest === undefined) {
+      break;
+    }
+    keyframeCache.delete(oldest);
+  }
+}
 
 async function probeKeyframes(abs: string): Promise<readonly number[]> {
   const proc = Bun.spawn([
@@ -73,6 +89,7 @@ export async function sourceKeyframes(abs: string): Promise<readonly number[]> {
   const signature = `${String(stat.size)}:${String(stat.mtimeMs)}`;
   const cached = keyframeCache.get(abs);
   if (cached?.signature === signature) {
+    setKeyframeCache(abs, cached);
     return cached.keyframes;
   }
   const keyframes = (async () => {
@@ -83,7 +100,7 @@ export async function sourceKeyframes(abs: string): Promise<readonly number[]> {
       throw error;
     }
   })();
-  keyframeCache.set(abs, { signature, keyframes });
+  setKeyframeCache(abs, { signature, keyframes });
   return keyframes;
 }
 
