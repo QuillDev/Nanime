@@ -135,23 +135,34 @@ export function usePlaybackEvents(
   callbacks: PlaybackEventCallbacks,
 ) {
   const { onPlay, onSourceMetadata } = callbacks;
+  const {
+    handleDurationChange,
+    handlePause: handleControlsPause,
+    handlePlay: handleControlsPlay,
+  } = controls;
+  const {
+    handleEnded: handleProgressEnded,
+    handleLoadedMetadata: handleProgressLoadedMetadata,
+    handlePause: handleProgressPause,
+    handlePlay: handleProgressPlay,
+  } = progress;
   const handlePlay = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    controls.handlePlay();
-    progress.handlePlay(event);
+    handleControlsPlay();
+    handleProgressPlay(event);
     onPlay();
-  }, [controls, onPlay, progress]);
+  }, [handleControlsPlay, handleProgressPlay, onPlay]);
   const handleLoadedMetadata = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     onSourceMetadata(event);
-    progress.handleLoadedMetadata(event);
-    controls.handleDurationChange(event);
-  }, [controls, onSourceMetadata, progress]);
+    handleProgressLoadedMetadata(event);
+    handleDurationChange(event);
+  }, [handleDurationChange, handleProgressLoadedMetadata, onSourceMetadata]);
   const handlePause = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    progress.handlePause(event);
-    controls.handlePause();
-  }, [controls, progress]);
+    handleProgressPause(event);
+    handleControlsPause();
+  }, [handleControlsPause, handleProgressPause]);
   const handleEnded = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
-    progress.handleEnded(event);
-    controls.handlePause();
-  }, [controls, progress]);
+    handleProgressEnded(event);
+    handleControlsPause();
+  }, [handleControlsPause, handleProgressEnded]);
   return { handlePlay, handleLoadedMetadata, handlePause, handleEnded };
 }

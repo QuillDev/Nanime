@@ -1,4 +1,4 @@
-import { useMemo, useRef, type SyntheticEvent } from "react";
+import { useCallback, useMemo, useRef, type SyntheticEvent } from "react";
 import type { PlaybackHandlers } from "../hooks/usePlayerProgress.ts";
 import { usePlayerVideo } from "../hooks/usePlayerVideo.ts";
 import {
@@ -127,6 +127,19 @@ function PlayerInterface({
   );
 }
 
+function usePlayerChromeState() {
+  const visibility = useControlVisibility();
+  const panels = usePlayerPanel();
+  return { visibility, panels, controlsVisible: visibility.visible || panels.panel !== null };
+}
+
+function useRevealControls(syncIfHidden: () => void, handleActivity: () => void): () => void {
+  return useCallback(() => {
+    syncIfHidden();
+    handleActivity();
+  }, [handleActivity, syncIfHidden]);
+}
+
 export function PlayerSurface({
   entry, preferredAudioLanguage, playbackMode, playbackLocked,
   episodeDisplay, timelineOffset, knownDuration, videoRef,
@@ -136,40 +149,20 @@ export function PlayerSurface({
 }: PlayerSurfaceProps): React.JSX.Element {
   const { audio, subtitles } = usePlayerTracks(entry, onAudioTrack, preferredAudioLanguage);
   const playerRef = useRef<HTMLDivElement | null>(null);
-  const {
-    buffering,
-    controls,
-    frameRef,
-    frameVisible,
-    handleBuffering,
-    handleLoadStart,
-    handleReady,
-    handlePlayerPlaying,
-    handlePlayerSeeked,
-    handlePlayerTimeUpdate,
-  } = usePlayerVideo({
-    videoRef, playbackLocked, playerRef,
-    progress,
-    onPlaying: handlePlaying,
-    knownDuration,
-    onTimelineSeek,
-    playbackPosition,
+  const { visibility, panels, controlsVisible } = usePlayerChromeState();
+  const video = usePlayerVideo({
+    controlsVisible, videoRef, playbackLocked, playerRef, progress,
+    onPlaying: handlePlaying, knownDuration, onTimelineSeek, playbackPosition,
   });
-  const visibility = useControlVisibility();
-  const playbackEvents = usePlaybackEvents(
-    progress,
-    controls,
-    { onPlay: visibility.handleActivity, onSourceMetadata: handleSourceMetadata },
-  );
+  const handleShowControls = useRevealControls(video.controls.syncIfHidden, visibility.handleActivity);
+  const playbackEvents = usePlaybackEvents(progress, video.controls, { onPlay: handleShowControls, onSourceMetadata: handleSourceMetadata });
   const display = useSubtitleDisplay(subtitles.data);
-  const panels = usePlayerPanel();
-  const controlsVisible = visibility.visible || panels.panel !== null;
   const interaction = usePlayerSurfaceInteraction({
     playerRef, controlsVisible,
-    onTogglePlayback: controls.handleTogglePlayback,
-    onShowControls: visibility.handleActivity,
+    onTogglePlayback: video.controls.handleTogglePlayback,
+    onShowControls: handleShowControls,
     onHideControls: visibility.handleHide,
-    onSeekBy: controls.handleSeekBy,
+    onSeekBy: video.controls.handleSeekBy,
   });
   return (
     <div
@@ -184,19 +177,19 @@ export function PlayerSurface({
             crossOrigin="anonymous"
             playsInline
             onError={handleVideoError}
-            onLoadStart={handleLoadStart}
-            onLoadedData={handleReady}
-            onCanPlay={handleReady}
-            onWaiting={handleBuffering}
-            onSeeking={handleBuffering}
-            onPlaying={handlePlayerPlaying}
+            onLoadStart={video.handleLoadStart}
+            onLoadedData={video.handleReady}
+            onCanPlay={video.handleReady}
+            onWaiting={video.handleBuffering}
+            onSeeking={video.handleBuffering}
+            onPlaying={video.handlePlayerPlaying}
             onPlay={playbackEvents.handlePlay}
             onLoadedMetadata={playbackEvents.handleLoadedMetadata}
-            onProgress={controls.handleProgress}
-            onDurationChange={controls.handleDurationChange}
-            onTimeUpdate={handlePlayerTimeUpdate}
+            onProgress={video.controls.handleProgress}
+            onDurationChange={video.controls.handleDurationChange}
+            onTimeUpdate={video.handlePlayerTimeUpdate}
             onPause={playbackEvents.handlePause}
-            onSeeked={handlePlayerSeeked}
+            onSeeked={video.handlePlayerSeeked}
             onEnded={playbackEvents.handleEnded}
             onResize={display.handleVideoResize}
             className="h-full w-full bg-black object-contain"
@@ -205,15 +198,15 @@ export function PlayerSurface({
             <SubtitleTracks rel={entry.rel} tracks={subtitles.data} selectedTrack={display.selectedTrack} timelineOffset={timelineOffset} onCueText={display.handleCueText} />
           </video>
           <canvas
-            ref={frameRef}
-            className={`pointer-events-none absolute inset-0 z-[1] h-full w-full bg-black object-contain${frameVisible ? "" : " hidden"}`}
+            ref={video.frameRef}
+            className={`pointer-events-none absolute inset-0 z-[1] h-full w-full bg-black object-contain${video.frameVisible ? "" : " hidden"}`}
             aria-hidden="true"
           />
           <PlayerPlaybackOverlay onSurfacePointerUp={interaction.handleSurfacePointerUp} onSurfaceClick={interaction.handleSurfaceClick} />
           <PlayerDiagnostics
-            buffering={buffering}
+            buffering={video.buffering}
             controlsVisible={controlsVisible}
-            frameVisible={frameVisible}
+            frameVisible={video.frameVisible}
             playbackMode={playbackMode}
             videoRef={videoRef}
           />
@@ -231,10 +224,10 @@ export function PlayerSurface({
         <PlayerInterface
           entry={entry} episodeDisplay={episodeDisplay} library={library} party={party} videoRef={videoRef}
           playbackLocked={playbackLocked} nextAvailable={nextAvailable} onNext={onNext} onClose={onClose} stream={stream}
-          controls={controls} buffering={buffering} visibility={visibility} panels={panels} audio={audio}
+          controls={video.controls} buffering={video.buffering} visibility={visibility} panels={panels} audio={audio}
           subtitles={subtitles.data ?? EMPTY_SUBTITLES} display={display} onCenterPlayback={interaction.handleCenterPlayback}
         />
-        <PlayerErrors subtitleError={subtitles.error} audioError={audio.error} fullscreenError={controls.fullscreenError} />
+        <PlayerErrors subtitleError={subtitles.error} audioError={audio.error} fullscreenError={video.controls.fullscreenError} />
     </div>
   );
 }
