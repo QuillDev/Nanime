@@ -136,3 +136,51 @@ test("linking a show writes every release folder that shares its card, and recor
   const history = await getJson<readonly { readonly action: string }[]>(target, "/api/library/activity");
   expect(history.map((event) => event.action)).toEqual(["mapping-updated", "mapping-updated"]);
 });
+
+test("re-reads nanime.json after same-length hand edits or deletion and reflects direct cache updates", async () => {
+  server = await startLibraryTestServer((media) => writeTree(media, {
+    "Edit Show/Edit Show - 01.mkv": "episode",
+    "Edit Show/nanime.json": JSON.stringify({ version: 1, show: { provider: "anilist", id: 51, title: "Title A" } }),
+  }));
+  const target = server;
+  const first = await getJson<Metadata>(target, "/api/metadata");
+  expect(first["show:Edit Show"]).toMatchObject({ id: 51, title: { english: "Title A" } });
+
+  // Same-length in-place edit must invalidate the folder metadata cache immediately.
+  await writeFile(
+    join(target.media, "Edit Show", "nanime.json"),
+    JSON.stringify({ version: 1, show: { provider: "anilist", id: 52, title: "Title B" } }),
+  );
+  const edited = await getJson<Metadata>(target, "/api/metadata");
+  expect(edited["show:Edit Show"]).toMatchObject({ id: 52, title: { english: "Title B" } });
+
+  // Direct SQLite cache update for a non-manual match must not serve stale parsed payloads.
+  await writeFile(
+    join(target.media, "Edit Show", "nanime.json"),
+    JSON.stringify({ version: 1, show: { provider: "anilist", id: 53 } }),
+  );
+  const database = target.database();
+  try {
+    database.query("INSERT OR REPLACE INTO metadata_cache (ref, payload, updated_at) VALUES (?, ?, 1)")
+      .run("show|anilist:53", fixtureMapping("Cached One", 53));
+  } finally {
+    database.close();
+  }
+  const cachedFirst = await getJson<Metadata>(target, "/api/metadata");
+  expect(cachedFirst["show:Edit Show"]?.title.english).toBe("Cached One");
+
+  const databaseAgain = target.database();
+  try {
+    databaseAgain.query("INSERT OR REPLACE INTO metadata_cache (ref, payload, updated_at) VALUES (?, ?, 1)")
+      .run("show|anilist:53", fixtureMapping("Cached Two", 53));
+  } finally {
+    databaseAgain.close();
+  }
+  const cachedSecond = await getJson<Metadata>(target, "/api/metadata");
+  expect(cachedSecond["show:Edit Show"]?.title.english).toBe("Cached Two");
+
+  // Deleting nanime.json clears the match on the next load.
+  await Bun.file(join(target.media, "Edit Show", "nanime.json")).delete();
+  const removed = await getJson<Metadata>(target, "/api/metadata");
+  expect(removed["show:Edit Show"]).toBeUndefined();
+});

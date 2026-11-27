@@ -45,22 +45,55 @@ const upsertEpisodeCache = database.query<void, [number, string, string, number]
     updated_at = excluded.updated_at
 `);
 
+const MAX_EPISODE_CACHE = 2000;
+const parsedEpisodeCache = new Map<number, {
+  readonly providers: string;
+  readonly payload: string;
+  readonly updatedAt: number;
+  readonly value: CachedEpisodeMetadata;
+}>();
+
 /** Cached canonical episode metadata for an AniList ID, if stored and valid. */
 export function cachedEpisodeMetadata(anilistId: number): CachedEpisodeMetadata | undefined {
   const row = selectEpisodeCache.get(anilistId);
   if (row === null) {
+    parsedEpisodeCache.delete(anilistId);
     return undefined;
+  }
+  const existing = parsedEpisodeCache.get(anilistId);
+  if (
+    existing !== undefined &&
+    existing.providers === row.providers &&
+    existing.payload === row.payload &&
+    existing.updatedAt === row.updated_at
+  ) {
+    return existing.value;
   }
   const episodes = parseJsonWithSchema(row.payload, episodeListSchema);
   const providers = parseJsonWithSchema(row.providers, providerListSchema);
   if (episodes === undefined || providers === undefined) {
     return undefined;
   }
-  return {
+  const value: CachedEpisodeMetadata = {
     episodes,
     providers,
     updatedAt: row.updated_at,
   };
+  parsedEpisodeCache.delete(anilistId);
+  parsedEpisodeCache.set(anilistId, {
+    providers: row.providers,
+    payload: row.payload,
+    updatedAt: row.updated_at,
+    value,
+  });
+  while (parsedEpisodeCache.size > MAX_EPISODE_CACHE) {
+    const oldest = parsedEpisodeCache.keys().next().value as number | undefined;
+    if (oldest === undefined) {
+      break;
+    }
+    parsedEpisodeCache.delete(oldest);
+  }
+  return value;
 }
 
 export function storeCachedEpisodeMetadata(

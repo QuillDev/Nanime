@@ -18,14 +18,58 @@ const upsertCached = database.query<void, [string, string, number]>(`
   INSERT INTO metadata_cache (ref, payload, updated_at) VALUES (?, ?, ?)
   ON CONFLICT(ref) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
 `);
+const MAX_PARSED_CACHE = 2000;
+const BATCH_CHUNK_SIZE = 500;
+const parsedCache = new Map<string, { readonly raw: string; readonly media: AnimeMetadata | undefined }>();
+
+function decodeCachedRow(ref: string, raw: string): AnimeMetadata | undefined {
+  const existing = parsedCache.get(ref);
+  if (existing?.raw === raw) {
+    return existing.media;
+  }
+  const media = mediaFromUnknown(JSON.parse(raw)) ?? undefined;
+  parsedCache.delete(ref);
+  parsedCache.set(ref, { raw, media });
+  while (parsedCache.size > MAX_PARSED_CACHE) {
+    const oldest = parsedCache.keys().next().value as string | undefined;
+    if (oldest === undefined) {
+      return media;
+    }
+    parsedCache.delete(oldest);
+  }
+  return media;
+}
 
 export function cachedMetadata(ref: string): AnimeMetadata | undefined {
   const row = selectCached.get(ref);
-  return row === null ? undefined : mediaFromUnknown(JSON.parse(row.payload)) ?? undefined;
+  return row === null ? undefined : decodeCachedRow(ref, row.payload);
+}
+
+/** Loads many cached metadata entries in batched SQLite queries, reusing parsed payloads when raw JSON matches. */
+export function cachedMetadataBatch(refs: readonly string[]): ReadonlyMap<string, AnimeMetadata> {
+  const unique = [...new Set(refs)];
+  const result = new Map<string, AnimeMetadata>();
+  for (let offset = 0; offset < unique.length; offset += BATCH_CHUNK_SIZE) {
+    const chunk = unique.slice(offset, offset + BATCH_CHUNK_SIZE);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const rows = database
+      .query<{ readonly ref: string; readonly payload: string }, string[]>(
+        `SELECT ref, payload FROM metadata_cache WHERE ref IN (${placeholders})`,
+      )
+      .all(...chunk);
+    for (const row of rows) {
+      const media = decodeCachedRow(row.ref, row.payload);
+      if (media !== undefined) {
+        result.set(row.ref, media);
+      }
+    }
+  }
+  return result;
 }
 
 export function storeCachedMetadata(ref: string, media: AnimeMetadata): void {
   upsertCached.run(ref, JSON.stringify(media), Date.now());
+  parsedCache.delete(ref);
 }
 
 /** The match a payload stored under the old key-addressed scheme stands for. */

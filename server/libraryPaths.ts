@@ -97,8 +97,24 @@ export function isSameOrInside(path: string, ancestor: string): boolean {
   return path === ancestor || path.startsWith(`${ancestor}/`);
 }
 
+const MAX_ENTRY_ID_CACHE = 10_000;
+const entryIdCache = new Map<string, string>();
+
 export function entryId(stats: Pick<Stats, "dev" | "ino">): string {
-  return createHash("sha256").update(`${String(stats.dev)}:${String(stats.ino)}`).digest("hex").slice(0, 24);
+  const key = `${String(stats.dev)}:${String(stats.ino)}`;
+  const cached = entryIdCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const id = createHash("sha256").update(key).digest("hex").slice(0, 24);
+  if (entryIdCache.size >= MAX_ENTRY_ID_CACHE) {
+    const oldest = entryIdCache.keys().next().value as string | undefined;
+    if (oldest !== undefined) {
+      entryIdCache.delete(oldest);
+    }
+  }
+  entryIdCache.set(key, id);
+  return id;
 }
 
 export function sameEntry(id: string, stats: Pick<Stats, "dev" | "ino">): boolean {
