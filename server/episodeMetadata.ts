@@ -58,6 +58,7 @@ interface ParsedStreamingEpisodes {
 const inFlight = new Map<number, Promise<readonly EpisodeMetadata[] | undefined>>();
 const failedUntil = new Map<number, number>();
 const providerBlockedUntil = new Map<string, number>();
+const completeEpisodeMedia = new WeakSet<AnimeMetadata>();
 const waitQueue: (() => void)[] = [];
 let activeRequests = 0;
 
@@ -348,8 +349,15 @@ export async function enrichMediaEpisodes(
   media: AnimeMetadata,
   options: EpisodeEnrichmentOptions = {},
 ): Promise<AnimeMetadata> {
+  const defaultLookup = options.bypassCache !== true && options.providers === undefined;
+  if (defaultLookup && completeEpisodeMedia.has(media)) {
+    return media;
+  }
   const parsed = parseStreamingEpisodes(media.streamingEpisodes);
   if (hasCompleteEpisodes(parsed.episodes, media.episodes)) {
+    if (defaultLookup) {
+      completeEpisodeMedia.add(media);
+    }
     return media;
   }
   const anilistId = media.anilistId ?? media.id;

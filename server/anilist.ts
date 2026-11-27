@@ -4,8 +4,8 @@ import { jsonObject } from "./json.ts";
 import type { AnimeMetadata, MetadataStore } from "./metadataTypes.ts";
 import { recordMappingActivity, type ActivityActor } from "./libraryActivity.ts";
 import { manualAniListMetadata } from "./manualMetadata.ts";
-import { canonicalMetadataKey, matchRef, metadataSlots, readFolderMetadata, slotsForKey, writeFolderMatches, type FolderMatch, type FolderMetadata, type MetadataRole, type MetadataSlot } from "./folderMetadata.ts";
-import { cachedMetadata, migrateLegacyMetadata, storeCachedMetadata } from "./metadataCache.ts";
+import { canonicalMetadataKey, matchRef, metadataSlots, readFolderMetadataAsync, slotsForKey, writeFolderMatches, type FolderMatch, type FolderMetadata, type MetadataRole, type MetadataSlot } from "./folderMetadata.ts";
+import { cachedMetadataBatch, migrateLegacyMetadata, storeCachedMetadata } from "./metadataCache.ts";
 import { enrichMediaEpisodes } from "./episodeMetadata.ts";
 
 export { aniListErrorResponse } from "./anilistClient.ts";
@@ -76,13 +76,15 @@ async function librarySlots(): Promise<readonly MetadataSlot[]> {
 }
 
 /** Every slot whose folder file holds a match for it, in slot order. */
-function placedMatches(slots: readonly MetadataSlot[]): readonly PlacedMatch[] {
+async function placedMatches(slots: readonly MetadataSlot[]): Promise<readonly PlacedMatch[]> {
   const { root } = metadataLibrary();
-  const files = new Map<string, FolderMetadata>();
+  const uniqueFolders = [...new Set(slots.map((slot) => slot.folder))];
+  const loaded = await Promise.all(
+    uniqueFolders.map(async (folder) => [folder, await readFolderMetadataAsync(root, folder)] as const),
+  );
+  const files = new Map<string, FolderMetadata>(loaded);
   return slots.flatMap((slot) => {
-    const file = files.get(slot.folder) ?? readFolderMetadata(root, slot.folder);
-    files.set(slot.folder, file);
-    const match = file[slot.role];
+    const match = files.get(slot.folder)?.[slot.role];
     return match === undefined ? [] : [{ slot, match }];
   });
 }
@@ -128,9 +130,13 @@ async function enrichCachedMedia(ref: string, cached: AnimeMetadata): Promise<An
   return enriched;
 }
 
-async function mediaFor(role: MetadataRole, match: FolderMatch): Promise<AnimeMetadata | undefined> {
+async function mediaFor(
+  role: MetadataRole,
+  match: FolderMatch,
+  cachedByRef: ReadonlyMap<string, AnimeMetadata>,
+): Promise<AnimeMetadata | undefined> {
   const ref = matchRef(role, match);
-  const cached = cachedMetadata(ref);
+  const cached = cachedByRef.get(ref);
   if (cached !== undefined) {
     return match.title === undefined ? await enrichCachedMedia(ref, cached) : cached;
   }
@@ -148,8 +154,11 @@ async function mediaFor(role: MetadataRole, match: FolderMatch): Promise<AnimeMe
  * resolve to the first one's match.
  */
 async function metadata(): Promise<MetadataStore> {
-  const placed = placedMatches(await librarySlots());
-  const resolved = await Promise.all(placed.map(async ({ slot, match }) => ({ key: slot.key, media: await mediaFor(slot.role, match) })));
+  const placed = await placedMatches(await librarySlots());
+  const cachedByRef = cachedMetadataBatch(placed.map(({ slot, match }) => matchRef(slot.role, match)));
+  const resolved = await Promise.all(
+    placed.map(async ({ slot, match }) => ({ key: slot.key, media: await mediaFor(slot.role, match, cachedByRef) })),
+  );
   const store: Record<string, AnimeMetadata> = {};
   for (const { key, media } of resolved) {
     if (store[key] === undefined && media !== undefined) {
@@ -230,7 +239,7 @@ function refreshBase(): BaseFetcher {
 }
 
 async function refreshMetadata(): Promise<void> {
-  const entries = distinctMatches(placedMatches(await librarySlots()));
+  const entries = distinctMatches(await placedMatches(await librarySlots()));
   const base = refreshBase();
   updateRefreshStatus({
     state: "running",

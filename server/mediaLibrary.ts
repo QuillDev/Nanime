@@ -1,8 +1,8 @@
-import { readdir, stat } from "node:fs/promises";
-import { dirname, extname, join, relative } from "node:path";
+import { lstat, readdir, stat } from "node:fs/promises";
+import { dirname, extname, join, relative, sep } from "node:path";
 import type { LibraryStatus, MediaEntry } from "../shared/types.ts";
 import { database } from "./database.ts";
-import { entryId, hasInternalSegment, resolveExisting } from "./libraryPaths.ts";
+import { entryId, hasInternalSegment, pathSegments, resolveExisting } from "./libraryPaths.ts";
 
 export { libraryActivityResponse } from "./libraryActivity.ts";
 
@@ -36,6 +36,9 @@ interface LibraryOptions {
 const LIBRARY_STALE_MS = 60_000;
 const rows = database.query<MediaRow, []>(`
   SELECT rel, name, folder, size, direct, added_at FROM media_library ORDER BY rel
+`);
+const distinctFolders = database.query<{ readonly folder: string }, []>(`
+  SELECT DISTINCT folder FROM media_library
 `);
 const state = database.query<LibraryStateRow, []>(`
   SELECT last_scanned_at, entry_count FROM media_library_state WHERE id = 1
@@ -95,6 +98,28 @@ async function mutationsIdle(): Promise<void> {
   }
 }
 
+async function mediaEntryFromFile(
+  absolutePath: string,
+  name: string,
+  options: WalkOptions,
+): Promise<MediaEntry | null> {
+  const stats = await stat(absolutePath).catch(() => null);
+  if (stats === null) {
+    return null;
+  }
+  const rel = relative(options.mediaDir, absolutePath);
+  const folder = dirname(rel);
+  return {
+    rel,
+    mediaIdentity: entryId(stats),
+    name,
+    folder: folder === "." ? "" : folder,
+    size: stats.size,
+    direct: options.directPlayExtensions.has(extname(name).toLowerCase()),
+    addedAt: Math.round(stats.mtimeMs),
+  };
+}
+
 async function walk(
   directory: string,
   options: WalkOptions,
@@ -102,29 +127,32 @@ async function walk(
 ): Promise<void> {
   const pending = readdir(directory, { withFileTypes: true });
   const items = root ? await pending : await pending.catch(() => []);
+  const subdirectories: string[] = [];
+  const videoFiles: { readonly absolutePath: string; readonly name: string }[] = [];
   for (const item of items) {
     const absolutePath = join(directory, item.name);
     if (item.isDirectory() && !item.name.startsWith(".nanime-")) {
-      await walk(absolutePath, options);
+      subdirectories.push(absolutePath);
     } else if (item.isFile() && options.videoExtensions.has(extname(item.name).toLowerCase())) {
-      const stats = await stat(absolutePath).catch(() => null);
-      if (stats === null) {
-        continue;
-      }
-      const { size, mtimeMs } = stats;
-      const rel = relative(options.mediaDir, absolutePath);
-      const folder = dirname(rel);
-      options.entries.push({
-        rel,
-        mediaIdentity: entryId(stats),
-        name: item.name,
-        folder: folder === "." ? "" : folder,
-        size,
-        direct: options.directPlayExtensions.has(extname(item.name).toLowerCase()),
-        addedAt: Math.round(mtimeMs),
-      });
+      videoFiles.push({ absolutePath, name: item.name });
     }
   }
+  const [scanned] = await Promise.all([
+    Promise.all(videoFiles.map((file) => mediaEntryFromFile(file.absolutePath, file.name, options))),
+    Promise.all(subdirectories.map((sub) => walk(sub, options))),
+  ]);
+  for (const entry of scanned) {
+    if (entry !== null) {
+      options.entries.push(entry);
+    }
+  }
+}
+
+function compareRel(left: MediaEntry, right: MediaEntry): number {
+  if (left.rel < right.rel) {
+    return -1;
+  }
+  return left.rel > right.rel ? 1 : 0;
 }
 
 async function scanFiles(
@@ -132,6 +160,7 @@ async function scanFiles(
 ): Promise<readonly MediaEntry[]> {
   const entries: MediaEntry[] = [];
   await walk(options.mediaDir, { ...options, entries }, true);
+  entries.sort(compareRel);
   return entries;
 }
 
@@ -202,13 +231,52 @@ export async function mediaIdentityAt(root: string, rel: string): Promise<string
   return entry !== null && entry.stats.isFile() ? entryId(entry.stats) : null;
 }
 
-async function identifiedEntry(entry: MediaEntry, root: string): Promise<MediaEntry> {
-  const mediaIdentity = await mediaIdentityAt(root, entry.rel);
+async function verifiedFolderAbs(root: string, folder: string): Promise<string | null> {
+  if (folder === "") {
+    return root;
+  }
+  const resolved = await resolveExisting(root, folder).catch(() => null);
+  return resolved !== null && resolved.stats.isDirectory() ? resolved.abs : null;
+}
+
+async function fileIdentityInFolder(folderAbs: string, name: string): Promise<string | null> {
+  try {
+    const [segment] = pathSegments(name);
+    if (segment === undefined || segment !== name) {
+      return null;
+    }
+    const stats = await lstat(`${folderAbs}${sep}${segment}`).catch(() => null);
+    return stats !== null && !stats.isSymbolicLink() && stats.isFile() ? entryId(stats) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function identifiedEntry(
+  entry: MediaEntry,
+  root: string,
+  folders: Map<string, Promise<string | null>>,
+): Promise<MediaEntry> {
+  const expectedRel = entry.folder === "" ? entry.name : `${entry.folder}/${entry.name}`;
+  if (entry.rel !== expectedRel) {
+    const fallbackIdentity = await mediaIdentityAt(root, entry.rel);
+    return fallbackIdentity === null ? entry : { ...entry, mediaIdentity: fallbackIdentity };
+  }
+  let folderPromise = folders.get(entry.folder);
+  if (folderPromise === undefined) {
+    folderPromise = verifiedFolderAbs(root, entry.folder);
+    folders.set(entry.folder, folderPromise);
+  }
+  const folderAbs = await folderPromise;
+  const mediaIdentity = folderAbs === null
+    ? null
+    : await fileIdentityInFolder(folderAbs, entry.name);
   return mediaIdentity === null ? entry : { ...entry, mediaIdentity };
 }
 
 function identifiedEntries(options: LibraryOptions): Promise<readonly MediaEntry[]> {
-  return Promise.all(cachedEntries().map((entry) => identifiedEntry(entry, options.mediaDir)));
+  const folders = new Map<string, Promise<string | null>>();
+  return Promise.all(cachedEntries().map((entry) => identifiedEntry(entry, options.mediaDir, folders)));
 }
 
 export function listMedia(options: LibraryOptions): Promise<readonly MediaEntry[]> {
@@ -224,8 +292,11 @@ export function listMedia(options: LibraryOptions): Promise<readonly MediaEntry[
 
 /** The folders that hold videos, from the cached library (scanning first if it never ran). */
 export async function listVideoFolders(options: LibraryOptions): Promise<readonly string[]> {
-  const scanned = state.get() === null ? await refreshMediaLibrary(options) : cachedEntries();
-  return [...new Set(scanned.map((entry) => entry.folder))];
+  if (state.get() === null) {
+    const scanned = await refreshMediaLibrary(options);
+    return [...new Set(scanned.map((entry) => entry.folder))];
+  }
+  return distinctFolders.all().map((row) => row.folder);
 }
 
 export function libraryStatusResponse(): Response {

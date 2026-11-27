@@ -1,4 +1,5 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { folderIdentity, pathParts, seasonMetadataKey, showMetadataKey } from "../shared/folderIdentity.ts";
 import { jsonObject } from "./json.ts";
@@ -120,6 +121,8 @@ function folderPath(root: string, folder: string): string {
 }
 
 const warned = new Set<string>();
+const MAX_FOLDER_CACHE = 2000;
+const folderCache = new Map<string, { readonly signature: string; readonly metadata: FolderMetadata }>();
 
 function readText(path: string): string | null {
   try {
@@ -137,18 +140,54 @@ function parseText(text: string): FolderMetadata | null {
   }
 }
 
-/** The folder's matches; none when the file is missing or unreadable (logged once per folder). */
-export function readFolderMetadata(root: string, folder: string): FolderMetadata {
-  const text = readText(join(folderPath(root, folder), FOLDER_METADATA_FILE));
-  if (text === null) {
-    return {};
-  }
+function parsedFolderMetadata(folder: string, text: string): FolderMetadata {
   const parsed = parseText(text);
   if (parsed === null && !warned.has(folder)) {
     warned.add(folder);
     console.warn(`Ignoring ${FOLDER_METADATA_FILE} in “${folder}”: not a version ${String(FORMAT_VERSION)} metadata file`);
   }
   return parsed ?? {};
+}
+
+function rememberFolderMetadata(filePath: string, signature: string, metadata: FolderMetadata): void {
+  folderCache.delete(filePath);
+  folderCache.set(filePath, { signature, metadata });
+  while (folderCache.size > MAX_FOLDER_CACHE) {
+    const oldest = folderCache.keys().next().value as string | undefined;
+    if (oldest === undefined) {
+      return;
+    }
+    folderCache.delete(oldest);
+  }
+}
+
+/** The folder's matches; none when the file is missing or unreadable (logged once per folder). */
+export function readFolderMetadata(root: string, folder: string): FolderMetadata {
+  const text = readText(join(folderPath(root, folder), FOLDER_METADATA_FILE));
+  return text === null ? {} : parsedFolderMetadata(folder, text);
+}
+
+/** Async folder metadata reader validated against live file inode, size, and nanosecond timestamps. */
+export async function readFolderMetadataAsync(root: string, folder: string): Promise<FolderMetadata> {
+  const filePath = join(folderPath(root, folder), FOLDER_METADATA_FILE);
+  const stats = await stat(filePath, { bigint: true }).catch(() => null);
+  if (stats === null || !stats.isFile()) {
+    folderCache.delete(filePath);
+    return {};
+  }
+  const signature = `${String(stats.dev)}:${String(stats.ino)}:${String(stats.size)}:${String(stats.mtimeNs)}:${String(stats.ctimeNs)}`;
+  const cached = folderCache.get(filePath);
+  if (cached?.signature === signature) {
+    return cached.metadata;
+  }
+  const text = await readFile(filePath, "utf8").catch(() => null);
+  if (text === null) {
+    folderCache.delete(filePath);
+    return {};
+  }
+  const metadata = parsedFolderMetadata(folder, text);
+  rememberFolderMetadata(filePath, signature, metadata);
+  return metadata;
 }
 
 export interface MatchUpdate {
