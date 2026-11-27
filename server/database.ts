@@ -295,6 +295,10 @@ database.run(`
   )
 `);
 database.run(`
+  CREATE INDEX IF NOT EXISTS transcode_jobs_source_created
+  ON transcode_jobs(source_rel, created_at DESC)
+`);
+database.run(`
   CREATE TABLE IF NOT EXISTS offline_media_artifacts (
     id TEXT PRIMARY KEY,
     source_rel TEXT NOT NULL,
