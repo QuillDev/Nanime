@@ -10,6 +10,7 @@ import { Database } from "bun:sqlite";
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathParts } from "../shared/folderIdentity.ts";
+import { MetadataCacheRowSchema } from "./databaseRows.ts";
 import { canonicalMetadataKey, matchRef, readFolderMetadata } from "./folderMetadata.ts";
 
 const [databasePath, mediaDir, key, folder] = process.argv.slice(2);
@@ -29,7 +30,8 @@ if (match === undefined) {
   throw new Error(`No ${role} match in ${folder}'s nanime.json`);
 }
 const database = new Database(databasePath, { readonly: true });
-const row = database.query<{ readonly payload: string }, [string]>("SELECT payload FROM metadata_cache WHERE ref = ?").get(matchRef(role, match));
+const row = MetadataCacheRowSchema.pick({ payload: true }).nullable()
+  .parse(database.query("SELECT payload FROM metadata_cache WHERE ref = ?").get(matchRef(role, match)));
 database.close();
 if (row === null) {
   throw new Error(`No cached metadata for ${key}; load the library once so the server fetches it`);

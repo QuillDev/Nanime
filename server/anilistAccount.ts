@@ -5,7 +5,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
-import { database } from "./database.ts";
+import { AniListAccountRowSchema, AniListOAuthStateRowSchema, AniListSyncProgressRowSchema, CountRowSchema, database, db, execute, queryOne, sql } from "./database.ts";
 import { createSessionRedirect, type AuthUser } from "./auth.ts";
 import { aniListGraphQl, type GraphQlVariables } from "./anilistClient.ts";
 import { jsonObject } from "./json.ts";
@@ -33,74 +33,41 @@ const MAX_OAUTH_STATES = 10_000;
 const ANILIST_REQUEST_TIMEOUT_MS = 15_000;
 const SECURE_COOKIES = process.env["NANIME_SECURE_COOKIES"] !== "false";
 const STATE_COOKIE = "nanime_anilist_oauth";
-const insertOAuthState = database.query<void, [string, number | null, number, number]>(`
-  INSERT INTO anilist_oauth_states (state_hash, user_id, expires_at, created_at)
-  VALUES (?, ?, ?, ?)
-`);
-const findOAuthState = database.query<OAuthStateRow, [string]>(`
-  SELECT user_id, expires_at FROM anilist_oauth_states WHERE state_hash = ?
-`);
-const deleteOAuthState = database.query<void, [string]>(
-  "DELETE FROM anilist_oauth_states WHERE state_hash = ?",
-);
-const deleteExpiredOAuthStates = database.query<void, [number]>(
-  "DELETE FROM anilist_oauth_states WHERE expires_at <= ?",
-);
-const countOAuthStates = database.query<{ readonly count: number }, []>(
-  "SELECT COUNT(*) AS count FROM anilist_oauth_states",
-);
+const OAuthStateSchema = AniListOAuthStateRowSchema.pick({ user_id: true, expires_at: true });
+const AccountSchema = AniListAccountRowSchema.omit({ created_at: true, updated_at: true });
+const SyncSchema = AniListSyncProgressRowSchema.pick({ progress: true, status: true });
+const ACCOUNT_COLUMNS = ["user_id", "anilist_id", "anilist_name", "avatar_url", "encrypted_token", "token_expires_at"] as const;
+function deleteExpiredOAuthStates(now: number): void {
+  execute(db.deleteFrom("anilist_oauth_states").where("expires_at", "<=", now));
+}
 const consumeOAuthState = database.transaction((stateHash: string): OAuthStateRow | null => {
-  const state = findOAuthState.get(stateHash);
-  deleteOAuthState.run(stateHash);
+  const state = queryOne(db.selectFrom("anilist_oauth_states").select(["user_id", "expires_at"]).where("state_hash", "=", stateHash), OAuthStateSchema);
+  execute(db.deleteFrom("anilist_oauth_states").where("state_hash", "=", stateHash));
   return state;
 });
-const findAccount = database.query<AniListAccountRow, [number]>(`
-  SELECT user_id, anilist_id, anilist_name, avatar_url, encrypted_token, token_expires_at
-  FROM anilist_accounts WHERE user_id = ?
-`);
-const findAccountByAniListId = database.query<AniListAccountRow, [number]>(`
-  SELECT user_id, anilist_id, anilist_name, avatar_url, encrypted_token, token_expires_at
-  FROM anilist_accounts WHERE anilist_id = ?
-`);
-const upsertAccount = database.query<void, [number, number, string, string | null, string, number, number, number]>(`
-  INSERT INTO anilist_accounts (
-    user_id, anilist_id, anilist_name, avatar_url, encrypted_token,
-    token_expires_at, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT(user_id) DO UPDATE SET
-    anilist_id = excluded.anilist_id,
-    anilist_name = excluded.anilist_name,
-    avatar_url = excluded.avatar_url,
-    encrypted_token = excluded.encrypted_token,
-    token_expires_at = excluded.token_expires_at,
-    updated_at = excluded.updated_at
-`);
-const deleteAccount = database.query<void, [number]>(
-  "DELETE FROM anilist_accounts WHERE user_id = ?",
-);
-const deleteSyncProgress = database.query<void, [number]>(
-  "DELETE FROM anilist_sync_progress WHERE user_id = ?",
-);
-const deleteMediaSyncProgress = database.query<void, [number, number]>(
-  "DELETE FROM anilist_sync_progress WHERE user_id = ? AND media_id = ?",
-);
+function findAccount(column: "anilist_id" | "user_id", id: number): AniListAccountRow | null {
+  return queryOne(db.selectFrom("anilist_accounts").select(ACCOUNT_COLUMNS).where(column, "=", id), AccountSchema);
+}
+function upsertAccount(row: AniListAccountRow, now: number): void {
+  execute(db.insertInto("anilist_accounts").values({ ...row, created_at: now, updated_at: now }).onConflict((conflict) => conflict.column("user_id").doUpdateSet({
+    anilist_id: row.anilist_id, anilist_name: row.anilist_name, avatar_url: row.avatar_url, encrypted_token: row.encrypted_token,
+    token_expires_at: row.token_expires_at, updated_at: now,
+  })));
+}
+function deleteSyncProgress(userId: number): void {
+  execute(db.deleteFrom("anilist_sync_progress").where("user_id", "=", userId));
+}
 const disconnectAccount = database.transaction((userId: number): void => {
-  deleteAccount.run(userId);
-  deleteSyncProgress.run(userId);
+  execute(db.deleteFrom("anilist_accounts").where("user_id", "=", userId));
+  deleteSyncProgress(userId);
 });
-const findSyncProgress = database.query<SyncRow, [number, number]>(`
-  SELECT progress, status FROM anilist_sync_progress WHERE user_id = ? AND media_id = ?
-`);
-const upsertSyncProgress = database.query<void, [number, number, number, string, number]>(`
-  INSERT INTO anilist_sync_progress (user_id, media_id, progress, status, updated_at)
-  VALUES (?, ?, ?, ?, ?)
-  ON CONFLICT(user_id, media_id) DO UPDATE SET
-    progress = excluded.progress,
-    status = excluded.status,
-    updated_at = excluded.updated_at
-`);
+function upsertSyncProgress(userId: number, mediaId: number, entry: SyncRow): void {
+  const updatedAt = Date.now();
+  execute(db.insertInto("anilist_sync_progress").values({ user_id: userId, media_id: mediaId, ...entry, updated_at: updatedAt })
+    .onConflict((conflict) => conflict.columns(["user_id", "media_id"]).doUpdateSet({ ...entry, updated_at: updatedAt })));
+}
 
-deleteExpiredOAuthStates.run(Date.now());
+deleteExpiredOAuthStates(Date.now());
 const OAUTH_CONFIG = loadOAuthConfig(SECURE_COOKIES);
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -186,13 +153,13 @@ export function startAniListAuthResponse(user: AuthUser | null): Response {
   if (config === null) {
     return new Response("AniList login is not configured", { status: 503 });
   }
-  deleteExpiredOAuthStates.run(Date.now());
-  if ((countOAuthStates.get()?.count ?? 0) >= MAX_OAUTH_STATES) {
+  deleteExpiredOAuthStates(Date.now());
+  if ((queryOne(sql`SELECT COUNT(*) AS count FROM anilist_oauth_states`, CountRowSchema)?.count ?? 0) >= MAX_OAUTH_STATES) {
     return new Response("Too many pending AniList login requests", { status: 429 });
   }
   const state = randomBytes(32).toString("base64url");
   const now = Date.now();
-  insertOAuthState.run(hash(state), user?.id ?? null, now + OAUTH_STATE_LIFETIME_MS, now);
+  execute(db.insertInto("anilist_oauth_states").values({ state_hash: hash(state), user_id: user?.id ?? null, expires_at: now + OAUTH_STATE_LIFETIME_MS, created_at: now }));
   const authorize = new URL(ANILIST_AUTHORIZE_URL);
   authorize.searchParams.set("client_id", config.clientId);
   authorize.searchParams.set("redirect_uri", config.redirectUri);
@@ -216,9 +183,8 @@ interface AccountUpdate {
 }
 
 function storeAccount({ userId, viewer, token, config }: AccountUpdate): void {
-  const now = Date.now();
-  upsertAccount.run(userId, viewer.id, viewer.name, viewer.avatar.large,
-    encryptToken(token.token, config), token.expiresAt, now, now);
+  upsertAccount({ user_id: userId, anilist_id: viewer.id, anilist_name: viewer.name, avatar_url: viewer.avatar.large,
+    encrypted_token: encryptToken(token.token, config), token_expires_at: token.expiresAt }, Date.now());
 }
 
 function finishAniListSignIn(
@@ -226,7 +192,7 @@ function finishAniListSignIn(
   token: Awaited<ReturnType<typeof exchangeCode>>,
   config: OAuthConfig,
 ): Response {
-  const account = findAccountByAniListId.get(viewer.id);
+  const account = findAccount("anilist_id", viewer.id);
   if (account === null) {
     return appRedirect(config, "not-linked");
   }
@@ -235,13 +201,13 @@ function finishAniListSignIn(
 }
 
 function finishAniListLink({ userId, viewer, token, config }: AccountUpdate): Response {
-  const existing = findAccountByAniListId.get(viewer.id);
+  const existing = findAccount("anilist_id", viewer.id);
   if (existing !== null && existing.user_id !== userId) {
     return appRedirect(config, "already-linked");
   }
-  const currentAccount = findAccount.get(userId);
+  const currentAccount = findAccount("user_id", userId);
   if (currentAccount !== null && currentAccount.anilist_id !== viewer.id) {
-    deleteSyncProgress.run(userId);
+    deleteSyncProgress(userId);
   }
   storeAccount({ userId, viewer, token, config });
   return appRedirect(config, "connected");
@@ -286,7 +252,7 @@ export async function aniListCallbackResponse(req: Request): Promise<Response> {
 
 function accountToken(userId: number): { readonly row: AniListAccountRow; readonly token: string } | null {
   const config = OAUTH_CONFIG;
-  const row = findAccount.get(userId);
+  const row = findAccount("user_id", userId);
   if (config === null || row === null || row.token_expires_at <= Date.now()) {
     return null;
   }
@@ -301,7 +267,7 @@ export function aniListAccountResponse(req: Request, user: AuthUser): Response {
   if (req.method !== "GET") {
     return new Response("Method not allowed", { status: 405 });
   }
-  const account = findAccount.get(user.id);
+  const account = findAccount("user_id", user.id);
   return Response.json({
     configured: OAUTH_CONFIG !== null,
     connected: account !== null && account.token_expires_at > Date.now(),
@@ -419,11 +385,11 @@ export async function aniListEntryResponse(req: Request, url: URL, user: AuthUse
     if (current !== null) {
       await deleteListEntry(account.token, current.id);
     }
-    deleteMediaSyncProgress.run(user.id, mediaId);
+    execute(db.deleteFrom("anilist_sync_progress").where("user_id", "=", user.id).where("media_id", "=", mediaId));
     return Response.json(null);
   }
   const result = await saveListEntry(account.token, mediaId, body);
-  upsertSyncProgress.run(user.id, mediaId, result.progress, result.status, Date.now());
+  upsertSyncProgress(user.id, mediaId, { progress: result.progress, status: result.status });
   return Response.json(result);
 }
 export async function syncAniListPlayback(userId: number, target: AniListPlaybackTarget): Promise<void> {
@@ -447,7 +413,7 @@ export async function syncAniListPlayback(userId: number, target: AniListPlaybac
   }
   const status = previous?.status === "COMPLETED" ? "COMPLETED" : desiredStatus;
   const result = await saveListEntry(account.token, target.mediaId, { progress, status });
-  upsertSyncProgress.run(userId, target.mediaId, result.progress, result.status, Date.now());
+  upsertSyncProgress(userId, target.mediaId, { progress: result.progress, status: result.status });
 }
 
 function syncProgressCurrent(
@@ -470,13 +436,14 @@ async function previousSyncProgress(
   mediaId: number,
   token: string,
 ): Promise<SyncRow | null> {
-  const saved = findSyncProgress.get(userId, mediaId);
+  const saved = queryOne(db.selectFrom("anilist_sync_progress").select(["progress", "status"])
+    .where("user_id", "=", userId).where("media_id", "=", mediaId), SyncSchema);
   if (saved !== null) {
     return saved;
   }
   const remote = await fetchListEntry(token, mediaId);
   if (remote !== null) {
-    upsertSyncProgress.run(userId, mediaId, remote.progress, remote.status, Date.now());
+    upsertSyncProgress(userId, mediaId, { progress: remote.progress, status: remote.status });
   }
   return remote === null ? null : { progress: remote.progress, status: remote.status };
 }
@@ -496,5 +463,5 @@ async function decreaseSyncProgress(options: DecreaseSyncOptions): Promise<void>
   }
   const result = await saveListEntry(token, target.mediaId,
     { progress: desiredProgress, status: "CURRENT" });
-  upsertSyncProgress.run(userId, target.mediaId, result.progress, result.status, Date.now());
+  upsertSyncProgress(userId, target.mediaId, { progress: result.progress, status: result.status });
 }

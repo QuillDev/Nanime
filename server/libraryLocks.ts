@@ -1,6 +1,6 @@
 import { isAbsolute, relative, sep } from "node:path";
 import type { LibraryFileLock, TorrentOwnershipState } from "../shared/libraryFiles.ts";
-import { database } from "./database.ts";
+import { db, queryRows, TranscodeJobRowSchema } from "./database.ts";
 import { isInternalName, isSameOrInside } from "./libraryPaths.ts";
 import type { TorrentOwnership, TorrentPayload } from "./torrents.ts";
 import { durableRecoveryPaths, RECOVERY_LOCK } from "./libraryRecoveryScopes.ts";
@@ -24,16 +24,7 @@ export interface LockSources {
   readonly uploads: () => readonly string[];
 }
 
-interface SourceRow {
-  readonly source_rel: string;
-}
-
-const activeTranscodes = database.query<SourceRow, []>(
-  "SELECT source_rel FROM transcode_jobs WHERE status IN ('queued', 'processing')",
-);
-const activeOfflinePreparation = database.query<SourceRow, []>(
-  "SELECT source_rel FROM offline_media_artifacts WHERE status IN ('queued', 'preparing')",
-);
+const SourceRowSchema = TranscodeJobRowSchema.pick({ source_rel: true });
 const TORRENT_UNAVAILABLE: LibraryFileLock = {
   source: "torrent-unavailable",
   reason: "qBittorrent can't be reached, so torrent-owned files can't be identified. Renames, moves and deletes are paused until it responds.",
@@ -97,12 +88,14 @@ function torrentLocks(roots: readonly string[], ownership: TorrentOwnership): To
 }
 
 function jobLocks(): PathLock[] {
-  const transcodePaths = new Set([...activeTranscodes.all().map((row) => row.source_rel), ...activeTranscodeWorkerPaths()]);
+  const activeTranscodes = queryRows(db.selectFrom("transcode_jobs").select("source_rel").where("status", "in", ["queued", "processing"]), SourceRowSchema);
+  const transcodePaths = new Set([...activeTranscodes.map((row) => row.source_rel), ...activeTranscodeWorkerPaths()]);
   const transcodes = [...transcodePaths].map((path): PathLock => ({
     path,
     lock: { source: "transcode", reason: "A transcode is reading this video or finishing cleanup. Wait for its worker to finish.", tone: "busy" },
   }));
-  const offline = activeOfflinePreparation.all().map((row): PathLock => ({
+  const preparing = queryRows(db.selectFrom("offline_media_artifacts").select("source_rel").where("status", "in", ["queued", "preparing"]), SourceRowSchema);
+  const offline = preparing.map((row): PathLock => ({
     path: row.source_rel,
     lock: { source: "offline", reason: "An offline copy is being prepared from this video.", tone: "busy" },
   }));

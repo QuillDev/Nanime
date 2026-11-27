@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, realpath, rename, unlink } from "node:fs/promises"
 import { extname, join, relative, resolve, sep } from "node:path";
 import { libraryWriterResponse, revalidateWriterSource, type WriterSource } from "./libraryWriterAdmission.ts";
 import type { OfflineMediaArtifact } from "../shared/types.ts";
-import { database } from "./database.ts";
+import { db, execute, type OfflineMediaArtifactRow, OfflineMediaArtifactRowSchema, queryOne, queryRows } from "./database.ts";
 import { jsonObject } from "./json.ts";
 import { probeDuration, selectedAudioIndex } from "./offlineMediaInspection.ts";
 import { readTranscodeProgress } from "./transcodeProgress.ts";
@@ -13,26 +13,7 @@ import { rangedFileResponse } from "./httpRange.ts";
 // keeps its artifact rows so Undo restores them, but is never served.
 const INTERNAL_SEGMENT = /(?:^|[\\/])\.nanime-/iu;
 
-type ArtifactStatus = "failed" | "preparing" | "queued" | "ready";
-
-interface ArtifactRow {
-  readonly id: string;
-  readonly source_rel: string;
-  readonly source_size: number;
-  readonly source_modified_at: number;
-  readonly audio_index: number;
-  readonly direct: number;
-  readonly output_name: string | null;
-  readonly status: ArtifactStatus;
-  readonly progress: number;
-  readonly speed: number;
-  readonly duration: number;
-  readonly size_bytes: number | null;
-  readonly mime_type: string;
-  readonly error: string | null;
-  readonly created_at: number;
-  readonly updated_at: number;
-}
+type ArtifactRow = OfflineMediaArtifactRow;
 
 export interface OfflineMediaOptions {
   readonly mediaDir: string;
@@ -55,54 +36,12 @@ interface SourceResolution {
   readonly source: Source | null;
 }
 
-const artifacts = database.query<ArtifactRow, []>(`
-  SELECT * FROM offline_media_artifacts ORDER BY created_at
-`);
-const artifactById = database.query<ArtifactRow, [string]>(`
-  SELECT * FROM offline_media_artifacts WHERE id = ?
-`);
-const matchingArtifact = database.query<ArtifactRow, [string, number, number, number, number]>(`
-  SELECT * FROM offline_media_artifacts
-  WHERE source_rel = ? AND source_size = ? AND source_modified_at = ? AND audio_index = ?
-    AND direct = ?
-`);
-const insertArtifact = database.query<void, [
-  string, string, number, number, number, number, string | null, string, number,
-  number | null, string, number, number,
-]>(`
-  INSERT INTO offline_media_artifacts
-    (id, source_rel, source_size, source_modified_at, audio_index, direct,
-     output_name, status, duration, size_bytes, mime_type, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
-const startArtifact = database.query<void, [number, string]>(`
-  UPDATE offline_media_artifacts
-  SET status = 'preparing', progress = 0, speed = 0, error = NULL, updated_at = ?
-  WHERE id = ?
-`);
-const updateProgress = database.query<void, [number, number, number, string]>(`
-  UPDATE offline_media_artifacts SET progress = ?, speed = ?, updated_at = ? WHERE id = ?
-`);
-const finishArtifact = database.query<void, [number, number, number, string]>(`
-  UPDATE offline_media_artifacts
-  SET status = 'ready', progress = 1, speed = 0, size_bytes = ?, duration = ?, updated_at = ?
-  WHERE id = ?
-`);
-const failArtifact = database.query<void, [string, number, string]>(`
-  UPDATE offline_media_artifacts
-  SET status = 'failed', progress = 0, speed = 0, error = ?, updated_at = ? WHERE id = ?
-`);
-const requeueArtifact = database.query<void, [number, string]>(`
-  UPDATE offline_media_artifacts
-  SET status = 'queued', progress = 0, speed = 0, size_bytes = NULL, error = NULL, updated_at = ?
-  WHERE id = ?
-`);
-const restoreDirectArtifact = database.query<void, [number, string]>(`
-  UPDATE offline_media_artifacts
-  SET status = 'ready', progress = 1, speed = 0, size_bytes = source_size,
-      error = NULL, updated_at = ?
-  WHERE id = ? AND direct = 1
-`);
+function artifactById(id: string): ArtifactRow | null {
+  return queryOne(db.selectFrom("offline_media_artifacts").selectAll().where("id", "=", id), OfflineMediaArtifactRowSchema);
+}
+function updateArtifact(id: string, change: Partial<Omit<ArtifactRow, "id" | "updated_at">>): void {
+  execute(db.updateTable("offline_media_artifacts").set({ ...change, updated_at: Date.now() }).where("id", "=", id));
+}
 
 const activeArtifacts = new Set<string>();
 const MAX_WORKERS = 1;
@@ -247,7 +186,7 @@ async function transcodeArtifact(row: ArtifactRow, options: OfflineMediaOptions)
   ], { stdout: "pipe", stderr: "pipe" });
   const stderr = new Response(process.stderr).text();
   const progress = readTranscodeProgress(process.stdout, row.duration, (sample) => {
-    updateProgress.run(sample.progress, sample.speed, Date.now(), row.id);
+    updateArtifact(row.id, { progress: sample.progress, speed: sample.speed });
   });
   try {
     const [exitCode, errorText] = await Promise.all([process.exited, stderr, progress]);
@@ -257,19 +196,19 @@ async function transcodeArtifact(row: ArtifactRow, options: OfflineMediaOptions)
     }
     await chmod(temporary, 0o600);
     await rename(temporary, output);
-    finishArtifact.run(result.size, result.duration, Date.now(), row.id);
+    updateArtifact(row.id, { status: "ready", progress: 1, speed: 0, size_bytes: result.size, duration: result.duration });
   } finally {
     await unlink(temporary).catch(() => undefined);
   }
 }
 
 async function processArtifact(row: ArtifactRow, options: OfflineMediaOptions): Promise<void> {
-  startArtifact.run(Date.now(), row.id);
+  updateArtifact(row.id, { status: "preparing", progress: 0, speed: 0, error: null });
   try {
     await transcodeArtifact(row, options);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Offline media preparation failed";
-    failArtifact.run(message.slice(0, 500), Date.now(), row.id);
+    updateArtifact(row.id, { status: "failed", progress: 0, speed: 0, error: message.slice(0, 500) });
   } finally {
     activeArtifacts.delete(row.id);
     runQueue(options);
@@ -278,7 +217,8 @@ async function processArtifact(row: ArtifactRow, options: OfflineMediaOptions): 
 
 function runQueue(options: OfflineMediaOptions): void {
   const available = Math.max(0, MAX_WORKERS - activeArtifacts.size);
-  const queued = artifacts.all().filter((row) => row.status === "queued");
+  const all = queryRows(db.selectFrom("offline_media_artifacts").selectAll().orderBy("created_at"), OfflineMediaArtifactRowSchema);
+  const queued = all.filter((row) => row.status === "queued");
   for (const row of queued.slice(0, available)) {
     activeArtifacts.add(row.id);
     void processArtifact(row, options);
@@ -292,8 +232,10 @@ async function reusableArtifact(
 ): Promise<ArtifactRow> {
   if (row.direct === 1) {
     if (row.status !== "ready") {
-      restoreDirectArtifact.run(Date.now(), row.id);
-      return artifactById.get(row.id) as ArtifactRow;
+      execute(db.updateTable("offline_media_artifacts")
+        .set((columns) => ({ status: "ready", progress: 1, speed: 0, size_bytes: columns.ref("source_size"), error: null, updated_at: Date.now() }))
+        .where("id", "=", row.id).where("direct", "=", 1));
+      return artifactById(row.id) as ArtifactRow;
     }
     return row;
   }
@@ -302,8 +244,8 @@ async function reusableArtifact(
     (output === null || !(await Bun.file(output).exists()));
   if (row.status === "failed" || missingOutput) {
     await revalidateWriterSource(options.mediaRoot, row.source_rel, expected);
-    requeueArtifact.run(Date.now(), row.id);
-    return artifactById.get(row.id) as ArtifactRow;
+    updateArtifact(row.id, { status: "queued", progress: 0, speed: 0, size_bytes: null, error: null });
+    return artifactById(row.id) as ArtifactRow;
   }
   return row;
 }
@@ -320,21 +262,21 @@ async function createArtifact(
   await revalidateWriterSource(options.mediaRoot, source.rel, expected);
   const storedAudioIndex = audio.index ?? -1;
   const direct = source.direct && !audio.requiresSelection;
-  const existing = matchingArtifact.get(
-    source.rel, source.size, source.modifiedAt, storedAudioIndex, direct ? 1 : 0,
-  );
+  const existing = queryOne(db.selectFrom("offline_media_artifacts").selectAll()
+    .where("source_rel", "=", source.rel).where("source_size", "=", source.size).where("source_modified_at", "=", source.modifiedAt)
+    .where("audio_index", "=", storedAudioIndex).where("direct", "=", direct ? 1 : 0), OfflineMediaArtifactRowSchema);
   if (existing !== null) {
     return reusableArtifact(existing, options, expected);
   }
   const mimeType = direct
     ? MIME_TYPES.get(extname(source.abs).toLowerCase()) ?? "application/octet-stream"
     : "video/mp4";
-  insertArtifact.run(
-    id, source.rel, source.size, source.modifiedAt, storedAudioIndex, direct ? 1 : 0,
-    direct ? null : `${id}.mp4`, direct ? "ready" : "queued", duration,
-    direct ? source.size : null, mimeType, now, now,
-  );
-  return artifactById.get(id) as ArtifactRow;
+  execute(db.insertInto("offline_media_artifacts").values({
+    id, source_rel: source.rel, source_size: source.size, source_modified_at: source.modifiedAt, audio_index: storedAudioIndex,
+    direct: direct ? 1 : 0, output_name: direct ? null : `${id}.mp4`, status: direct ? "ready" : "queued", duration,
+    size_bytes: direct ? source.size : null, mime_type: mimeType, created_at: now, updated_at: now,
+  }));
+  return artifactById(id) as ArtifactRow;
 }
 
 async function prepareResponse(
@@ -373,14 +315,14 @@ async function prepareClaimedSource(
   const row = await createArtifact(source, audio, { options, expected });
   runQueue(options);
   return artifactResponse(
-    artifactById.get(row.id) as ArtifactRow,
+    artifactById(row.id) as ArtifactRow,
     row.status === "ready" ? 200 : 202,
   );
 }
 
 function statusResponse(id: string, options: OfflineMediaOptions): Response {
   runQueue(options);
-  const row = artifactById.get(id);
+  const row = artifactById(id);
   return row === null
     ? new Response("Not found", { status: 404 })
     : artifactResponse(row);
@@ -428,7 +370,7 @@ export async function offlineMediaFileResponse(
   if (req.method !== "GET" && req.method !== "HEAD") {
     return new Response("Method not allowed", { status: 405 });
   }
-  const row = artifactById.get(id);
+  const row = artifactById(id);
   if (row === null || row.status !== "ready") {
     return new Response("Not found", { status: 404 });
   }

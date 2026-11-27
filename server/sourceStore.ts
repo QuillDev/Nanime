@@ -1,5 +1,6 @@
-import { database } from "./database.ts";
+import { database, db, execute, queryOne, queryRows, type SourceRow, SourceRowSchema, SourceSettingRowSchema, sql } from "./database.ts";
 import type { SettingValue } from "./sourceSettings.ts";
+import { z } from "zod";
 
 /**
  * Source plugins: the repositories an admin added (Mangayomi-style index
@@ -63,18 +64,6 @@ export interface InstalledSource {
   readonly code: string;
 }
 
-interface SourceRow {
-  readonly id: string;
-  readonly repo_url: string;
-  readonly name: string;
-  readonly lang: string;
-  readonly version: string;
-  readonly icon_url: string | null;
-  readonly nsfw: number;
-  readonly info: string;
-  readonly code: string;
-}
-
 function installed(row: SourceRow): InstalledSource {
   return {
     id: row.id, repoUrl: row.repo_url, name: row.name, lang: row.lang, version: row.version,
@@ -82,65 +71,53 @@ function installed(row: SourceRow): InstalledSource {
   };
 }
 
-const repoRows = database.query<{ readonly url: string }, []>("SELECT url FROM source_repos ORDER BY added_at, rowid");
-const insertRepo = database.query<unknown, [string, number]>("INSERT OR IGNORE INTO source_repos (url, added_at) VALUES (?, ?)");
-const deleteRepo = database.query<unknown, [string]>("DELETE FROM source_repos WHERE url = ?");
-const sourceRows = database.query<SourceRow, []>("SELECT * FROM sources ORDER BY name COLLATE NOCASE, id");
-const sourceRow = database.query<SourceRow, [string]>("SELECT * FROM sources WHERE id = ?");
-const upsertSource = database.query<unknown, [string, string, string, string, string, string | null, number, string, string, number]>(`
-  INSERT INTO sources (id, repo_url, name, lang, version, icon_url, nsfw, info, code, installed_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT (id) DO UPDATE SET name = excluded.name, lang = excluded.lang, version = excluded.version,
-    icon_url = excluded.icon_url, nsfw = excluded.nsfw, info = excluded.info, code = excluded.code
-`);
-const deleteSource = database.query<unknown, [string]>("DELETE FROM sources WHERE id = ?");
-const settingRows = database.query<{ readonly key: string; readonly value: string }, [string]>("SELECT key, value FROM source_settings WHERE source_id = ?");
-const upsertSetting = database.query<unknown, [string, string, string]>(`
-  INSERT INTO source_settings (source_id, key, value) VALUES (?, ?, ?)
-  ON CONFLICT (source_id, key) DO UPDATE SET value = excluded.value
-`);
-const deleteSettings = database.query<unknown, [string]>("DELETE FROM source_settings WHERE source_id = ?");
+const SettingSchema = SourceSettingRowSchema.pick({ key: true, value: true });
+const UrlSchema = z.object({ url: z.string() });
 
 export function sourceRepos(): readonly string[] {
-  return repoRows.all().map((row) => row.url);
+  return queryRows(sql`SELECT url FROM source_repos ORDER BY added_at, rowid`, UrlSchema).map((row) => row.url);
 }
 
 export function addSourceRepo(url: string): void {
-  insertRepo.run(url, Date.now());
+  execute(db.insertInto("source_repos").orIgnore().values({ url, added_at: Date.now() }));
 }
 
 export function removeSourceRepo(url: string): void {
-  deleteRepo.run(url);
+  execute(db.deleteFrom("source_repos").where("url", "=", url));
 }
 
 export function installedSources(): readonly InstalledSource[] {
-  return sourceRows.all().map((row) => installed(row));
+  return queryRows(sql`SELECT * FROM sources ORDER BY name COLLATE NOCASE, id`, SourceRowSchema).map((row) => installed(row));
 }
 
 export function installedSource(id: string): InstalledSource | null {
-  const row = sourceRow.get(id);
+  const row = queryOne(db.selectFrom("sources").selectAll().where("id", "=", id), SourceRowSchema);
   return row === null ? null : installed(row);
 }
 
 export function saveSource(source: InstalledSource): void {
-  upsertSource.run(
-    source.id, source.repoUrl, source.name, source.lang, source.version, source.iconUrl,
-    source.nsfw ? 1 : 0, JSON.stringify(source.info), source.code, Date.now(),
-  );
+  const fields = {
+    name: source.name, lang: source.lang, version: source.version, icon_url: source.iconUrl,
+    nsfw: source.nsfw ? 1 : 0, info: JSON.stringify(source.info), code: source.code,
+  };
+  execute(db.insertInto("sources").values({ id: source.id, repo_url: source.repoUrl, ...fields, installed_at: Date.now() })
+    .onConflict((conflict) => conflict.column("id").doUpdateSet(fields)));
 }
 
 export function uninstallSource(id: string): void {
   database.transaction(() => {
-    deleteSource.run(id);
-    deleteSettings.run(id);
+    execute(db.deleteFrom("sources").where("id", "=", id));
+    execute(db.deleteFrom("source_settings").where("source_id", "=", id));
   })();
 }
 
 /** Settings the admin changed, as JSON values by key; defaults come from the plugin itself. */
 export function sourceSettings(id: string): ReadonlyMap<string, SettingValue> {
-  return new Map(settingRows.all(id).map((row) => [row.key, JSON.parse(row.value) as SettingValue]));
+  return new Map(queryRows(db.selectFrom("source_settings").select(["key", "value"]).where("source_id", "=", id), SettingSchema).map((row) => [row.key, JSON.parse(row.value) as SettingValue]));
 }
 
 export function saveSourceSetting(id: string, key: string, value: SettingValue): void {
-  upsertSetting.run(id, key, JSON.stringify(value));
+  const stored = JSON.stringify(value);
+  execute(db.insertInto("source_settings").values({ source_id: id, key, value: stored })
+    .onConflict((conflict) => conflict.columns(["source_id", "key"]).doUpdateSet({ value: stored })));
 }

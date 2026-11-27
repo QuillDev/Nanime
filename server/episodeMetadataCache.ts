@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { database } from "./database.ts";
+import { db, EpisodeMetadataCacheRowSchema, execute, queryOne } from "./database.ts";
 
 /** Canonical episode metadata shape every episode provider maps into. */
 const episodeMetadataSchema = z.object({
@@ -29,21 +29,7 @@ function parseJsonWithSchema<T>(raw: string, schema: z.ZodType<T>): T | undefine
   }
 }
 
-const selectEpisodeCache = database.query<
-  { readonly providers: string; readonly payload: string; readonly updated_at: number },
-  [number]
->(
-  "SELECT providers, payload, updated_at FROM episode_metadata_cache WHERE anilist_id = ?",
-);
-
-const upsertEpisodeCache = database.query<void, [number, string, string, number]>(`
-  INSERT INTO episode_metadata_cache (anilist_id, providers, payload, updated_at)
-  VALUES (?, ?, ?, ?)
-  ON CONFLICT(anilist_id) DO UPDATE SET
-    providers = excluded.providers,
-    payload = excluded.payload,
-    updated_at = excluded.updated_at
-`);
+const EpisodeCacheSchema = EpisodeMetadataCacheRowSchema.omit({ anilist_id: true });
 
 const MAX_EPISODE_CACHE = 2000;
 const parsedEpisodeCache = new Map<number, {
@@ -55,7 +41,8 @@ const parsedEpisodeCache = new Map<number, {
 
 /** Cached canonical episode metadata for an AniList ID, if stored and valid. */
 export function cachedEpisodeMetadata(anilistId: number): CachedEpisodeMetadata | undefined {
-  const row = selectEpisodeCache.get(anilistId);
+  const row = queryOne(db.selectFrom("episode_metadata_cache").select(["providers", "payload", "updated_at"])
+    .where("anilist_id", "=", anilistId), EpisodeCacheSchema);
   if (row === null) {
     parsedEpisodeCache.delete(anilistId);
     return undefined;
@@ -101,10 +88,7 @@ export function storeCachedEpisodeMetadata(
   episodes: readonly EpisodeMetadata[],
   providers: readonly string[],
 ): void {
-  upsertEpisodeCache.run(
-    anilistId,
-    JSON.stringify(providers),
-    JSON.stringify(episodes),
-    Date.now(),
-  );
+  const update = { providers: JSON.stringify(providers), payload: JSON.stringify(episodes), updated_at: Date.now() };
+  execute(db.insertInto("episode_metadata_cache").values({ anilist_id: anilistId, ...update })
+    .onConflict((conflict) => conflict.column("anilist_id").doUpdateSet(update)));
 }

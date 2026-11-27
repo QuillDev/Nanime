@@ -4,7 +4,7 @@ import type {
   LibraryActivityState,
   MappingActivityState,
 } from "../shared/types.ts";
-import { database } from "./database.ts";
+import { database, db, execute, type LibraryActivityRow, LibraryActivityRowSchema, queryRows } from "./database.ts";
 import type { AnimeMetadata } from "./metadataTypes.ts";
 
 export interface ActivityActor {
@@ -12,32 +12,11 @@ export interface ActivityActor {
   readonly username: string;
 }
 
-interface ActivityRow {
-  readonly id: number;
-  readonly actor_user_id: number;
-  readonly actor_username: string;
-  readonly action: LibraryActivityEvent["action"];
-  readonly subject: string;
-  readonly previous_state: string | null;
-  readonly next_state: string;
-  readonly created_at: number;
-}
+type ActivityRow = LibraryActivityRow;
 
-const insertActivity = database.query<void, [
-  number, string, LibraryActivityEvent["action"], string, string | null, string, number,
-]>(`
-  INSERT INTO library_activity_log (
-    actor_user_id, actor_username, action, subject,
-    previous_state, next_state, created_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?)
-`);
-const listActivity = database.query<ActivityRow, [number]>(`
-  SELECT id, actor_user_id, actor_username, action, subject,
-    previous_state, next_state, created_at
-  FROM library_activity_log
-  ORDER BY created_at DESC, id DESC
-  LIMIT ?
-`);
+function insertActivity(row: Omit<ActivityRow, "id">): void {
+  execute(db.insertInto("library_activity_log").values(row));
+}
 
 function storedState(state: LibraryActivityState | null): string | null {
   return state === null ? null : JSON.stringify(state);
@@ -64,15 +43,15 @@ export function recordUploadActivity(
   size: number,
 ): void {
   const next = { kind: "upload", path, size } as const;
-  insertActivity.run(
-    actor.id,
-    actor.username,
-    "media-uploaded",
-    path,
-    null,
-    storedState(next) as string,
-    Date.now(),
-  );
+  insertActivity({
+    actor_user_id: actor.id,
+    actor_username: actor.username,
+    action: "media-uploaded",
+    subject: path,
+    previous_state: null,
+    next_state: storedState(next) as string,
+    created_at: Date.now(),
+  });
 }
 
 export function recordMappingActivity(options: {
@@ -84,15 +63,15 @@ export function recordMappingActivity(options: {
 }): void {
   // The write goes last: if it throws, the activity entry rolls back with it.
   const commit = database.transaction(() => {
-    insertActivity.run(
-      options.actor.id,
-      options.actor.username,
-      "mapping-updated",
-      options.key,
-      storedState(options.previous === undefined ? null : mappingState(options.key, options.previous)),
-      storedState(mappingState(options.key, options.next)) as string,
-      Date.now(),
-    );
+    insertActivity({
+      actor_user_id: options.actor.id,
+      actor_username: options.actor.username,
+      action: "mapping-updated",
+      subject: options.key,
+      previous_state: storedState(options.previous === undefined ? null : mappingState(options.key, options.previous)),
+      next_state: storedState(mappingState(options.key, options.next)) as string,
+      created_at: Date.now(),
+    });
     options.write();
   });
   commit();
@@ -111,7 +90,10 @@ export interface FileOperationActivity {
 
 export function insertFileOperationActivity(entry: FileOperationActivity): void {
   const { actor, action, subject, next } = entry;
-  insertActivity.run(actor.id, actor.username, action, subject, null, JSON.stringify(next), Date.now());
+  insertActivity({
+    actor_user_id: actor.id, actor_username: actor.username, action, subject,
+    previous_state: null, next_state: JSON.stringify(next), created_at: Date.now(),
+  });
 }
 
 function eventFromRow(row: ActivityRow): LibraryActivityEvent {
@@ -130,5 +112,7 @@ function eventFromRow(row: ActivityRow): LibraryActivityEvent {
 export function libraryActivityResponse(url: URL): Response {
   const requestedLimit = Number(url.searchParams.get("limit") ?? "50");
   const limit = Number.isInteger(requestedLimit) ? Math.min(100, Math.max(1, requestedLimit)) : 50;
-  return Response.json(listActivity.all(limit).map((row) => eventFromRow(row)));
+  const rows = queryRows(db.selectFrom("library_activity_log").selectAll()
+    .orderBy("created_at", "desc").orderBy("id", "desc").limit(limit), LibraryActivityRowSchema);
+  return Response.json(rows.map((row) => eventFromRow(row)));
 }

@@ -1,4 +1,4 @@
-import { database } from "./database.ts";
+import { database, db, type DownloadJobRow, DownloadJobRowSchema, execute, queryOne, queryRows, sql, TableColumnRowSchema } from "./database.ts";
 
 /**
  * Direct (non-torrent) downloads. Rows outlive the process so a restart picks
@@ -22,16 +22,17 @@ database.run(`
 `);
 // Episodes queued from a source plugin: the plugin resolves the episode to a
 // video (or magnet) when the download starts, because those links expire.
-const columns = new Set(database.query<{ readonly name: string }, []>("PRAGMA table_info(download_jobs)").all().map((column) => column.name));
+const columns = new Set(queryRows(sql`PRAGMA table_info(download_jobs)`, TableColumnRowSchema).map((column) => column.name));
 if (!columns.has("source_id")) {
   database.run("ALTER TABLE download_jobs ADD COLUMN source_id TEXT");
   database.run("ALTER TABLE download_jobs ADD COLUMN episode_url TEXT");
 }
 // A process that stopped mid-download left its jobs "downloading"; they resume.
-database.run("UPDATE download_jobs SET state = 'queued' WHERE state = 'downloading'");
+execute(db.updateTable("download_jobs").set({ state: "queued" }).where("state", "=", "downloading"));
 
-export type FileDownloadFormat = "file" | "hls";
-export type FileDownloadState = "queued" | "downloading" | "paused" | "failed";
+type JobRow = DownloadJobRow;
+export type FileDownloadFormat = JobRow["format"];
+export type FileDownloadState = JobRow["state"];
 
 export interface FileDownloadJob {
   readonly id: string;
@@ -73,36 +74,6 @@ export type ResolvedEpisode =
   };
 
 
-interface JobRow {
-  readonly id: string;
-  readonly show_folder: string;
-  readonly file_name: string;
-  readonly url: string;
-  readonly headers: string;
-  readonly format: FileDownloadFormat;
-  readonly state: FileDownloadState;
-  readonly received: number;
-  readonly size: number;
-  readonly error: string | null;
-  readonly added_at: number;
-  readonly source_id: string | null;
-  readonly episode_url: string | null;
-}
-
-const selectAll = database.query<JobRow, []>("SELECT * FROM download_jobs ORDER BY added_at, rowid");
-const selectOne = database.query<JobRow, [string]>("SELECT * FROM download_jobs WHERE id = ?");
-const insert = database.query<unknown, [string, string, string, string, string, FileDownloadFormat, number, string | null, string | null]>(`
-  INSERT INTO download_jobs (id, show_folder, file_name, url, headers, format, state, added_at, source_id, episode_url)
-  VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)
-`);
-const updateState = database.query<unknown, [FileDownloadState, string | null, string]>(
-  "UPDATE download_jobs SET state = ?, error = ? WHERE id = ?",
-);
-const updateProgress = database.query<unknown, [number, number, string]>(
-  "UPDATE download_jobs SET received = ?, size = ? WHERE id = ?",
-);
-const remove = database.query<unknown, [string]>("DELETE FROM download_jobs WHERE id = ?");
-
 function job(row: JobRow): FileDownloadJob {
   return {
     id: row.id,
@@ -121,11 +92,11 @@ function job(row: JobRow): FileDownloadJob {
 }
 
 export function fileDownloadJobs(): readonly FileDownloadJob[] {
-  return selectAll.all().map((row) => job(row));
+  return queryRows(sql`SELECT * FROM download_jobs ORDER BY added_at, rowid`, DownloadJobRowSchema).map((row) => job(row));
 }
 
 export function fileDownloadJob(id: string): FileDownloadJob | null {
-  const row = selectOne.get(id);
+  const row = queryOne(db.selectFrom("download_jobs").selectAll().where("id", "=", id), DownloadJobRowSchema);
   return row === null ? null : job(row);
 }
 
@@ -144,19 +115,22 @@ export function insertFileDownloads(items: readonly NewFileDownload[]): void {
   const now = Date.now();
   database.transaction(() => {
     for (const item of items) {
-      insert.run(item.id, item.showFolder, item.fileName, item.url, JSON.stringify(item.headers), item.format, now, item.episode?.sourceId ?? null, item.episode?.url ?? null);
+      execute(db.insertInto("download_jobs").values({
+        id: item.id, show_folder: item.showFolder, file_name: item.fileName, url: item.url, headers: JSON.stringify(item.headers),
+        format: item.format, state: "queued", added_at: now, source_id: item.episode?.sourceId ?? null, episode_url: item.episode?.url ?? null,
+      }));
     }
   })();
 }
 
 export function setFileDownloadState(id: string, state: FileDownloadState, error: string | null = null): void {
-  updateState.run(state, error, id);
+  execute(db.updateTable("download_jobs").set({ state, error }).where("id", "=", id));
 }
 
 export function setFileDownloadProgress(id: string, received: number, size: number): void {
-  updateProgress.run(received, size, id);
+  execute(db.updateTable("download_jobs").set({ received, size }).where("id", "=", id));
 }
 
 export function deleteFileDownload(id: string): void {
-  remove.run(id);
+  execute(db.deleteFrom("download_jobs").where("id", "=", id));
 }

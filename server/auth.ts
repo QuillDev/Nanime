@@ -1,9 +1,10 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { agentKeyUser } from "./agentKeys.ts";
 import { deviceLoginResponse } from "./deviceLogins.ts";
-import { database } from "./database.ts";
+import { db, execute, queryOne, queryRows, sql, UserRowSchema } from "./database.ts";
 import type { AuthUser } from "../shared/types.ts";
 import { isPreferredAudioLanguage } from "../shared/audioLanguage.ts";
+import { z } from "zod";
 
 export type { AuthUser } from "../shared/types.ts";
 
@@ -17,14 +18,10 @@ const MAX_ATTEMPT_KEYS = 10_000;
 const SECURE_COOKIES = process.env["NANIME_SECURE_COOKIES"] !== "false";
 const DUMMY_PASSWORD_HASH = Bun.password.hashSync(randomBytes(32), "argon2id");
 
-interface UserRow {
-  readonly id: number;
-  readonly username: string;
-  readonly password_hash: string | null;
-  readonly setup_token_hash: string | null;
-  readonly is_admin: number;
-  readonly preferred_audio_language: string | null;
-}
+const UserFieldsSchema = UserRowSchema.omit({ created_at: true });
+type UserRow = z.infer<typeof UserFieldsSchema>;
+const USER_COLUMNS = ["users.id", "users.username", "users.password_hash", "users.setup_token_hash", "users.is_admin",
+  "users.preferred_audio_language"] as const;
 
 interface Credentials {
   readonly username?: unknown;
@@ -39,32 +36,20 @@ interface LoginAttempts {
 
 const loginAttempts = new Map<string, LoginAttempts>();
 
-const findUser = database.query<UserRow, [string]>(`
-  SELECT id, username, password_hash, setup_token_hash, is_admin, preferred_audio_language
-  FROM users WHERE username = ?
-`);
-const findSessionUser = database.query<UserRow, [string, number]>(`
-  SELECT users.id, users.username, users.password_hash, users.setup_token_hash, users.is_admin,
-    users.preferred_audio_language
-  FROM sessions JOIN users ON users.id = sessions.user_id
-  WHERE sessions.token_hash = ? AND sessions.expires_at > ?
-`);
-const insertSession = database.query<void, [string, number, number, number]>(`
-  INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)
-`);
-const deleteSession = database.query<void, [string]>("DELETE FROM sessions WHERE token_hash = ?");
-const setPassword = database.query<void, [string, number]>(`
-  UPDATE users SET password_hash = ?, setup_token_hash = NULL
-  WHERE id = ? AND password_hash IS NULL
-`);
-const findUserById = database.query<UserRow, [number]>(`
-  SELECT id, username, password_hash, setup_token_hash, is_admin, preferred_audio_language
-  FROM users WHERE id = ?
-`);
-const updateAudioLanguage = database.query<void, [string | null, number]>(`
-  UPDATE users SET preferred_audio_language = ? WHERE id = ?
-`);
-database.query("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
+function findUser(username: string): UserRow | null {
+  return queryOne(db.selectFrom("users").select(USER_COLUMNS).where("username", "=", username), UserFieldsSchema);
+}
+function findSessionUser(sessionHash: string, now: number): UserRow | null {
+  return queryOne(db.selectFrom("sessions").innerJoin("users", "users.id", "sessions.user_id").select(USER_COLUMNS)
+    .where("sessions.token_hash", "=", sessionHash).where("sessions.expires_at", ">", now), UserFieldsSchema);
+}
+function insertSession(sessionHash: string, userId: number, now: number): void {
+  execute(db.insertInto("sessions").values({ token_hash: sessionHash, user_id: userId, expires_at: now + SESSION_LIFETIME_MS, created_at: now }));
+}
+function findUserById(id: number): UserRow | null {
+  return queryOne(db.selectFrom("users").select(USER_COLUMNS).where("id", "=", id), UserFieldsSchema);
+}
+execute(db.deleteFrom("sessions").where("expires_at", "<=", Date.now()));
 
 function publicUser(row: UserRow): AuthUser {
   return {
@@ -83,7 +68,7 @@ async function updatePlaybackPreferences(req: Request, user: AuthUser): Promise<
   if (audioLanguage !== null && !isPreferredAudioLanguage(audioLanguage)) {
     return new Response("Choose a supported audio language", { status: 400 });
   }
-  updateAudioLanguage.run(audioLanguage, user.id);
+  execute(db.updateTable("users").set({ preferred_audio_language: audioLanguage }).where("id", "=", user.id));
   return Response.json({ ...user, preferredAudioLanguage: audioLanguage });
 }
 
@@ -104,27 +89,27 @@ function sessionCookie(token: string, maxAge: number): string {
 }
 
 function sessionForUser(userId: number): Response {
-  const user = findUserById.get(userId);
+  const user = findUserById(userId);
   return user === null ? Response.json({ status: "expired" }) : createSession(user, { status: "approved", user: publicUser(user) });
 }
 
 function createSession(user: UserRow, body: unknown = publicUser(user)): Response {
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
-  insertSession.run(tokenHash(token), user.id, now + SESSION_LIFETIME_MS, now);
+  insertSession(tokenHash(token), user.id, now);
   return Response.json(body, {
     headers: { "set-cookie": sessionCookie(token, SESSION_LIFETIME_MS / 1000) },
   });
 }
 
 export function createSessionRedirect(userId: number, location: string): Response {
-  const user = findUserById.get(userId);
+  const user = findUserById(userId);
   if (user === null) {
     return Response.redirect(`${location}?anilist=account-missing`, 303);
   }
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
-  insertSession.run(tokenHash(token), user.id, now + SESSION_LIFETIME_MS, now);
+  insertSession(tokenHash(token), user.id, now);
   return new Response(null, {
     status: 303,
     headers: {
@@ -161,7 +146,7 @@ export function authenticatedUser(req: Request): AuthUser | null {
   if (token === null) {
     return agentKeyUser(req);
   }
-  const row = findSessionUser.get(tokenHash(token), Date.now());
+  const row = findSessionUser(tokenHash(token), Date.now());
   return row === null ? null : publicUser(row);
 }
 
@@ -229,7 +214,7 @@ async function setupPassword(req: Request, clientAddress: string): Promise<Respo
   if (attemptsExceeded(keys)) {
     return new Response("Too many attempts; try again later", { status: 429 });
   }
-  const user = findUser.get(body.username);
+  const user = findUser(body.username);
   if (
     user === null ||
     user.password_hash !== null ||
@@ -240,8 +225,9 @@ async function setupPassword(req: Request, clientAddress: string): Promise<Respo
     return new Response("Invalid account or setup code", { status: 401 });
   }
   const hash = await Bun.password.hash(body.password, "argon2id");
-  const result = setPassword.run(hash, user.id);
-  if (result.changes !== 1) {
+  const changed = execute(db.updateTable("users").set({ password_hash: hash, setup_token_hash: null })
+    .where("id", "=", user.id).where("password_hash", "is", null));
+  if (changed !== 1) {
     return new Response("Password setup is no longer available", { status: 409 });
   }
   clearAttempts(keys);
@@ -257,7 +243,7 @@ async function login(req: Request, clientAddress: string): Promise<Response> {
   if (attemptsExceeded(keys)) {
     return new Response("Too many attempts; try again later", { status: 429 });
   }
-  const user = findUser.get(body.username);
+  const user = findUser(body.username);
   const hash = user?.password_hash ?? DUMMY_PASSWORD_HASH;
   const valid = await Bun.password.verify(body.password, hash);
   if (!valid || user === null || user.password_hash === null) {
@@ -271,7 +257,7 @@ async function login(req: Request, clientAddress: string): Promise<Response> {
 function logout(req: Request): Response {
   const token = cookieValue(req);
   if (token !== null) {
-    deleteSession.run(tokenHash(token));
+    execute(db.deleteFrom("sessions").where("token_hash", "=", tokenHash(token)));
   }
   return new Response(null, {
     status: 204,
@@ -311,30 +297,8 @@ export function authResponse(
     : null;
 }
 
-interface UserListRow {
-  readonly id: number;
-  readonly username: string;
-  readonly is_admin: number;
-  readonly password_set: number;
-}
-
-interface UserSetupRow {
-  readonly password_set: number;
-}
-
-const listUsers = database.query<UserListRow, []>(`
-  SELECT id, username, is_admin, password_hash IS NOT NULL AS password_set
-  FROM users ORDER BY username COLLATE NOCASE
-`);
-const insertUser = database.query<void, [string, string, number, number]>(`
-  INSERT INTO users (username, setup_token_hash, is_admin, created_at) VALUES (?, ?, ?, ?)
-`);
-const findUserSetup = database.query<UserSetupRow, [number]>(`
-  SELECT password_hash IS NOT NULL AS password_set FROM users WHERE id = ?
-`);
-const deletePendingUser = database.query<void, [number]>(`
-  DELETE FROM users WHERE id = ? AND password_hash IS NULL
-`);
+const UserSetupRowSchema = z.object({ password_set: z.number() });
+const UserListRowSchema = UserRowSchema.pick({ id: true, username: true, is_admin: true }).extend({ password_set: z.number() });
 
 export function usersResponse(
   req: Request,
@@ -350,7 +314,11 @@ export function usersResponse(
       : new Response("Method not allowed", { status: 405 });
   }
   if (req.method === "GET") {
-    return Response.json(listUsers.all().map((row) => ({
+    const rows = queryRows(sql`
+      SELECT id, username, is_admin, password_hash IS NOT NULL AS password_set
+      FROM users ORDER BY username COLLATE NOCASE
+    `, UserListRowSchema);
+    return Response.json(rows.map((row) => ({
       id: row.id,
       username: row.username,
       isAdmin: row.is_admin === 1,
@@ -369,14 +337,14 @@ function cancelProvision(userId: number, currentUserId: number): Response {
   if (userId === currentUserId) {
     return new Response("Cannot cancel your own account", { status: 409 });
   }
-  const target = findUserSetup.get(userId);
+  const target = queryOne(sql`SELECT password_hash IS NOT NULL AS password_set FROM users WHERE id = ${userId}`, UserSetupRowSchema);
   if (target === null) {
     return new Response("User not found", { status: 404 });
   }
   if (target.password_set === 1) {
     return new Response("Only pending provisions can be cancelled", { status: 409 });
   }
-  deletePendingUser.run(userId);
+  execute(db.deleteFrom("users").where("id", "=", userId).where("password_hash", "is", null));
   return new Response(null, { status: 204 });
 }
 
@@ -390,7 +358,7 @@ async function provisionUser(req: Request): Promise<Response> {
   }
   try {
     const setupToken = randomBytes(24).toString("base64url");
-    insertUser.run(body.username, tokenHash(setupToken), body.isAdmin ? 1 : 0, Date.now());
+    execute(db.insertInto("users").values({ username: body.username, setup_token_hash: tokenHash(setupToken), is_admin: body.isAdmin ? 1 : 0, created_at: Date.now() }));
     return Response.json({ setupToken }, { status: 201 });
   } catch {
     return new Response("Username already exists", { status: 409 });

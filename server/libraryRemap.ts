@@ -1,4 +1,4 @@
-import { database } from "./database.ts";
+import { CountRowSchema, database, execute, MediaLibraryRowSchema, queryOne, queryRows, sql } from "./database.ts";
 import { baseName, hasInternalSegment, LibraryFileError, parentPath } from "./libraryPaths.ts";
 import { recordPathMove } from "./mediaPathHistory.ts";
 
@@ -9,18 +9,13 @@ export interface PathMove {
   readonly folder: boolean;
 }
 
-interface CountRow {
-  readonly count: number;
-}
+const RelSchema = MediaLibraryRowSchema.pick({ rel: true });
 
-interface RelRow {
-  readonly rel: string;
+// Matches `path` itself and anything inside it.
+function under(column: string, path: string) {
+  const ref = sql.ref(column);
+  return sql`(${ref} = ${path} OR substr(${ref}, 1, length(${path}) + 1) = ${path} || '/')`;
 }
-
-// `?1` is the path; matches the path itself and anything inside it.
-const under = (column: string): string => `(${column} = ?1 OR substr(${column}, 1, length(?1) + 1) = ?1 || '/')`;
-// Replaces the `?1` prefix with `?2`, preserving the remainder after it.
-const rebased = (column: string): string => `?2 || substr(${column}, length(?1) + 1)`;
 
 const STALE_CHECKS: readonly { readonly table: string; readonly column: string; readonly label: string }[] = [
   { table: "playback_progress", column: "rel", label: "saved watch progress" },
@@ -28,26 +23,28 @@ const STALE_CHECKS: readonly { readonly table: string; readonly column: string; 
   { table: "offline_media_artifacts", column: "source_rel", label: "an offline copy" },
   { table: "watch_together", column: "rel", label: "a watch party" },
 ];
-const staleQueries = STALE_CHECKS.map((check) => ({
-  label: check.label,
-  query: database.query<CountRow, [string]>(`SELECT COUNT(*) AS count FROM ${check.table} WHERE ${under(check.column)}`),
-}));
-const rebaseQueries = [
+const REBASED_COLUMNS = [
   ["playback_progress", "rel"],
   ["transcode_jobs", "source_rel"],
   ["offline_media_artifacts", "source_rel"],
   ["watch_together", "rel"],
   ["media_scans", "source_rel"],
   ["media_scan_tracks", "source_rel"],
-].map(([table = "", column = ""]) => database.query<void, [string, string]>(
-  `UPDATE ${table} SET ${column} = ${rebased(column)} WHERE ${under(column)}`,
-));
-const dropStaleScans = database.query<void, [string]>(`DELETE FROM media_scans WHERE ${under("source_rel")}`);
-const dropStaleLibraryRows = database.query<void, [string]>(`DELETE FROM media_library WHERE ${under("rel")}`);
-const libraryRowsUnder = database.query<RelRow, [string]>(`SELECT rel FROM media_library WHERE ${under("rel")}`);
-const moveLibraryRow = database.query<void, [string, string, string, string]>(
-  "UPDATE media_library SET rel = ?, name = ?, folder = ? WHERE rel = ?",
-);
+] as const;
+
+function staleCount(table: string, column: string, path: string): number {
+  return queryOne(sql`SELECT COUNT(*) AS count FROM ${sql.table(table)} WHERE ${under(column, path)}`, CountRowSchema)?.count ?? 0;
+}
+
+// Replaces the `from` prefix with `to`, preserving the remainder after it.
+function rebase(table: string, column: string, move: PathMove): void {
+  const ref = sql.ref(column);
+  execute(sql`UPDATE ${sql.table(table)} SET ${ref} = ${move.to} || substr(${ref}, length(${move.from}) + 1) WHERE ${under(column, move.from)}`);
+}
+
+function dropLibraryRows(path: string): void {
+  execute(sql`DELETE FROM media_library WHERE ${under("rel", path)}`);
+}
 
 /**
  * Nanime still holds per-path state for something no longer on disk. Moving
@@ -55,8 +52,8 @@ const moveLibraryRow = database.query<void, [string, string, string, string]>(
  */
 export function rejectStaleDestinations(moves: readonly PathMove[]): void {
   for (const move of moves) {
-    for (const check of staleQueries) {
-      if ((check.query.get(move.to)?.count ?? 0) > 0) {
+    for (const check of STALE_CHECKS) {
+      if (staleCount(check.table, check.column, move.to) > 0) {
         throw new LibraryFileError(409, `Nanime still has ${check.label} recorded for a missing item at “${move.to}”. Choose a different name or location.`);
       }
     }
@@ -70,13 +67,13 @@ export function rejectStaleDestinations(moves: readonly PathMove[]): void {
  */
 function moveLibraryRows(move: PathMove): void {
   if (hasInternalSegment(move.to)) {
-    dropStaleLibraryRows.run(move.from);
+    dropLibraryRows(move.from);
     return;
   }
-  dropStaleLibraryRows.run(move.to);
-  for (const row of libraryRowsUnder.all(move.from)) {
+  dropLibraryRows(move.to);
+  for (const row of queryRows(sql`SELECT rel FROM media_library WHERE ${under("rel", move.from)}`, RelSchema)) {
     const rel = row.rel === move.from ? move.to : `${move.to}${row.rel.slice(move.from.length)}`;
-    moveLibraryRow.run(rel, baseName(rel), parentPath(rel) ?? "", row.rel);
+    execute(sql`UPDATE media_library SET rel = ${rel}, name = ${baseName(rel)}, folder = ${parentPath(rel) ?? ""} WHERE rel = ${row.rel}`);
   }
 }
 
@@ -96,9 +93,9 @@ export function remapLibraryState(remap: LibraryRemap): void {
   rejectStaleDestinations(moves);
   database.run("PRAGMA defer_foreign_keys = ON");
   for (const move of moves) {
-    dropStaleScans.run(move.to);
-    for (const query of rebaseQueries) {
-      query.run(move.from, move.to);
+    execute(sql`DELETE FROM media_scans WHERE ${under("source_rel", move.to)}`);
+    for (const [table, column] of REBASED_COLUMNS) {
+      rebase(table, column, move);
     }
     moveLibraryRows(move);
     recordPathMove({ operationId, from: move.from, to: move.to, createdAt: now });
