@@ -1,7 +1,8 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import type { AuthUser } from "../shared/types.ts";
+import { z } from "zod";
 import { usesAgentKey } from "./agentKeys.ts";
-import { database } from "./database.ts";
+import { CountRowSchema, db, DeviceLoginRowSchema, execute, queryOne, sql } from "./database.ts";
 
 /**
  * Signing in a TV from a signed-in phone (the OAuth device flow, RFC 8628):
@@ -20,38 +21,9 @@ const START_LIMIT = 30;
 const APPROVE_FAILURE_LIMIT = 10;
 const MAX_PENDING = 500;
 
-interface PendingRow {
-  readonly user_code: string;
-  readonly device: string;
-  readonly created_at: number;
-  readonly expires_at: number;
-}
-
-interface PollRow {
-  readonly user_id: number | null;
-}
-
-const removeExpired = database.query<void, [number]>("DELETE FROM device_logins WHERE expires_at <= ?");
-const countPending = database.query<{ readonly count: number }, []>("SELECT COUNT(*) AS count FROM device_logins");
-const insertRequest = database.query<void, [string, string, string, number, number]>(`
-  INSERT INTO device_logins (device_hash, user_code, device, created_at, expires_at) VALUES (?, ?, ?, ?, ?)
-`);
-const findPending = database.query<PendingRow, [string, number]>(`
-  SELECT user_code, device, created_at, expires_at FROM device_logins
-  WHERE user_code = ? AND expires_at > ? AND user_id IS NULL
-`);
-const approveRequest = database.query<{ readonly user_code: string }, [number, string, number]>(`
-  UPDATE device_logins SET user_id = ? WHERE user_code = ? AND expires_at > ? AND user_id IS NULL
-  RETURNING user_code
-`);
-const findPoll = database.query<PollRow, [string, number]>(`
-  SELECT user_id FROM device_logins WHERE device_hash = ? AND expires_at > ?
-`);
-// Single use: whichever poll removes the approved row gets the session.
-const claimApproved = database.query<{ readonly user_id: number }, [string, number]>(`
-  DELETE FROM device_logins WHERE device_hash = ? AND expires_at > ? AND user_id IS NOT NULL
-  RETURNING user_id
-`);
+const PendingRowSchema = DeviceLoginRowSchema.pick({ user_code: true, device: true, created_at: true, expires_at: true });
+const PollRowSchema = DeviceLoginRowSchema.pick({ user_id: true });
+const ClaimRowSchema = z.object({ user_id: z.number() });
 
 const attempts = new Map<string, { readonly count: number; readonly resetAt: number }>();
 
@@ -101,13 +73,15 @@ function startResponse(req: Request, clientAddress: string): Response {
   }
   countAttempt(key);
   const now = Date.now();
-  removeExpired.run(now);
-  if ((countPending.get()?.count ?? 0) >= MAX_PENDING) {
+  execute(db.deleteFrom("device_logins").where("expires_at", "<=", now));
+  if ((queryOne(sql`SELECT COUNT(*) AS count FROM device_logins`, CountRowSchema)?.count ?? 0) >= MAX_PENDING) {
     return new Response("Too many sign-in codes; try again later", { status: 429 });
   }
   const deviceCode = randomBytes(32).toString("base64url");
   const userCode = newUserCode();
-  insertRequest.run(hash(deviceCode), userCode, deviceName(req), now, now + LIFETIME_MS);
+  execute(db.insertInto("device_logins").values({
+    device_hash: hash(deviceCode), user_code: userCode, device: deviceName(req), created_at: now, expires_at: now + LIFETIME_MS,
+  }));
   return Response.json({ deviceCode, userCode, expiresAt: now + LIFETIME_MS, interval: POLL_INTERVAL_SECONDS });
 }
 
@@ -128,19 +102,26 @@ async function pollResponse(req: Request, sessionFor: SessionFor): Promise<Respo
     return Response.json({ status: "expired" });
   }
   const now = Date.now();
-  const row = findPoll.get(hash(deviceCode), now);
+  const row = queryOne(db.selectFrom("device_logins").select("user_id")
+    .where("device_hash", "=", hash(deviceCode)).where("expires_at", ">", now), PollRowSchema);
   if (row === null) {
     return Response.json({ status: "expired" });
   }
   if (row.user_id === null) {
     return Response.json({ status: "pending" });
   }
-  const claimed = claimApproved.get(hash(deviceCode), now);
+  // Single use: whichever poll removes the approved row gets the session.
+  const claimed = queryOne(sql`
+    DELETE FROM device_logins WHERE device_hash = ${hash(deviceCode)} AND expires_at > ${now} AND user_id IS NOT NULL
+    RETURNING user_id
+  `, ClaimRowSchema);
   return claimed === null ? Response.json({ status: "expired" }) : sessionFor(claimed.user_id);
 }
 
 function lookupResponse(code: string | null): Response {
-  const row = code === null ? null : findPending.get(code, Date.now());
+  const row = code === null ? null : queryOne(db.selectFrom("device_logins")
+    .select(["user_code", "device", "created_at", "expires_at"])
+    .where("user_code", "=", code).where("expires_at", ">", Date.now()).where("user_id", "is", null), PendingRowSchema);
   return row === null
     ? new Response("This code has expired or was already used", { status: 404 })
     : Response.json({ userCode: row.user_code, device: row.device, createdAt: row.created_at, expiresAt: row.expires_at });
@@ -153,8 +134,9 @@ async function approveResponse(req: Request, user: AuthUser): Promise<Response> 
   }
   const body = await readBody(req);
   const code = normalizeUserCode(body.userCode);
-  const approved = code === null ? null : approveRequest.get(user.id, code, Date.now());
-  if (approved === null) {
+  const approved = code === null ? 0 : execute(db.updateTable("device_logins").set({ user_id: user.id })
+    .where("user_code", "=", code).where("expires_at", ">", Date.now()).where("user_id", "is", null));
+  if (approved === 0) {
     countAttempt(key);
     return new Response("This code has expired or was already used", { status: 404 });
   }

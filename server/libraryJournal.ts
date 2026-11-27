@@ -1,5 +1,6 @@
+import type { z } from "zod";
 import type { LibraryFileOperationKind } from "../shared/libraryFiles.ts";
-import { database } from "./database.ts";
+import { db, execute, type LibraryFileOperationRow, LibraryFileOperationRowSchema, queryOne, queryRows } from "./database.ts";
 import { verifyStepPaths } from "./libraryJournalPaths.ts";
 import { performFilesystemStep, recoverFilesystemStep, type Checkpoint } from "./libraryJournalFilesystem.ts";
 
@@ -7,7 +8,7 @@ export type JournalStep =
   | { readonly kind: "mkdir"; readonly from: null; readonly to: string }
   | { readonly kind: "rmdir"; readonly from: null; readonly to: string; readonly id: string }
   | { readonly kind: "move-file" | "move-folder"; readonly from: string; readonly to: string; readonly id: string };
-export type JournalStatus = "committed" | "failed" | "pending" | "recovery-required" | "rolled-back";
+export type JournalStatus = LibraryFileOperationRow["status"];
 /** Stage is persisted BEFORE capture/create. created is persisted BEFORE
  * publication. Private slots retain captured entries through process crashes. */
 export interface StepCheckpoint {
@@ -22,14 +23,11 @@ export interface JournalOperation {
   readonly steps: readonly JournalStep[];
   readonly revertsOperationId: string | null;
 }
-interface OperationRow {
-  readonly id: string;
-  readonly kind: LibraryFileOperationKind;
-  readonly status: JournalStatus;
-  readonly steps: string;
-  readonly progress: string | null;
-  readonly reverted_by_operation_id: string | null;
-}
+const OperationRowSchema = LibraryFileOperationRowSchema.pick({
+  id: true, kind: true, status: true, steps: true, progress: true, reverted_by_operation_id: true,
+});
+type OperationRow = z.infer<typeof OperationRowSchema>;
+const OPERATION_COLUMNS = ["id", "kind", "status", "steps", "progress", "reverted_by_operation_id"] as const;
 export interface StoredOperation extends OperationRow {
   readonly parsedSteps: readonly JournalStep[];
   readonly checkpoints: readonly (StepCheckpoint | null)[];
@@ -39,31 +37,15 @@ export interface CompletedStep {
   readonly created: string | null;
   readonly stage?: string | undefined;
 }
-const insertOperation = database.query<void, [string, string, number, string, string, string | null, number, number]>(`
-  INSERT INTO library_file_operations
-    (id, kind, status, actor_user_id, actor_username, steps, progress, reverts_operation_id, created_at, updated_at)
-  VALUES (?, ?, 'pending', ?, ?, ?, '[]', ?, ?, ?)
-`);
-const updateStatus = database.query<void, [JournalStatus, string | null, number, string]>(
-  "UPDATE library_file_operations SET status = ?, error = ?, updated_at = ? WHERE id = ?",
-);
-const updateProgress = database.query<void, [string, number, string]>(
-  "UPDATE library_file_operations SET progress = ?, updated_at = ? WHERE id = ?",
-);
-const pendingOperations = database.query<OperationRow, []>(`
-  SELECT id, kind, status, steps, progress, reverted_by_operation_id FROM library_file_operations
-  WHERE status IN ('pending', 'recovery-required') ORDER BY created_at, id
-`);
-const operationById = database.query<OperationRow, [string]>(
-  "SELECT id, kind, status, steps, progress, reverted_by_operation_id FROM library_file_operations WHERE id = ?",
-);
 export function recordPending(operation: JournalOperation): void {
   const now = Date.now();
-  insertOperation.run(operation.id, operation.kind, operation.actor.id, operation.actor.username,
-    JSON.stringify(operation.steps), operation.revertsOperationId, now, now);
+  execute(db.insertInto("library_file_operations").values({
+    id: operation.id, kind: operation.kind, status: "pending", actor_user_id: operation.actor.id, actor_username: operation.actor.username,
+    steps: JSON.stringify(operation.steps), progress: "[]", reverts_operation_id: operation.revertsOperationId, created_at: now, updated_at: now,
+  }));
 }
 export function markOperation(id: string, status: JournalStatus, error: string | null = null): void {
-  updateStatus.run(status, error, Date.now(), id);
+  execute(db.updateTable("library_file_operations").set({ status, error, updated_at: Date.now() }).where("id", "=", id));
 }
 function parseCheckpoints(row: OperationRow, stepCount: number): readonly (StepCheckpoint | null)[] {
   if (row.progress === null) {
@@ -77,7 +59,7 @@ function parseOperation(row: OperationRow): StoredOperation {
   return { ...row, parsedSteps, checkpoints: parseCheckpoints(row, parsedSteps.length) };
 }
 export function storedOperation(id: string): StoredOperation | null {
-  const row = operationById.get(id);
+  const row = queryOne(db.selectFrom("library_file_operations").select(OPERATION_COLUMNS).where("id", "=", id), OperationRowSchema);
   return row === null ? null : parseOperation(row);
 }
 /** Writes each checkpoint before and after the actual native mutation. */
@@ -85,7 +67,7 @@ function checkpointWriter(operationId: string, stepCount: number): (index: numbe
   const checkpoints: (StepCheckpoint | null)[] = Array.from({ length: stepCount }, (): null => null);
   return (index) => (state, created, stage) => {
     checkpoints[index] = { state, created: created ?? checkpoints[index]?.created ?? null, stage: stage ?? checkpoints[index]?.stage };
-    updateProgress.run(JSON.stringify(checkpoints), Date.now(), operationId);
+    execute(db.updateTable("library_file_operations").set({ progress: JSON.stringify(checkpoints), updated_at: Date.now() }).where("id", "=", operationId));
   };
 }
 async function applyStep(root: string, step: JournalStep, checkpoint: Checkpoint): Promise<string | null> {
@@ -174,7 +156,8 @@ async function recoverOperation(root: string, row: OperationRow): Promise<void> 
   }
 }
 export async function recoverInterruptedOperations(root: string): Promise<number> {
-  const rows = pendingOperations.all();
+  const rows = queryRows(db.selectFrom("library_file_operations").select(OPERATION_COLUMNS)
+    .where("status", "in", ["pending", "recovery-required"]).orderBy("created_at").orderBy("id"), OperationRowSchema);
   await rows.reduce<Promise<void>>((previous, row) => previous.then(() => recoverOperation(root, row)), Promise.resolve());
   return rows.length;
 }

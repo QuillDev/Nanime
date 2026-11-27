@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { database } from "./database.ts";
+import { database, db, execute, MediaMetadataRowSchema, MetadataCacheRowSchema, MetadataFilesMigrationRowSchema, queryOne, queryRows } from "./database.ts";
 import {
   matchRef,
   readFolderMetadata,
@@ -13,11 +13,7 @@ import { jsonObject } from "./json.ts";
 import { mediaFromUnknown } from "./metadataPayload.ts";
 import type { AnimeMetadata } from "./metadataTypes.ts";
 
-const selectCached = database.query<{ readonly payload: string }, [string]>("SELECT payload FROM metadata_cache WHERE ref = ?");
-const upsertCached = database.query<void, [string, string, number]>(`
-  INSERT INTO metadata_cache (ref, payload, updated_at) VALUES (?, ?, ?)
-  ON CONFLICT(ref) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
-`);
+const CachedRowSchema = MetadataCacheRowSchema.pick({ ref: true, payload: true });
 const MAX_PARSED_CACHE = 2000;
 const BATCH_CHUNK_SIZE = 500;
 const parsedCache = new Map<string, { readonly raw: string; readonly media: AnimeMetadata | undefined }>();
@@ -41,7 +37,7 @@ function decodeCachedRow(ref: string, raw: string): AnimeMetadata | undefined {
 }
 
 export function cachedMetadata(ref: string): AnimeMetadata | undefined {
-  const row = selectCached.get(ref);
+  const row = queryOne(db.selectFrom("metadata_cache").select(["ref", "payload"]).where("ref", "=", ref), CachedRowSchema);
   return row === null ? undefined : decodeCachedRow(ref, row.payload);
 }
 
@@ -51,12 +47,7 @@ export function cachedMetadataBatch(refs: readonly string[]): ReadonlyMap<string
   const result = new Map<string, AnimeMetadata>();
   for (let offset = 0; offset < unique.length; offset += BATCH_CHUNK_SIZE) {
     const chunk = unique.slice(offset, offset + BATCH_CHUNK_SIZE);
-    const placeholders = chunk.map(() => "?").join(", ");
-    const rows = database
-      .query<{ readonly ref: string; readonly payload: string }, string[]>(
-        `SELECT ref, payload FROM metadata_cache WHERE ref IN (${placeholders})`,
-      )
-      .all(...chunk);
+    const rows = queryRows(db.selectFrom("metadata_cache").select(["ref", "payload"]).where("ref", "in", chunk), CachedRowSchema);
     for (const row of rows) {
       const media = decodeCachedRow(row.ref, row.payload);
       if (media !== undefined) {
@@ -68,7 +59,8 @@ export function cachedMetadataBatch(refs: readonly string[]): ReadonlyMap<string
 }
 
 export function storeCachedMetadata(ref: string, media: AnimeMetadata): void {
-  upsertCached.run(ref, JSON.stringify(media), Date.now());
+  const update = { payload: JSON.stringify(media), updated_at: Date.now() };
+  execute(db.insertInto("metadata_cache").values({ ref, ...update }).onConflict((conflict) => conflict.column("ref").doUpdateSet(update)));
   parsedCache.delete(ref);
 }
 
@@ -80,9 +72,8 @@ export function matchFromMedia(media: AnimeMetadata): FolderMatch {
 const LEGACY_METADATA_FILE = resolve(
   process.env["MEDIA_METADATA_FILE"] ?? resolve(import.meta.dir, "..", ".media-metadata.json"),
 );
-const legacyRows = database.query<{ readonly key: string; readonly payload: string }, []>("SELECT key, payload FROM media_metadata");
-const migrationDone = database.query<{ readonly id: number }, []>("SELECT id FROM metadata_files_migration");
-const markMigrated = database.query<void, [number]>("INSERT OR IGNORE INTO metadata_files_migration (id, migrated_at) VALUES (1, ?)");
+const LegacyRowSchema = MediaMetadataRowSchema.pick({ key: true, payload: true });
+const MigrationRowSchema = MetadataFilesMigrationRowSchema.pick({ id: true });
 
 function parsedEntries(entries: readonly (readonly [string, unknown])[]): readonly (readonly [string, AnimeMetadata])[] {
   return entries.flatMap(([key, value]) => {
@@ -93,7 +84,7 @@ function parsedEntries(entries: readonly (readonly [string, unknown])[]): readon
 
 /** The pre-file mappings: SQLite rows, or the JSON file that predates them. */
 async function legacyMappings(): Promise<readonly (readonly [string, AnimeMetadata])[]> {
-  const rows = legacyRows.all();
+  const rows = queryRows(db.selectFrom("media_metadata").select(["key", "payload"]), LegacyRowSchema);
   if (rows.length > 0) {
     return parsedEntries(rows.map((row) => [row.key, JSON.parse(row.payload)] as const));
   }
@@ -123,7 +114,7 @@ const commitMigration = database.transaction((root: string, plan: PlannedMigrati
   for (const [ref, media] of plan.cached) {
     storeCachedMetadata(ref, media);
   }
-  markMigrated.run(Date.now());
+  execute(db.insertInto("metadata_files_migration").orIgnore().values({ id: 1, migrated_at: Date.now() }));
   writeFolderMatches(root, plan.updates);
 });
 
@@ -134,7 +125,7 @@ const commitMigration = database.transaction((root: string, plan: PlannedMigrati
  * placed. The old rows stay in media_metadata untouched.
  */
 export async function migrateLegacyMetadata(root: string, slots: readonly MetadataSlot[]): Promise<void> {
-  if (slots.length === 0 || migrationDone.get() !== null) {
+  if (slots.length === 0 || queryOne(db.selectFrom("metadata_files_migration").select("id"), MigrationRowSchema) !== null) {
     return;
   }
   const plan = planMigration(root, slots, await legacyMappings());

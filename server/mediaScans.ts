@@ -1,30 +1,12 @@
 import { lstat, realpath } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
-import { database } from "./database.ts";
+import { database, db, execute, type MediaScanRow, MediaScanRowSchema, queryOne, queryRows, sql } from "./database.ts";
 import { audioTracks } from "./audioTracks.ts";
 import { sidecarSubtitlePaths, subtitleTracks } from "./subtitles.ts";
 import type { TrackKind } from "./scanCache.ts";
 import type { MediaLibraryOptions } from "./mediaLibraryOptions.ts";
 
-type ScanStatus = "queued" | "scanning" | "complete" | "failed";
-
-interface ScanRow {
-  readonly source_rel: string;
-  readonly status: ScanStatus;
-  readonly file_size: number;
-  readonly modified_at: number;
-  readonly duration: number | null;
-  readonly format_name: string | null;
-  readonly video_codec: string | null;
-  readonly width: number | null;
-  readonly height: number | null;
-  readonly audio_bytes: number;
-  readonly subtitle_bytes: number;
-  readonly scanned_at: number | null;
-  readonly error: string | null;
-  readonly created_at: number;
-  readonly updated_at: number;
-}
+type ScanRow = MediaScanRow;
 
 interface ProbeStream {
   readonly index?: unknown;
@@ -45,36 +27,11 @@ interface TrackSize {
   readonly bytes: number;
 }
 
-const scans = database.query<ScanRow, []>("SELECT * FROM media_scans ORDER BY updated_at DESC");
-const scanByPath = database.query<ScanRow, [string]>("SELECT * FROM media_scans WHERE source_rel = ?");
-const queuedScans = database.query<ScanRow, []>("SELECT * FROM media_scans WHERE status = 'queued' ORDER BY created_at ASC");
-const queueScan = database.query<void, [string, number, number, number, number]>(`
-  INSERT INTO media_scans (source_rel, status, file_size, modified_at, created_at, updated_at)
-  VALUES (?, 'queued', ?, ?, ?, ?)
-  ON CONFLICT(source_rel) DO UPDATE SET
-    status = 'queued', file_size = excluded.file_size, modified_at = excluded.modified_at,
-    duration = NULL, format_name = NULL, video_codec = NULL, width = NULL, height = NULL,
-    audio_bytes = 0, subtitle_bytes = 0, scanned_at = NULL, error = NULL,
-    updated_at = excluded.updated_at
-  WHERE media_scans.status != 'scanning'
-`);
-const startScan = database.query<void, [number, string]>(`
-  UPDATE media_scans SET status = 'scanning', error = NULL, updated_at = ? WHERE source_rel = ?
-`);
-const failScan = database.query<void, [string, number, string]>(`
-  UPDATE media_scans SET status = 'failed', error = ?, updated_at = ? WHERE source_rel = ?
-`);
-const finishScan = database.query<void, [number | null, string | null, string | null, number | null, number | null, number, number, number, number, string]>(`
-  UPDATE media_scans SET status = 'complete', duration = ?, format_name = ?, video_codec = ?,
-    width = ?, height = ?, audio_bytes = ?, subtitle_bytes = ?, scanned_at = ?, updated_at = ?, error = NULL
-  WHERE source_rel = ?
-`);
-const deleteTracks = database.query<void, [string]>("DELETE FROM media_scan_tracks WHERE source_rel = ?");
-const insertTrack = database.query<void, [string, number, TrackKind, number]>(`
-  INSERT INTO media_scan_tracks (source_rel, stream_index, kind, size_bytes) VALUES (?, ?, ?, ?)
-`);
+function scanByPath(path: string): ScanRow | null {
+  return queryOne(db.selectFrom("media_scans").selectAll().where("source_rel", "=", path), MediaScanRowSchema);
+}
 
-database.run("UPDATE media_scans SET status = 'queued' WHERE status = 'scanning'");
+execute(db.updateTable("media_scans").set({ status: "queued" }).where("status", "=", "scanning"));
 let active = false;
 
 function publicScan(row: ScanRow) {
@@ -200,21 +157,24 @@ function saveScan(row: ScanRow, probe: ProbeOutput, tracks: readonly TrackSize[]
   const subtitleBytes = tracks.filter((track) => track.kind === "subtitle").reduce((sum, track) => sum + track.bytes, 0);
   const now = Date.now();
   database.transaction(() => {
-    deleteTracks.run(row.source_rel);
-    for (const track of tracks) {insertTrack.run(row.source_rel, track.index, track.kind, track.bytes);}
-    finishScan.run(
-      Number.isFinite(duration) ? duration : null,
-      typeof probe.format?.format_name === "string" ? probe.format.format_name : null,
-      typeof video?.codec_name === "string" ? video.codec_name : null,
-      typeof video?.width === "number" ? video.width : null,
-      typeof video?.height === "number" ? video.height : null,
-      audioBytes, subtitleBytes, now, now, row.source_rel,
-    );
+    execute(db.deleteFrom("media_scan_tracks").where("source_rel", "=", row.source_rel));
+    for (const track of tracks) {
+      execute(db.insertInto("media_scan_tracks").values({ source_rel: row.source_rel, stream_index: track.index, kind: track.kind, size_bytes: track.bytes }));
+    }
+    execute(db.updateTable("media_scans").set({
+      status: "complete",
+      duration: Number.isFinite(duration) ? duration : null,
+      format_name: typeof probe.format?.format_name === "string" ? probe.format.format_name : null,
+      video_codec: typeof video?.codec_name === "string" ? video.codec_name : null,
+      width: typeof video?.width === "number" ? video.width : null,
+      height: typeof video?.height === "number" ? video.height : null,
+      audio_bytes: audioBytes, subtitle_bytes: subtitleBytes, scanned_at: now, updated_at: now, error: null,
+    }).where("source_rel", "=", row.source_rel));
   })();
 }
 
 async function executeScan(row: ScanRow, options: MediaLibraryOptions): Promise<void> {
-  startScan.run(Date.now(), row.source_rel);
+  execute(db.updateTable("media_scans").set({ status: "scanning", error: null, updated_at: Date.now() }).where("source_rel", "=", row.source_rel));
   try {
     const source = await safeSource(row.source_rel, options);
     if (source === null) {
@@ -224,7 +184,8 @@ async function executeScan(row: ScanRow, options: MediaLibraryOptions): Promise<
     saveScan(row, probe, tracks);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Media scan failed";
-    failScan.run(message.slice(0, 500), Date.now(), row.source_rel);
+    execute(db.updateTable("media_scans").set({ status: "failed", error: message.slice(0, 500), updated_at: Date.now() })
+      .where("source_rel", "=", row.source_rel));
   }
 }
 
@@ -232,7 +193,7 @@ async function runQueue(options: MediaLibraryOptions): Promise<void> {
   if (active) {
     return;
   }
-  const [next] = queuedScans.all();
+  const [next] = queryRows(db.selectFrom("media_scans").selectAll().where("status", "=", "queued").orderBy("created_at", "asc"), MediaScanRowSchema);
   if (next === undefined) {
     return;
   }
@@ -255,15 +216,26 @@ async function queueScans(req: Request, options: MediaLibraryOptions): Promise<R
   }
   const now = Date.now();
   for (const { path, source } of sources) {
-    if (source !== null) {queueScan.run(path, source.size, source.modifiedAt, now, now);}
+    if (source !== null) {
+      execute(sql`
+        INSERT INTO media_scans (source_rel, status, file_size, modified_at, created_at, updated_at)
+        VALUES (${path}, 'queued', ${source.size}, ${source.modifiedAt}, ${now}, ${now})
+        ON CONFLICT(source_rel) DO UPDATE SET
+          status = 'queued', file_size = excluded.file_size, modified_at = excluded.modified_at,
+          duration = NULL, format_name = NULL, video_codec = NULL, width = NULL, height = NULL,
+          audio_bytes = 0, subtitle_bytes = 0, scanned_at = NULL, error = NULL,
+          updated_at = excluded.updated_at
+        WHERE media_scans.status != 'scanning'
+      `);
+    }
   }
   void runQueue(options);
-  return Response.json(unique.map((path) => publicScan(scanByPath.get(path) as ScanRow)), { status: 201 });
+  return Response.json(unique.map((path) => publicScan(scanByPath(path) as ScanRow)), { status: 201 });
 }
 
 export function mediaScanResponse(req: Request, options: MediaLibraryOptions): Response | Promise<Response> {
   void runQueue(options);
   return req.method === "GET"
-    ? Response.json(scans.all().map((row) => publicScan(row)))
+    ? Response.json(queryRows(db.selectFrom("media_scans").selectAll().orderBy("updated_at", "desc"), MediaScanRowSchema).map((row) => publicScan(row)))
     : queueScans(req, options);
 }

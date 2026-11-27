@@ -1,6 +1,6 @@
 import type { FileOperationActivityState, LibraryFileOperationKind } from "../shared/libraryFiles.ts";
 import type { LibraryActivityAction } from "../shared/types.ts";
-import { database } from "./database.ts";
+import { database, db, execute } from "./database.ts";
 import { insertFileOperationActivity, type ActivityActor } from "./libraryActivity.ts";
 import type { OperationPlan } from "./libraryFilePlans.ts";
 import { markOperation } from "./libraryJournal.ts";
@@ -19,10 +19,6 @@ const ACTIONS = {
   revert: "files-reverted",
   trash: "files-trashed",
 } as const satisfies Readonly<Record<LibraryFileOperationKind, LibraryActivityAction>>;
-
-const markReverted = database.query<void, [string, number, string]>(
-  "UPDATE library_file_operations SET reverted_by_operation_id = ?, updated_at = ? WHERE id = ? AND reverted_by_operation_id IS NULL",
-);
 
 function subjectOf(plan: OperationPlan): string {
   const [first] = plan.entries;
@@ -52,7 +48,8 @@ export const commitOperation = database.transaction((commit: OperationCommit): v
   };
   insertFileOperationActivity({ actor, action: ACTIONS[plan.kind], subject: subjectOf(plan), next: activity });
   if (plan.revertsOperationId !== null) {
-    markReverted.run(operationId, now, plan.revertsOperationId);
+    execute(db.updateTable("library_file_operations").set({ reverted_by_operation_id: operationId, updated_at: now })
+      .where("id", "=", plan.revertsOperationId).where("reverted_by_operation_id", "is", null));
   }
   markOperation(operationId, "committed");
 });

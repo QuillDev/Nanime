@@ -1,18 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { database } from "./database.ts";
+import { database, db, execute, type LibraryTorrentAdditionRow, LibraryTorrentAdditionRowSchema, queryRows } from "./database.ts";
 import { jsonObject } from "./json.ts";
 import { claimLibraryPaths, retainTorrentOwnership } from "./libraryWriters.ts";
 import type { TorrentPayload } from "./torrents.ts";
 
 interface OwnedPath { readonly hash: string; readonly path: string }
-interface AdditionRow {
-  readonly tag: string;
-  readonly root: string;
-  readonly scope: string;
-  readonly owned: string;
-}
-interface Addition extends AdditionRow {
+interface Addition extends LibraryTorrentAdditionRow {
   ownedPaths: readonly OwnedPath[];
   release: () => void;
   observedAt: number;
@@ -23,9 +17,8 @@ interface Addition extends AdditionRow {
 database.run(`CREATE TABLE IF NOT EXISTS library_torrent_additions (
   tag TEXT PRIMARY KEY, root TEXT NOT NULL, scope TEXT NOT NULL, owned TEXT NOT NULL
 )`);
-const rows = database.query<AdditionRow, []>("SELECT * FROM library_torrent_additions");
 const additions = new Map<string, Addition>();
-for (const row of rows.all()) {
+for (const row of queryRows(db.selectFrom("library_torrent_additions").selectAll(), LibraryTorrentAdditionRowSchema)) {
   const ownedPaths = JSON.parse(row.owned) as readonly OwnedPath[];
   const release = ownedPaths.length === 0
     ? claimLibraryPaths([row.scope], true) : retainTorrentOwnership(ownedPaths.map((entry) => entry.path));
@@ -38,7 +31,7 @@ export function reserveTorrentAddition(root: string, scope: string): string {
   const release = claimLibraryPaths([scope], true);
   const tag = `nanime-${randomUUID()}`;
   try {
-    database.run("INSERT INTO library_torrent_additions (tag, root, scope, owned) VALUES (?, ?, ?, '[]')", [tag, resolve(root), scope]);
+    execute(db.insertInto("library_torrent_additions").values({ tag, root: resolve(root), scope, owned: "[]" }));
     additions.set(tag, { tag, root: resolve(root), scope, owned: "[]", ownedPaths: [], release, observedAt: 0 });
     return tag;
   } catch (error) { release(); throw error; }
@@ -47,13 +40,13 @@ export function reserveTorrentAddition(root: string, scope: string): string {
 export function canonicalizeTorrentAdditionRoot(tag: string, root: string): void {
   const addition = additions.get(tag);
   if (addition !== undefined) {
-    database.run("UPDATE library_torrent_additions SET root = ? WHERE tag = ?", [root, tag]);
+    execute(db.updateTable("library_torrent_additions").set({ root }).where("tag", "=", tag));
     additions.set(tag, { ...addition, root });
   }
 }
 
 export function forgetTorrentAddition(tag: string): void {
-  database.run("DELETE FROM library_torrent_additions WHERE tag = ?", [tag]);
+  execute(db.deleteFrom("library_torrent_additions").where("tag", "=", tag));
   additions.get(tag)?.release();
   additions.delete(tag);
 }
@@ -96,7 +89,7 @@ export function refreshTorrentAdditions(payloads: readonly TorrentPayload[], raw
       addition.observedAt = read;
       continue;
     }
-    database.run("UPDATE library_torrent_additions SET owned = ? WHERE tag = ?", [JSON.stringify(ownedPaths), addition.tag]);
+    execute(db.updateTable("library_torrent_additions").set({ owned: JSON.stringify(ownedPaths) }).where("tag", "=", addition.tag));
     // No await between releasing the pending scope and retaining payload locks.
     addition.release();
     addition.release = retainTorrentOwnership(ownedPaths.map((entry) => entry.path));

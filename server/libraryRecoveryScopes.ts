@@ -1,5 +1,5 @@
 import type { LibraryFileLock } from "../shared/libraryFiles.ts";
-import { database } from "./database.ts";
+import { db, LibraryFileOperationRowSchema, queryRows } from "./database.ts";
 import { hasInternalSegment, isInternalName, isSameOrInside, pathSegments } from "./libraryPaths.ts";
 
 export const RECOVERY_LOCK: LibraryFileLock = {
@@ -7,9 +7,7 @@ export const RECOVERY_LOCK: LibraryFileLock = {
   reason: "An interrupted file operation here needs recovery. Restart Nanime or check the server log.",
   tone: "locked",
 };
-const unrecoveredOperations = database.query<{ readonly steps: string }, []>(
-  "SELECT steps FROM library_file_operations WHERE status = 'recovery-required'",
-);
+const StepsRowSchema = LibraryFileOperationRowSchema.pick({ steps: true });
 
 function storedPath(value: unknown): string {
   if (typeof value !== "string") { throw new TypeError("Invalid stored recovery path"); }
@@ -37,7 +35,8 @@ function stepPaths(value: unknown): readonly string[] {
 /** Read SQLite synchronously at admission, never a stale startup snapshot. */
 export function durableRecoveryPaths(): readonly string[] {
   try {
-    return [...new Set(unrecoveredOperations.all().flatMap((row) => {
+    const rows = queryRows(db.selectFrom("library_file_operations").select("steps").where("status", "=", "recovery-required"), StepsRowSchema);
+    return [...new Set(rows.flatMap((row) => {
       const steps: unknown = JSON.parse(row.steps);
       if (!Array.isArray(steps) || steps.length === 0) { throw new Error("Invalid stored recovery steps"); }
       return steps.flatMap((step) => stepPaths(step).flatMap((path) => hasInternalSegment(path) ? [] : [path]));

@@ -1,4 +1,5 @@
-import { database } from "./database.ts";
+import { z } from "zod";
+import { execute, MediaPathHistoryRowSchema, queryOne, queryRows, sql } from "./database.ts";
 
 /**
  * Path history records each committed move of a library path. Playback audit
@@ -13,48 +14,53 @@ import { database } from "./database.ts";
  * retreats through those ids, so it always terminates without a hop limit.
  */
 
-interface HistoryRow {
-  readonly id: number;
-  readonly old_rel: string;
-  readonly new_rel: string;
-  readonly watermark: number;
-}
-
-const insertHistory = database.query<void, [string, string, string, number]>(`
-  INSERT INTO media_path_history (operation_id, old_rel, new_rel, created_at, audit_watermark)
-  VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(id), 0) FROM playback_audit_log))
-`);
+const HistoryRowSchema = MediaPathHistoryRowSchema.pick({ id: true, old_rel: true, new_rel: true }).extend({ watermark: z.number() });
+type HistoryRow = z.infer<typeof HistoryRowSchema>;
 
 // Rows from before watermarks were stored fall back to the newest audit entry
 // strictly older than the move, which errs toward the earlier occupant only on
 // an exact timestamp tie.
-const HISTORY_COLUMNS = `id, old_rel, new_rel, COALESCE(audit_watermark, (
+const HISTORY_COLUMNS = sql`id, old_rel, new_rel, COALESCE(audit_watermark, (
   SELECT COALESCE(MAX(audit.id), 0) FROM playback_audit_log AS audit WHERE audit.created_at < history.created_at
 )) AS watermark`;
-// `?1` is the path; the column matches when it is the path or a folder containing it.
-const covers = (column: string): string => `(${column} = ?1 OR substr(?1, 1, length(${column}) + 1) = ${column} || '/')`;
+// The column matches when it is `path` or a folder containing it.
+function covers(column: string, path: string) {
+  const ref = sql.ref(column);
+  return sql`(${ref} = ${path} OR substr(${path}, 1, length(${ref}) + 1) = ${ref} || '/')`;
+}
+function touching(path: string) {
+  return sql`(${covers("old_rel", path)} OR ${covers("new_rel", path)})`;
+}
 
-const latestTouchingBefore = database.query<HistoryRow, [string, number]>(`
-  SELECT ${HISTORY_COLUMNS} FROM media_path_history AS history
-  WHERE id < ?2 AND (${covers("old_rel")} OR ${covers("new_rel")})
-  ORDER BY id DESC LIMIT 1
-`);
-const nextTouchingAfter = database.query<HistoryRow, [string, number]>(`
-  SELECT ${HISTORY_COLUMNS} FROM media_path_history AS history
-  WHERE id > ?2 AND (${covers("old_rel")} OR ${covers("new_rel")})
-  ORDER BY id LIMIT 1
-`);
-const firstTouchingFromWatermark = database.query<HistoryRow, [string, number]>(`
-  SELECT * FROM (SELECT ${HISTORY_COLUMNS} FROM media_path_history AS history
-    WHERE ${covers("old_rel")} OR ${covers("new_rel")})
-  WHERE watermark >= ?2
-  ORDER BY id LIMIT 1
-`);
-const movesAwayFrom = database.query<HistoryRow, [string]>(`
-  SELECT ${HISTORY_COLUMNS} FROM media_path_history AS history
-  WHERE ${covers("old_rel")}
-  ORDER BY id
-`);
+function latestTouchingBefore(path: string, beforeId: number): HistoryRow | null {
+  return queryOne(sql`
+    SELECT ${HISTORY_COLUMNS} FROM media_path_history AS history
+    WHERE id < ${beforeId} AND ${touching(path)}
+    ORDER BY id DESC LIMIT 1
+  `, HistoryRowSchema);
+}
+function nextTouchingAfter(path: string, afterId: number): HistoryRow | null {
+  return queryOne(sql`
+    SELECT ${HISTORY_COLUMNS} FROM media_path_history AS history
+    WHERE id > ${afterId} AND ${touching(path)}
+    ORDER BY id LIMIT 1
+  `, HistoryRowSchema);
+}
+function firstTouchingFromWatermark(path: string, auditId: number): HistoryRow | null {
+  return queryOne(sql`
+    SELECT * FROM (SELECT ${HISTORY_COLUMNS} FROM media_path_history AS history
+      WHERE ${covers("old_rel", path)} OR ${covers("new_rel", path)})
+    WHERE watermark >= ${auditId}
+    ORDER BY id LIMIT 1
+  `, HistoryRowSchema);
+}
+function movesAwayFrom(path: string): readonly HistoryRow[] {
+  return queryRows(sql`
+    SELECT ${HISTORY_COLUMNS} FROM media_path_history AS history
+    WHERE ${covers("old_rel", path)}
+    ORDER BY id
+  `, HistoryRowSchema);
+}
 
 export interface PathHistoryEntry {
   readonly operationId: string;
@@ -65,7 +71,10 @@ export interface PathHistoryEntry {
 
 /** Records a committed move. Runs inside the operation's commit transaction. */
 export function recordPathMove(entry: PathHistoryEntry): void {
-  insertHistory.run(entry.operationId, entry.from, entry.to, entry.createdAt);
+  execute(sql`
+    INSERT INTO media_path_history (operation_id, old_rel, new_rel, created_at, audit_watermark)
+    VALUES (${entry.operationId}, ${entry.from}, ${entry.to}, ${entry.createdAt}, (SELECT COALESCE(MAX(id), 0) FROM playback_audit_log))
+  `);
 }
 
 function covered(path: string, ancestor: string): boolean {
@@ -86,7 +95,7 @@ function followForward(path: string, row: HistoryRow): string | null {
   let current = rebase(path, row.old_rel, row.new_rel);
   let afterId = row.id;
   for (;;) {
-    const next = nextTouchingAfter.get(current, afterId);
+    const next = nextTouchingAfter(current, afterId);
     if (next === null) {
       return current;
     }
@@ -106,7 +115,7 @@ function followForward(path: string, row: HistoryRow): string | null {
  * answer only if nothing has moved through it since.
  */
 export function currentMediaPathForAudit(rel: string, auditId: number): string | null {
-  const row = firstTouchingFromWatermark.get(rel, auditId);
+  const row = firstTouchingFromWatermark(rel, auditId);
   if (row === null) {
     return rel;
   }
@@ -115,7 +124,7 @@ export function currentMediaPathForAudit(rel: string, auditId: number): string |
 
 /** Candidate destinations of departed occupants; callers must validate identity. */
 export function departedMediaPaths(rel: string): readonly (string | null)[] {
-  return movesAwayFrom.all(rel).map((row) => followForward(rel, row));
+  return movesAwayFrom(rel).map((row) => followForward(rel, row));
 }
 
 /** A missing path's sole recorded departure, or null for ambiguous legacy replay. */
@@ -144,7 +153,7 @@ export function mediaAuditWindows(rel: string): readonly AuditWindow[] {
   let throughId: number | null = null;
   let beforeId = Number.MAX_SAFE_INTEGER;
   for (;;) {
-    const row = latestTouchingBefore.get(path, beforeId);
+    const row = latestTouchingBefore(path, beforeId);
     windows.push({ rel: path, afterId: row?.watermark ?? 0, throughId });
     if (row === null || !arrivedBy(row, path)) {
       // No earlier record, or the previous occupant left and this media

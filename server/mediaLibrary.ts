@@ -1,24 +1,15 @@
 import { lstat, readdir, stat } from "node:fs/promises";
+import type { z } from "zod";
 import { dirname, extname, join, relative, sep } from "node:path";
 import type { LibraryStatus, MediaEntry } from "../shared/types.ts";
-import { database } from "./database.ts";
+import { database, db, execute, type MediaLibraryRow, MediaLibraryRowSchema, MediaLibraryStateRowSchema, queryOne, queryRows, sql } from "./database.ts";
 import { entryId, hasInternalSegment, pathSegments, resolveExisting } from "./libraryPaths.ts";
 
 export { libraryActivityResponse } from "./libraryActivity.ts";
 
-interface MediaRow {
-  readonly rel: string;
-  readonly name: string;
-  readonly folder: string;
-  readonly size: number;
-  readonly direct: number;
-  readonly added_at: number;
-}
-
-interface LibraryStateRow {
-  readonly last_scanned_at: number;
-  readonly entry_count: number;
-}
+type MediaRow = MediaLibraryRow;
+const LibraryStateRowSchema = MediaLibraryStateRowSchema.pick({ last_scanned_at: true, entry_count: true });
+const FolderRowSchema = MediaLibraryRowSchema.pick({ folder: true });
 
 interface WalkOptions {
   readonly mediaDir: string;
@@ -36,30 +27,19 @@ interface LibraryOptions {
 
 const LIBRARY_STALE_MS = 60_000;
 const WALK_CONCURRENCY = 32;
-const rows = database.query<MediaRow, []>(`
-  SELECT rel, name, folder, size, direct, added_at FROM media_library ORDER BY rel
-`);
-const distinctFolders = database.query<{ readonly folder: string }, []>(`
-  SELECT folder FROM media_library GROUP BY folder ORDER BY MIN(rel)
-`);
-const state = database.query<LibraryStateRow, []>(`
-  SELECT last_scanned_at, entry_count FROM media_library_state WHERE id = 1
-`);
-const insert = database.query<void, [string, string, string, number, number, number]>(`
-  INSERT INTO media_library (rel, name, folder, size, direct, added_at) VALUES (?, ?, ?, ?, ?, ?)
-`);
+function libraryState(): z.infer<typeof LibraryStateRowSchema> | null {
+  return queryOne(db.selectFrom("media_library_state").select(["last_scanned_at", "entry_count"]).where("id", "=", 1), LibraryStateRowSchema);
+}
 const replaceLibrary = database.transaction((entries: readonly MediaEntry[], scannedAt: number) => {
-  database.run("DELETE FROM media_library");
+  execute(db.deleteFrom("media_library"));
   for (const entry of entries) {
-    insert.run(entry.rel, entry.name, entry.folder, entry.size, entry.direct ? 1 : 0, entry.addedAt ?? 0);
+    execute(db.insertInto("media_library").values({
+      rel: entry.rel, name: entry.name, folder: entry.folder, size: entry.size, direct: entry.direct ? 1 : 0, added_at: entry.addedAt ?? 0,
+    }));
   }
-  database.query<void, [number, number]>(`
-    INSERT INTO media_library_state (id, last_scanned_at, entry_count)
-    VALUES (1, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      last_scanned_at = excluded.last_scanned_at,
-      entry_count = excluded.entry_count
-  `).run(scannedAt, entries.length);
+  const state = { last_scanned_at: scannedAt, entry_count: entries.length };
+  execute(db.insertInto("media_library_state").values({ id: 1, ...state })
+    .onConflict((conflict) => conflict.column("id").doUpdateSet(state)));
 });
 let scanPromise: Promise<readonly MediaEntry[]> | undefined = undefined;
 let mutationGeneration = 0;
@@ -207,11 +187,11 @@ function entryFromRow(row: MediaRow): MediaEntry {
 }
 
 function cachedEntries(): readonly MediaEntry[] {
-  return rows.all().map((row) => entryFromRow(row));
+  return queryRows(db.selectFrom("media_library").selectAll().orderBy("rel"), MediaLibraryRowSchema).map((row) => entryFromRow(row));
 }
 
 export function libraryStatus(): LibraryStatus {
-  const current = state.get();
+  const current = libraryState();
   return {
     entryCount: current?.entry_count ?? 0,
     lastScannedAt: current?.last_scanned_at ?? null,
@@ -310,7 +290,7 @@ function identifiedEntries(options: LibraryOptions): Promise<readonly MediaEntry
 }
 
 export function listMedia(options: LibraryOptions): Promise<readonly MediaEntry[]> {
-  const current = state.get();
+  const current = libraryState();
   if (current === null) {
     return refreshMediaLibrary(options);
   }
@@ -322,11 +302,11 @@ export function listMedia(options: LibraryOptions): Promise<readonly MediaEntry[
 
 /** The folders that hold videos, from the cached library (scanning first if it never ran). */
 export async function listVideoFolders(options: LibraryOptions): Promise<readonly string[]> {
-  if (state.get() === null) {
+  if (libraryState() === null) {
     const scanned = await refreshMediaLibrary(options);
     return [...new Set(scanned.map((entry) => entry.folder))];
   }
-  return distinctFolders.all().map((row) => row.folder);
+  return queryRows(sql`SELECT folder FROM media_library GROUP BY folder ORDER BY MIN(rel)`, FolderRowSchema).map((row) => row.folder);
 }
 
 export function libraryStatusResponse(): Response {

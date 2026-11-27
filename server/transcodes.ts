@@ -2,31 +2,15 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, realpath, rename, unlink } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import type { TranscodePreset } from "../shared/types.ts";
-import { database } from "./database.ts";
+import { db, execute, queryOne, queryRows, type TranscodeJobRow, TranscodeJobRowSchema } from "./database.ts";
 import { claimTranscodeWorkerPaths, LibraryFileError, libraryWriterResponse, resolveExisting } from "./libraryWriterAdmission.ts";
 import { detachTorrentsForFiles } from "./torrents.ts";
 import { captureEncoder, captureProbe, readTranscodeProgress } from "./transcodeProgress.ts";
 import type { MediaLibraryOptions } from "./mediaLibraryOptions.ts";
 import { budget, encoderCommandPrefix, presetArgs, reapStrayEncodersOnce, reservedCpus, stopEncoder } from "./transcodeEncoder.ts";
 
-type TranscodeStatus = "cancelled" | "complete" | "failed" | "processing" | "queued";
-
-interface TranscodeRow {
-  readonly id: string;
-  readonly source_rel: string;
-  readonly preset: TranscodePreset;
-  readonly output_rel: string;
-  readonly status: TranscodeStatus;
-  readonly input_size: number;
-  readonly output_size: number | null;
-  readonly progress: number;
-  readonly speed: number;
-  readonly started_at: number | null;
-  readonly error: string | null;
-  readonly original_deleted: number;
-  readonly created_at: number;
-  readonly updated_at: number;
-}
+type TranscodeRow = TranscodeJobRow;
+type TranscodeStatus = TranscodeRow["status"];
 
 interface StartBody {
   readonly path?: unknown;
@@ -34,35 +18,19 @@ interface StartBody {
   readonly preset?: unknown;
 }
 
-const jobs = database.query<TranscodeRow, []>(`
-  SELECT * FROM transcode_jobs ORDER BY created_at DESC
-`);
-const insertJob = database.query<void, [string, string, string, string, number, number, number]>(`
-  INSERT INTO transcode_jobs
-    (id, source_rel, preset, output_rel, status, input_size, created_at, updated_at)
-  VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)
-`);
-const updateJob = database.query<void, [string, number | null, string | null, number, string]>(`
-  UPDATE transcode_jobs SET status = ?, output_size = ?, error = ?, updated_at = ? WHERE id = ?
-`);
-const startJob = database.query<void, [number, string]>(`
-  UPDATE transcode_jobs
-  SET status = 'processing', progress = 0, speed = 0, started_at = ?, error = NULL
-  WHERE id = ?
-`);
-const updateProgress = database.query<void, [number, number, number, string]>(`
-  UPDATE transcode_jobs SET progress = ?, speed = ?, updated_at = ? WHERE id = ?
-`);
-const jobById = database.query<TranscodeRow, [string]>("SELECT * FROM transcode_jobs WHERE id = ?");
-const deleteJob = database.query<void, [string]>("DELETE FROM transcode_jobs WHERE id = ?");
-const promoteJob = database.query<void, [string, number, string]>(`
-  UPDATE transcode_jobs SET output_rel = ?, original_deleted = 1, status = 'complete', updated_at = ?
-  WHERE id = ?
-`);
-database.run(`
-  UPDATE transcode_jobs SET status = 'queued', progress = 0, speed = 0, started_at = NULL
-  WHERE status = 'processing'
-`);
+function allJobs(): readonly TranscodeRow[] {
+  return queryRows(db.selectFrom("transcode_jobs").selectAll().orderBy("created_at", "desc"), TranscodeJobRowSchema);
+}
+function jobById(id: string): TranscodeRow | null {
+  return queryOne(db.selectFrom("transcode_jobs").selectAll().where("id", "=", id), TranscodeJobRowSchema);
+}
+function insertJob(row: Pick<TranscodeRow, "id" | "source_rel" | "preset" | "output_rel" | "input_size">, now: number): void {
+  execute(db.insertInto("transcode_jobs").values({ ...row, status: "queued", created_at: now, updated_at: now }));
+}
+function updateJob(id: string, change: Pick<TranscodeRow, "status" | "output_size" | "error">): void {
+  execute(db.updateTable("transcode_jobs").set({ ...change, updated_at: Date.now() }).where("id", "=", id));
+}
+execute(db.updateTable("transcode_jobs").set({ status: "queued", progress: 0, speed: 0, started_at: null }).where("status", "=", "processing"));
 
 const maxWorkers = budget.workers;
 const encoderPrefix = encoderCommandPrefix(await reservedCpus(budget.cpus));
@@ -72,9 +40,9 @@ const cancelledJobs = new Set<string>();
 const activeProcesses = new Map<string, Bun.Subprocess<"ignore", "pipe", "pipe">>();
 const OUTPUT_NAME = /^(?<key>[a-f0-9]{24})-(?<id>[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.mkv$/u;
 
-const latestJobForSource = database.query<TranscodeRow, [string]>(`
-  SELECT * FROM transcode_jobs WHERE source_rel = ? ORDER BY created_at DESC LIMIT 1
-`);
+function latestJobForSource(rel: string): TranscodeRow | null {
+  return queryOne(db.selectFrom("transcode_jobs").selectAll().where("source_rel", "=", rel).orderBy("created_at", "desc").limit(1), TranscodeJobRowSchema);
+}
 
 export interface SourceTranscodeState {
   readonly status: TranscodeStatus;
@@ -90,13 +58,13 @@ function remainingSeconds(row: TranscodeRow): number | null {
 
 /** The newest stored-transcode job for a library video, if any. */
 export function sourceTranscodeState(rel: string): SourceTranscodeState | null {
-  const row = latestJobForSource.get(rel);
+  const row = latestJobForSource(rel);
   return row === null ? null : { status: row.status, progress: row.progress, remainingSeconds: remainingSeconds(row) };
 }
 
 /** A finished compatibility copy that still sits beside its original. */
 export function storedCompatibilityCopy(rel: string, options: MediaLibraryOptions): Promise<string | null> {
-  const row = latestJobForSource.get(rel);
+  const row = latestJobForSource(rel);
   if (row?.status !== "complete" || row.preset !== "compatibility" || row.original_deleted === 1) {
     return Promise.resolve(null);
   }
@@ -172,7 +140,7 @@ async function processJob(row: TranscodeRow, options: MediaLibraryOptions): Prom
   const { source, output, preset } = await jobPaths(row, options);
   if (cancelledJobs.has(row.id)) { return; }
   const startedAt = Date.now();
-  startJob.run(startedAt, row.id);
+  execute(db.updateTable("transcode_jobs").set({ status: "processing", progress: 0, speed: 0, started_at: startedAt, error: null }).where("id", "=", row.id));
   const sourceDuration = await duration(source);
   if (cancelledJobs.has(row.id)) {
     return;
@@ -189,7 +157,7 @@ async function processJob(row: TranscodeRow, options: MediaLibraryOptions): Prom
   activeProcesses.set(row.id, proc);
   const stderr = new Response(proc.stderr).text();
   const progress = readTranscodeProgress(proc.stdout, sourceDuration, (sample) => {
-    updateProgress.run(sample.progress, sample.speed, Date.now(), row.id);
+    execute(db.updateTable("transcode_jobs").set({ progress: sample.progress, speed: sample.speed, updated_at: Date.now() }).where("id", "=", row.id));
   });
   const { code: exitCode, stderr: stderrText } = await captureEncoder(proc, { stderr, progress });
   const errorText = stderrText.trim();
@@ -203,12 +171,12 @@ async function processJob(row: TranscodeRow, options: MediaLibraryOptions): Prom
   const valid = exitCode === 0 && outputStat?.isFile() === true && outputStat.size > 0 &&
     sourceDuration > 0 && Math.abs(sourceDuration - outputDuration) <= 2;
   if (valid) {
-    updateProgress.run(1, 0, Date.now(), row.id);
-    updateJob.run("complete", outputStat.size, null, Date.now(), row.id);
+    execute(db.updateTable("transcode_jobs").set({ progress: 1, speed: 0, updated_at: Date.now() }).where("id", "=", row.id));
+    updateJob(row.id, { status: "complete", output_size: outputStat.size, error: null });
   } else {
     await unlink(output).catch(() => undefined);
     if (!cancelledJobs.has(row.id)) {
-      updateJob.run("failed", null, errorText.slice(-500) || "Output validation failed", Date.now(), row.id);
+      updateJob(row.id, { status: "failed", output_size: null, error: errorText.slice(-500) || "Output validation failed" });
     }
   }
 }
@@ -217,7 +185,7 @@ async function cleanupCancelledJob(row: TranscodeRow, options: MediaLibraryOptio
   if (!cancelledJobs.has(row.id)) { return; }
   const output = await pendingOutputPath(row, options);
   if (output !== null) { await unlink(output).catch(() => undefined); }
-  updateJob.run("cancelled", null, null, Date.now(), row.id);
+  updateJob(row.id, { status: "cancelled", output_size: null, error: null });
 }
 
 async function executeJob(row: TranscodeRow, options: MediaLibraryOptions, release: () => void): Promise<void> {
@@ -228,7 +196,7 @@ async function executeJob(row: TranscodeRow, options: MediaLibraryOptions, relea
     if (output !== null) { await unlink(output).catch(() => undefined); }
     if (!cancelledJobs.has(row.id)) {
       const message = error instanceof Error ? error.message : "Transcode process could not start";
-      updateJob.run("failed", null, message.slice(0, 500), Date.now(), row.id);
+      updateJob(row.id, { status: "failed", output_size: null, error: message.slice(0, 500) });
     }
   } finally {
     try {
@@ -257,7 +225,7 @@ export function resumeTranscodeQueue(options: MediaLibraryOptions): void {
 }
 
 function startQueuedJobs(options: MediaLibraryOptions): void {
-  const queued = jobs.all().toReversed().filter((row) => (
+  const queued = allJobs().toReversed().filter((row) => (
     row.status === "queued" && !activeJobs.has(row.id) && !editingJobs.has(row.id)
   ));
   for (const row of queued) {
@@ -267,7 +235,7 @@ function startQueuedJobs(options: MediaLibraryOptions): void {
       release = claimTranscodeWorkerPaths([row.source_rel]);
     } catch (error) {
       if (!(error instanceof LibraryFileError)) { throw error; }
-      if (error.status !== 423) { updateJob.run("failed", null, error.message, Date.now(), row.id); }
+      if (error.status !== 423) { updateJob(row.id, { status: "failed", output_size: null, error: error.message }); }
       continue;
     }
     activeJobs.add(row.id);
@@ -307,7 +275,7 @@ async function startClaimed(path: string, preset: TranscodePreset, options: Medi
   if (sourceStat?.isFile() !== true || !options.videoExtensions.has(extname(source).toLowerCase())) {
     return new Response("Video not found", { status: 404 });
   }
-  const duplicate = jobs.all().some((row) => row.source_rel === path && row.status !== "failed");
+  const duplicate = allJobs().some((row) => row.source_rel === path && row.status !== "failed");
   if (duplicate) {
     return new Response("This video already has a transcode job", { status: 409 });
   }
@@ -316,8 +284,8 @@ async function startClaimed(path: string, preset: TranscodePreset, options: Medi
   const key = createHash("sha256").update(path).digest("hex").slice(0, 24);
   const outputRel = `.nanime-transcodes/${key}-${id}${extension}`;
   const now = Date.now();
-  insertJob.run(id, path, preset, outputRel, sourceStat.size, now, now);
-  return Response.json(publicJob(jobById.get(id) as TranscodeRow), { status: 201 });
+  insertJob({ id, source_rel: path, preset, output_rel: outputRel, input_size: sourceStat.size }, now);
+  return Response.json(publicJob(jobById(id) as TranscodeRow), { status: 201 });
 }
 
 async function startBulk(req: Request, options: MediaLibraryOptions): Promise<Response> {
@@ -351,7 +319,7 @@ async function startBulkClaimed(uniquePaths: readonly string[], preset: Transcod
   if (sources.some((source) => source === null)) {
     return new Response("One or more videos no longer exist", { status: 404 });
   }
-  const existing = new Set(jobs.all().flatMap((row) => (
+  const existing = new Set(allJobs().flatMap((row) => (
     row.status === "failed" || row.status === "cancelled" ? [] : [row.source_rel]
   )));
   const queued = (sources as { readonly path: string; readonly size: number }[])
@@ -363,8 +331,8 @@ async function startBulkClaimed(uniquePaths: readonly string[], preset: Transcod
       const key = createHash("sha256").update(source.path).digest("hex").slice(0, 24);
       const outputRel = `.nanime-transcodes/${key}-${id}.mkv`;
       const now = Date.now();
-      insertJob.run(id, source.path, preset, outputRel, source.size, now, now);
-      return [jobById.get(id) as TranscodeRow];
+      insertJob({ id, source_rel: source.path, preset, output_rel: outputRel, input_size: source.size }, now);
+      return [jobById(id) as TranscodeRow];
     });
   if (queued.length === 0) {
     return new Response("Every video in this season already has a transcode job", { status: 409 });
@@ -378,16 +346,16 @@ function cancel(row: TranscodeRow, options: MediaLibraryOptions): Response | Pro
     return new Response("Only queued or processing jobs can be cancelled", { status: 409 });
   }
   if (activeJobs.has(row.id)) {
-    updateJob.run("cancelled", null, null, Date.now(), row.id);
+    updateJob(row.id, { status: "cancelled", output_size: null, error: null });
     cancelledJobs.add(row.id);
     stopEncoder(activeProcesses.get(row.id));
-    return Response.json(publicJob(jobById.get(row.id) as TranscodeRow));
+    return Response.json(publicJob(jobById(row.id) as TranscodeRow));
   }
   return editJob(row.id, options, async () => {
-    updateJob.run("cancelled", null, null, Date.now(), row.id);
+    updateJob(row.id, { status: "cancelled", output_size: null, error: null });
     const output = await existingOutputPath(row, options);
     if (output !== null) { await unlink(output).catch(() => undefined); }
-    return Response.json(publicJob(jobById.get(row.id) as TranscodeRow));
+    return Response.json(publicJob(jobById(row.id) as TranscodeRow));
   });
 }
 
@@ -435,8 +403,8 @@ async function promoteClaimedOriginal(row: TranscodeRow, options: MediaLibraryOp
     await rename(target, output).catch(() => undefined);
     throw error;
   }
-  promoteJob.run(targetRel, Date.now(), row.id);
-  return Response.json(publicJob(jobById.get(row.id) as TranscodeRow));
+  execute(db.updateTable("transcode_jobs").set({ output_rel: targetRel, original_deleted: 1, status: "complete", updated_at: Date.now() }).where("id", "=", row.id));
+  return Response.json(publicJob(jobById(row.id) as TranscodeRow));
 }
 
 function deleteTranscode(row: TranscodeRow, options: MediaLibraryOptions): Response | Promise<Response> {
@@ -451,7 +419,7 @@ function deleteTranscode(row: TranscodeRow, options: MediaLibraryOptions): Respo
     if (output !== null) {
       await unlink(output).catch(() => undefined);
     }
-    deleteJob.run(row.id);
+    execute(db.deleteFrom("transcode_jobs").where("id", "=", row.id));
     return new Response(null, { status: 204 });
   });
 }
@@ -463,7 +431,7 @@ function transcodeJobResponse(
 ): Response | Promise<Response> {
   const match = /^\/api\/transcodes\/(?<id>[0-9a-f-]+)(?<action>\/(?:original|cancel))?$/u.exec(pathname);
   const id = match?.groups?.["id"];
-  const row = id === undefined ? null : jobById.get(id);
+  const row = id === undefined ? null : jobById(id);
   if (row === null) {
     return new Response("Transcode job not found", { status: 404 });
   }
@@ -486,7 +454,7 @@ export function transcodeResponse(
 ): Response | Promise<Response> {
   void runQueue(options);
   if (pathname === "/api/transcodes" && req.method === "GET") {
-    return Response.json(jobs.all().map((row) => publicJob(row)));
+    return Response.json(allJobs().map((row) => publicJob(row)));
   }
   if (pathname === "/api/transcodes" && req.method === "POST") {
     return start(req, options);
